@@ -1,11 +1,13 @@
 from KN1DPy.kn1d import kn1d
-import scipy.io as sio
 from scipy.io import readsav
 import numpy as np
 import sys
 
 import time
 
+import sys
+np.set_printoptions(linewidth=225)
+np.set_printoptions(threshold=sys.maxsize)
 
 standard_out = sys.stdout
 

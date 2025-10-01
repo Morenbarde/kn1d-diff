@@ -5,7 +5,7 @@ from scipy import interpolate
 
 from .read import sav_read, nc_read
 from .edit_keys import edit_keys
-from .create_shifted_maxwellian import create_shifted_maxwellian # fixed function name - nh
+from .create_shifted_maxwellian import create_shifted_maxwellian
 from .integ_bl import integ_bl
 from .make_dvr_dvx import make_dvr_dvx
 from .sval import sval
@@ -42,110 +42,95 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
          Hplot = 0, Hdebug = 0, Hdebrief = 0, Hpause = 0, \
          H2plot = 0, H2debug = 0, H2debrief = 0, H2pause = 0) -> dict:
 
-    # deleted what i added before dont know what I was thinking?? - GG 2/19, corrected typos
-
     # Input: 
-    #	x	- fltarr(nx), cross-field coordinate (meters)
-    #      xlimiter - float, cross-field coordinate of limiter edge (meters) (for graphic on plots)
-    #	xsep	- float, cross-field coordinate separatrix (meters) (for graphic on plots)
-    #	GaugeH2	- float, Molecular pressure (mtorr)
-    #	mu	- float, 1=hydrogen, 2=deuterium
-    #	Ti	- fltarr(nx), ion temperature profile (eV)
-    #	Te	- fltarr(nx), electron temperature profile (eV)
-    #	n	- fltarr(nx), density profile (m^-3)
-    #	vxi	- fltarr(nx), plasma velocity profile [negative is towards 'wall' (m s^-1)]
-    #	LC	- fltarr(nx), connection length (surface to surface) along field lines to nearest limiters (meters)
-    #	          Zero values of LC are treated as LC=infinity.
-    #      PipeDia	- fltarr(nx), effective pipe diameter (meters)
-    #		  This variable allows collisions with the 'side-walls' to be simulated.
-    #		  If this variable is undefined, then PipeDia set set to zero. Zero values
-    #		  of PipeDia are ignored (i.e., treated as an infinite diameter).
+    #	x	        - fltarr(nx), cross-field coordinate (meters)
+    #   xlimiter    - float, cross-field coordinate of limiter edge (meters) (for graphic on plots)
+    #	xsep	    - float, cross-field coordinate separatrix (meters) (for graphic on plots)
+    #	GaugeH2	    - float, Molecular pressure (mtorr)
+    #	mu	        - float, 1=hydrogen, 2=deuterium
+    #	Ti	        - fltarr(nx), ion temperature profile (eV)
+    #	Te	        - fltarr(nx), electron temperature profile (eV)
+    #	n	        - fltarr(nx), density profile (m^-3)
+    #	vxi	        - fltarr(nx), plasma velocity profile [negative is towards 'wall' (m s^-1)]
+    #	LC	        - fltarr(nx), connection length (surface to surface) along field lines to nearest limiters (meters)
+    #                   Zero values of LC are treated as LC=infinity.
+    #   PipeDia	    - fltarr(nx), effective pipe diameter (meters)
+    #                   This variable allows collisions with the 'side-walls' to be simulated.
+    #                   If this variable is undefined, then PipeDia set set to zero. Zero values
+    #                   of PipeDia are ignored (i.e., treated as an infinite diameter).
     #
-    #   Keyword Input:
-    #      truncate	- float, this parameter is also passed to Kinetic_H and Kinetic_H2.
-    #                 fH and fH2 are refined by iteration via routines Kinetic_H2 and Kinetic_H
-    #		  until the maximum change in molecular neutral density (over its profile) normalized to 
-    #		  the maximum value of molecular density is less than this 
-    #	    	  value in a subsequent iteration. Default value is 1.0e-3
-    #
-    #       refine  - if set, then use previously computed atomic and molecular distribution functions
-    #		  stored in internal common block (if any) or from FILE (see below) as the initial 
-    #                 'seed' value'
-    #
-    #         file  - string, if not null, then read in 'file'.kn1d_mesh save set and compare contents
-    #                 to the present input parameters and computational mesh. If these are the same
-    #		  then read results from previous run in 'file'.kn1d_H2 and 'file'.kn1d_H.
-    #
-    #       Newfile - if set, then do not generate an error and exit if 'file'.KN1D_mesh or 'file'.KN1D_H2
-    #                 or 'file'.KN1D_H do not exist or differ from the present input parameters. Instead, write 
-    #                 new mesh and output files on exiting.
-    #
-    #     ReadInput - if set, then reset all input variables to that contained in 'file'.KN1D_input
+    # Keyword Input:
+    #   truncate	- float, this parameter is also passed to Kinetic_H and Kinetic_H2.
+    #                   fH and fH2 are refined by iteration via routines Kinetic_H2 and Kinetic_H
+    #		            until the maximum change in molecular neutral density (over its profile) normalized to 
+    #		            the maximum value of molecular density is less than this 
+    #	    	        value in a subsequent iteration. Default value is 1.0e-3
+    #   refine      - if set, then use previously computed atomic and molecular distribution functions
+    #		            stored in internal common block (if any) or from FILE (see below) as the initial 'seed' value'
+    #   file        - string, if not null, then read in 'file'.kn1d_mesh save set and compare contents
+    #                   to the present input parameters and computational mesh. If these are the same
+    #		            then read results from previous run in 'file'.kn1d_H2 and 'file'.kn1d_H.
+    #   Newfile     - if set, then do not generate an error and exit if 'file'.KN1D_mesh or 'file'.KN1D_H2
+    #                   or 'file'.KN1D_H do not exist or differ from the present input parameters. Instead, write 
+    #                   new mesh and output files on exiting.
+    #   ReadInput   - if set, then reset all input variables to that contained in 'file'.KN1D_input
 
-    #NOTE Debugging option, remove later
-    import sys
-    np.set_printoptions(linewidth=225)
-    np.set_printoptions(threshold=sys.maxsize)
     x = np.array(x, dtype=np.float64)
     COLLISIONS = KN1D_Collisions()
 
     # Collision options inputted via common block KN1D_collisions (default parameter values is true for all collisions):
 
-    # KN1D_Collisions common block - GG 2/15
-    H2_H2_EL = COLLISIONS.H2_H2_EL # fixed typo - GG 2/19
+    #NOTE These are used in the kh files, move to config file, remove from here
+    H2_H2_EL = COLLISIONS.H2_H2_EL
     H2_P_EL = COLLISIONS.H2_P_EL
     H2_H_EL = COLLISIONS.H2_H_EL
     H2_HP_CX = COLLISIONS.H2_HP_CX
     H_H_EL = COLLISIONS.H_H_EL
     H_P_EL = COLLISIONS.H_P_EL
     H_P_CX = COLLISIONS.H_P_CX
-    Simple_CX = COLLISIONS.Simple_CX
+    SIMPLE_CX = COLLISIONS.Simple_CX 
 
-        # H2_H2_EL	- if set, then include H2 -> H2 elastic self collisions
-        # H2_P_EL	- if set, then include H2 -> H(+) elastic collisions 
-        # H2_H_EL	- if set, then include H2 <-> H elastic collisions 
-        # H2_HP_CX	- if set, then include H2 -> H2(+) charge exchange collisions
-        # H_H_EL	- if set, then include H -> H elastic self collisions
-        # H_P_CX	- if set, then include H -> H(+) charge exchange collisions 
-        # H_P_EL	- if set, then include H -> H(+) elastic collisions 
-        # Simple_CX	- if set, then use CX source option (B): Neutrals are born
-        #              in velocity with a distribution proportional to the local
-        #              ion distribution function. Simple_CX=1 is default.
+    # H2_H2_EL	- if set, then include H2 -> H2 elastic self collisions
+    # H2_P_EL	- if set, then include H2 -> H(+) elastic collisions 
+    # H2_H_EL	- if set, then include H2 <-> H elastic collisions 
+    # H2_HP_CX	- if set, then include H2 -> H2(+) charge exchange collisions
+    # H_H_EL	- if set, then include H -> H elastic self collisions
+    # H_P_CX	- if set, then include H -> H(+) charge exchange collisions 
+    # H_P_EL	- if set, then include H -> H(+) elastic collisions 
+    # SIMPLE_CX	- if set, then use CX source option (B): Neutrals are born
+    #              in velocity with a distribution proportional to the local
+    #              ion distribution function. Simple_CX=1 is default.
 
-    #   Output:
+    # Output:
     #   Molecular info
-    #      xH2	- fltarr(nxH2), cross-field coordinate for molecular quantities (meters)
-    #      nH2	- fltarr(nxH2), neutral moleular density profile (m^-3)
-    #      GammaxH2 - fltarr(nxH2), neutral flux profile (# m^-2 s^-1)
-    #      TH2	- fltarr(nxH2), molecular neutral temperature profile (m^-3)
-    #    qxH2_total	- fltarr(nxH2), molecular neutral heat flux profile (watts m^-2)
-    #      nHP	- fltarr(nxH2), molecular ion density profile (m^-3)
-    #      THP	- fltarr(nxH2), molecular ion temperature profile (eV)
-    #      SH	- fltarr(nxH2), atomic source profile (m^-3 s^-1)
-    #      SP	- fltarr(nxH2), ion source profile (m^-3 s^-1)
+    #       xH2	        - fltarr(nxH2), cross-field coordinate for molecular quantities (meters)
+    #       nH2	        - fltarr(nxH2), neutral moleular density profile (m^-3)
+    #       GammaxH2    - fltarr(nxH2), neutral flux profile (# m^-2 s^-1)
+    #       TH2	        - fltarr(nxH2), molecular neutral temperature profile (m^-3)
+    #       qxH2_total	- fltarr(nxH2), molecular neutral heat flux profile (watts m^-2)
+    #       nHP	        - fltarr(nxH2), molecular ion density profile (m^-3)
+    #       THP	        - fltarr(nxH2), molecular ion temperature profile (eV)
+    #       SH	        - fltarr(nxH2), atomic source profile (m^-3 s^-1)
+    #       SP	        - fltarr(nxH2), ion source profile (m^-3 s^-1)
     #
     #   Atomic info
-    #      xH	- fltarr(nxH), cross-field coordinate for atomic quantities (meters)
-    #      nH	- fltarr(nxH), neutral atomic density profile (m^-3)
-    #      GammaxH 	- fltarr(nxH), neutral flux profile (# m^-2 s^-1)
-    #      TH	- fltarr(nxH), atomic neutral temperature profile (m^-3)
-    #    qxH_total	- fltarr(nxH), atomic neutral heat flux profile (watts m^-2)
-    #   NetHSource	- fltarr(nxH), net source of atomic neutrals from molecular dissociation and recomb minus ionization (# m^-3) 
-    #	Sion	- fltarr(nxH), atomic ionization rate (# m^-3) 
-    #	QH_total- fltarr(nxH), net rate of total energy transfer to atomic neutral species (watts m^-3)
-    #     SideWallH	- fltarr(nxH), atomic neutral sink rate arising from hitting the 'side walls' (m^-3 s^-1)
-    #		  Unlike the molecules in Kinetic_H2, wall collisions result in the destruction of atoms.
-    #                 This parameter is used to specify a resulting source of molecular
-    #                 neutrals in Kinetic_H2. (molecular source = 2 times SideWallH)
-    #	Lyman   - fltarr(nxH), Lyman-alpha emissivity (watts m^-3) using rate coefficients of L.C.Johnson and E. Hinnov
-    #	Balmer  - fltarr(nxH), Balmer-alpha emissivity (watts m^-3) using rate coefficients of L.C.Johnson and E. Hinnov
+    #       xH	        - fltarr(nxH), cross-field coordinate for atomic quantities (meters)
+    #       nH	        - fltarr(nxH), neutral atomic density profile (m^-3)
+    #       GammaxH 	- fltarr(nxH), neutral flux profile (# m^-2 s^-1)
+    #       TH	        - fltarr(nxH), atomic neutral temperature profile (m^-3)
+    #       qxH_total	- fltarr(nxH), atomic neutral heat flux profile (watts m^-2)
+    #       NetHSource	- fltarr(nxH), net source of atomic neutrals from molecular dissociation and recomb minus ionization (# m^-3) 
+    #	    Sion	    - fltarr(nxH), atomic ionization rate (# m^-3) 
+    #	    QH_total    - fltarr(nxH), net rate of total energy transfer to atomic neutral species (watts m^-3)
+    #       SideWallH	- fltarr(nxH), atomic neutral sink rate arising from hitting the 'side walls' (m^-3 s^-1)
+    #	                    Unlike the molecules in Kinetic_H2, wall collisions result in the destruction of atoms.
+    #                       This parameter is used to specify a resulting source of molecular
+    #                       neutrals in Kinetic_H2. (molecular source = 2 times SideWallH)
+    #	    Lyman       - fltarr(nxH), Lyman-alpha emissivity (watts m^-3) using rate coefficients of L.C.Johnson and E. Hinnov
+    #	    Balmer      - fltarr(nxH), Balmer-alpha emissivity (watts m^-3) using rate coefficients of L.C.Johnson and E. Hinnov
 
 
     prompt = 'KN1D => '
-    #global xH2,TiM,TeM,nM,PipeDiaM,vxM,vrM,TnormM,xH,TiA,TeA,nA,PipeDiaA,vxA,vrA,TnormA # necessary for setting variables from input_dict (lines 132-133) - nh
-    #   Note that these are global to this file only, they are not used / cannot be called in other files
-
-    
 
     #   KN1D_internal common block - GG 2/15
     
@@ -160,72 +145,33 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # Set defaults - GG - 2/15
     interp_debug = 0 
     max_gen = 100
-    error = 1 # This i think should be moved to the keyword in the call line
 
     #Generates JH_Coef class, Used in place of IDL version's JH_Coef Common block
     jh_coefficients = JH_Coef()
         
     # Option: Read input parameters stored in file from previous run
-    if ReadInput: 
-        input_file = File
-        fp = os.path.exists(input_file)
-        if fp:
-            if debrief:
-                print(prompt, ' Reading input variables stored in ', input_file)
-                if File[ len(File) - 4 : len(File) ] == '.sav':
-                    input_dict = sav_read(File, '//Users/Gwen/Desktop/test.nc')
-                elif File[ len(File) - 3 : len(File)]=='.nc': # fixed typo
-                    input_dict = nc_read(File)
-                else: 
-                    if debug:
-                        print(prompt, ' Error reading the file') # may be missing some statements 
-                        print(prompt, ' finished')
-                        # Press_return
-                        return 
-        else:
-            try:
-                input_dict=sav_read(File+'.KN1D_input',File+'_asnetcdf.nc') # allows for old-style inputs, might be removed later - nh
-            except:
-                print(prompt, 'Error reading the file')
-                if debug:
-                    print(prompt, ' Finished ')
-                    return 
-        # edit keys for C-Mod Files 
-        edit_keys(input_dict) # Not sure if we need this in the final code - not sure the C-Mod files are really intended to be used as inputs - nh
-        
-        #for i in ['xH2','TiM','TeM','nM','PipeDiaM','vxM','vrM','TnormM','xH','TiA','TeA','nA','PipeDiaA','vxA','vrA','TnormA']:
-        #    globals()[i]=input_dict[i.lower()] # Takes entries from input_dict and defines them as variables 
-            #   slightly messy, but should solve comment below - nh
-        # i think in the end we will have to use the dictionary to manually define the variables
-    else:
-        # determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
-        #nv = 6 NOTE Replaced with constants
-        Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
-        fctr = 0.3
-        if GaugeH2 > 15.0:
-            fctr = fctr * 15 / GaugeH2
+    # NOTE Removed, consider implementing later
+    
+    # determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
+    Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
+    fctr = 0.3
+    if GaugeH2 > 15.0:
+        fctr = fctr * 15 / GaugeH2
 
-        # print("x_in", x)
-        # print("Ti_in", Ti)
-        # print("Te_in", Te)
-        # print("n_in", n)
-        # print("PipeDia_in", PipeDia)
-        # print("mu", mu)
-        # input()
-        kh2_mesh = create_kinetic_h2_mesh(CONST.KH2_NV, mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
-        # print(kh2_mesh)
-        # input()
-        #xH2,TiM,TeM,nM,PipeDiaM,vxM,vrM,TnormM = kh2_mesh
-        
-        # determine optimized vr, vx grid for kinetic_h (atoms, A)
-        #nv = 10 NOTE Replaced with Constants
-        fctr = 0.3
-        if GaugeH2 > 30.0 :
-            fctr = fctr * 30 / GaugeH2
+    kh2_mesh = create_kinetic_h2_mesh(mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
+    # print(kh2_mesh)
+    # input()
+    #xH2,TiM,TeM,nM,PipeDiaM,vxM,vrM,TnormM = kh2_mesh
+    
+    # determine optimized vr, vx grid for kinetic_h (atoms, A)
+    #nv = 10 NOTE Replaced with Constants
+    fctr = 0.3
+    if GaugeH2 > 30.0 :
+        fctr = fctr * 30 / GaugeH2
 
-        # finished line since create_kinetic_h_mesh has been programmed - nh // fixed capitalization - GG // fixed keyword inputs - GG
-        kh_mesh = create_kinetic_h_mesh(CONST.KH_NV, mu, x, Ti, Te, n, PipeDia, jh_coeffs=jh_coefficients, fctr = fctr) 
-        TnormA = kh_mesh.Tnorm
+    # finished line since create_kinetic_h_mesh has been programmed - nh // fixed capitalization - GG // fixed keyword inputs - GG
+    kh_mesh = create_kinetic_h_mesh(mu, x, Ti, Te, n, PipeDia, jh_coeffs=jh_coefficients, fctr = fctr) 
+    TnormA = kh_mesh.Tnorm
 
     v0_bar = np.sqrt(8.0*CONST.TWALL*CONST.Q/(np.pi*2*mu*CONST.H_MASS))
 
@@ -449,7 +395,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # input()
             kh2_results = kinetic_h2(
                     kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, fHM, SH2, fH2, nHP, THP, KH2_Common,\
-                    truncate=truncate, Simple_CX=Simple_CX, Max_Gen=max_gen, Compute_H_Source=Compute_H_Source,\
+                    truncate=truncate, Simple_CX=SIMPLE_CX, Max_Gen=max_gen, Compute_H_Source=Compute_H_Source,\
                     H2_H2_EL=H2_H2_EL,H2_P_EL=H2_P_EL,H2_H_EL=H2_H_EL,H2_HP_CX=H2_HP_CX, ni_correct=ni_correct,\
                     Compute_Errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
             
@@ -492,14 +438,13 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             GammaxHBC = 0
             # fHBC = np.zeros((nvrA,nvxA,nxH))
             fHBC = np.zeros((nvrA,nvxA))
-            H2_H2_EL = H2_H_EL
             ni_correct = 1
             Hcompute_errors = compute_errors and Hdebrief
 
             kh_results = kinetic_h(
                     kh_mesh, mu, vxiA, fHBC, GammaxHBC, fH2A, fSHA, nHPA, THPA, jh_coefficients, KH_Common, fH=fH,\
-                    truncate=truncate, Simple_CX=Simple_CX, Max_Gen=max_gen, \
-                    H_H_EL=H_H_EL, H_P_EL=H2_P_EL, _H_H2_EL= H2_H2_EL, H_P_CX=H_P_CX, ni_correct=ni_correct, \
+                    truncate=truncate, Simple_CX=SIMPLE_CX, Max_Gen=max_gen, \
+                    H_H_EL=H_H_EL, H_P_EL=H_P_EL, _H_H2_EL= H2_H_EL, H_P_CX=H_P_CX, ni_correct=ni_correct, \
                     Compute_Errors=Hcompute_errors, plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause) # Not sure where some of the keywords are defined
             
             fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH,error = kh_results

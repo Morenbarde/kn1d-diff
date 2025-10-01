@@ -48,10 +48,4 @@ def create_vr_vx_mesh(nv : int, Ti : NDArray, E0 : NDArray = np.array([0.0]), Tm
     vr = v[1 : ] # fixed indexing - nh
     vx = np.concatenate([-reverse(vr), vr]) 
 
-    ixE0 = np.argwhere(abs(vx) == v0).T[0] # modified argwhere output - nh
-    if np.size(ixE0) == 1: # removed count variable; same changes made to following lines - nh
-        ixE0 = ixE0[0]
-    irE0 = np.argwhere(vr == v0).T[0]
-    if np.size(irE0) == 1:
-        irE0 = irE0[0]
-    return vx,vr,Tnorm,ixE0,irE0 # changed to return outputs as a variables - GG
+    return vx,vr,Tnorm
