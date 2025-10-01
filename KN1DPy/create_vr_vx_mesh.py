@@ -24,7 +24,7 @@ def create_vr_vx_mesh(nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax:
     Tnorm = np.nanmean(Ti)
     vmax = 3.5
     if (maxTi-minTi) <= (0.1*maxTi):
-        v = np.arange(nv+1)*vmax/nv
+        v = (np.arange(nv+1)*vmax) / nv
     else:
         g = 2*nv*np.sqrt(minTi/maxTi) / (1 - np.sqrt(minTi/maxTi))
         b = vmax / (nv*(nv + g))

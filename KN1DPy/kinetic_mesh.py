@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import interpolate
 
-from .utils import get_config
+from .utils import get_config, interp_1d
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
@@ -29,30 +29,27 @@ class kinetic_mesh:
             PipeDia     : NDArray,
             jh_coeffs   : JH_Coef = None,
             E0          : NDArray = np.array([0.0]), 
-            fctr        : float   = 1.0
-        ):
-        
-        self.mesh_type = mesh_type
-
-        #Get mesh size from config file
-        nv = get_config('config.json')["kinetic_" + mesh_type]["mesh_size"]
+            fctr        : float   = 1.0):
 
         print("generating kinetic_" + mesh_type + "_mesh")
+
+        #Get mesh size from config file
+        nv = get_config()["kinetic_" + mesh_type]["mesh_size"]
 
         # estimate Interaction rate with side walls
         #NOTE Commented gamma_wall calculations here, revisit later
 
         if mesh_type == 'h':
-            # Estimate total reaction rate for destriction of hydrogen atoms and for interation with side walls
-            react_rate = n * sigmav_ion_h0(Te) 
+            # Estimate total reaction rate for destruction of hydrogen atoms and for interation with side walls
+            react_rate = n*sigmav_ion_h0(Te) 
             # Set v0 to thermal speed to 10 eV neutral 
-            v0 = np.sqrt( 2 * 10 * CONST.Q / (mu * CONST.H_MASS))
+            v0 = np.sqrt(2*10*CONST.Q / (mu*CONST.H_MASS))
 
         elif mesh_type == 'h2':
             #Estimate total reaction rate for destruction of molecules and for interation with side walls
             react_rate = n*sigmav_ion_hh(Te) + n*sigmav_h1s_h1s_hh(Te) + n*sigmav_h1s_h2s_hh(Te)
             #directed random velocity of diatomic molecule
-            v0 = np.sqrt(8.0*CONST.TWALL*CONST.Q/(np.pi*2*mu*CONST.H_MASS))
+            v0 = np.sqrt(8.0*CONST.TWALL*CONST.Q / (np.pi*2*mu*CONST.H_MASS))
 
         else:
             raise Exception("ERROR: Mesh type invalid:", mesh_type)
@@ -64,108 +61,90 @@ class kinetic_mesh:
             y[k] = y[k-1] - ((x[k] - x[k-1])*0.5*(react_rate[k] + react_rate[k-1]))/v0
         if mesh_type == 'h':
             # Find x location where Y = -5, i.e. where nH should be down by exp(-5)
-            interpfunc = interpolate.interp1d(y, x, bounds_error=False, fill_value="extrapolate")
-            xmax = np.minimum(interpfunc(-5), max(x))
+            xmax = np.minimum(interp_1d(y, x, -5, fill_value="extrapolate"), max(x))
         elif mesh_type == 'h2':
             #Find x location where Y = -10, i.e., where nH2 should be down by exp(-10)
-            interpfunc = interpolate.interp1d(y, x)
-            xmax = np.minimum(interpfunc(-10.0), max(x))
+            xmax = np.minimum(interp_1d(y, x, -10.0), max(x))
         xmin = x[0]
 
 
         # Interpolate Ti and Te onto a fine mesh between xmin and xmax 
         xfine = xmin + (xmax - xmin)*np.arange(1001)/1000
 
-        interpfunc = interpolate.interp1d(x, Ti, fill_value="extrapolate")
-        Tifine = interpfunc(xfine)
-
-        interpfunc = interpolate.interp1d(x, Te)
-        Tefine = interpfunc(xfine)
-
-        interpfunc = interpolate.interp1d(x, n)
-        nfine = interpfunc(xfine)
-
-        interpfunc = interpolate.interp1d(x, PipeDia)
-        PipeDiafine = interpfunc(xfine)
+        Tifine = interp_1d(x, Ti, xfine, fill_value="extrapolate")
+        Tefine = interp_1d(x, Te, xfine)
+        nfine = interp_1d(x, n, xfine)
+        PipeDiafine = interp_1d(x, PipeDia, xfine)
 
 
         # Set up a vx, vr mesh based on raw data to get typical vx, vr values 
-        vx, vr, Tnorm = create_vr_vx_mesh(nv, Tifine, E0 = E0)
+        vx, vr, Tnorm = create_vr_vx_mesh(nv, Tifine, E0=E0)
 
         vth = np.sqrt( (2*CONST.Q*Tnorm) / (mu*CONST.H_MASS))
         # Estimate interaction rate with side walls
         nxfine = np.size(xfine)
         gamma_wall = np.zeros(nxfine, float)
-        #print(PipeDiafine)
-        for k in range(nxfine): # fixed typo on next two lines
+        for k in range(nxfine):
             if PipeDiafine[k] > 0:
                 gamma_wall[k] = 2 * max(vr) * vth / PipeDiafine[k]
         
         # Estimate total reaction rate, including charge exchange and elastic scattering, and interaction with side walls 
-        
         if mesh_type == 'h':
-            minVr = vth * min(vr)
-            minE0 = 0.5 * CONST.H_MASS * minVr * minVr / CONST.Q
-            if CONST.USE_COLLRAD_IONIZATION:
+            minVr = vth*min(vr)
+            minE0 = 0.5*CONST.H_MASS*(minVr**2) / CONST.Q
+
+            ion_rate_option = get_config()['kinetic_h']['ion_rate']
+            if ion_rate_option == 'collrad':
                 ioniz_rate = collrad_sigmav_ion_h0(nfine, Tefine)
-            elif CONST.USE_JH: #NOTE not tested yet
-                print("using in mesh")
+            elif ion_rate_option == 'jh':
+                #NOTE not working yet
                 #Checks that the JH_Coef class has been passed into the function before calling jhs_coef
                 if (jh_coeffs == None):
                     raise Exception("kinetic_h_mesh generated using JH, but no JH coefficients given")
-                ioniz_rate = jhs_coef(nfine, Tefine, jh_coeffs, no_null = True) # deleted unecessary variable - GG
+                ioniz_rate = jhs_coef(nfine, Tefine, jh_coeffs, no_null = True)
             else:
-                ioniz_rate = sigmav_ion_h0(Tefine) #NOTE Not tested yet
-            react_rate = nfine*ioniz_rate + nfine*sigmav_cx_h0(Tifine, np.full(xfine.shape, minE0)) + gamma_wall
+                #NOTE Not tested yet
+                ioniz_rate = sigmav_ion_h0(Tefine)
+            react_rate = nfine*(ioniz_rate + sigmav_cx_h0(Tifine, np.full(xfine.shape, minE0))) + gamma_wall
 
         elif mesh_type == 'h2':
-            react_rate = nfine*sigmav_ion_hh(Tefine)+nfine*sigmav_h1s_h1s_hh(Tefine)+nfine*sigmav_h1s_h2s_hh(Tefine)+0.1*nfine*sigmav_cx_hh(Tifine,Tifine) + gamma_wall
+            react_rate = nfine*(sigmav_ion_hh(Tefine) + sigmav_h1s_h1s_hh(Tefine) + sigmav_h1s_h2s_hh(Tefine) + 0.1*sigmav_cx_hh(Tifine,Tifine)) + gamma_wall
         
         # Compute local maximum grid spacing dx_max = 2
-        big_dx=0.02*fctr
-        dx_max=np.minimum(fctr*0.8*(2*vth*min(vr)/react_rate), big_dx)
+        dx_max = np.minimum(fctr*0.8*(2*vth*min(vr)/react_rate), 0.02*fctr)
 
         # Construct xH Axis 
         xpt = xmax
         xH = np.array([xpt])
         
         while xpt > xmin:
-            xH = np.concatenate([np.array([xpt]), xH]) # put xpt in array to fix concatenation error
-            interpfunc = interpolate.interp1d(xfine, dx_max, kind='linear', fill_value="extrapolate")
-            dxpt1 = interpfunc(xpt)
+            xH = np.concatenate([np.array([xpt]), xH])
+            dxpt1 = interp_1d(xfine, dx_max, xpt, fill_value="extrapolate")
             dxpt2 = np.copy(dxpt1)
             xpt_test = xpt - dxpt1
             if xpt_test > xmin:
-                interpfunc = interpolate.interp1d(xfine, dx_max)
-                dxpt2 = interpfunc(xpt_test)
-            # dxpt = min([dxpt1, dxpt2]) * 0.5 ; FS: reduce spacing 
-            # FS: force a preset maximum grid spacing 
+                dxpt2 = interp_1d(xfine, dx_max, xpt_test, fill_value="extrapolate")
 
             if mesh_type == 'h':
                 dxh_max = 0.0005 # JWH: 0.0015 should be sufficient for D3D because scale lengths are 2.5x larger
                 # lowered dxh_max from 5e-4 to 4e-4; original was giving mesh size errors in kinetic_h - nh
                 dxpt = min([dxpt1, dxpt2, dxh_max])
             elif mesh_type == 'h2':
-                dxpt=min([dxpt1,dxpt2])
+                dxpt = min([dxpt1,dxpt2])
 
-            xpt = xpt - dxpt 
-            
+            xpt -= dxpt 
         xH = np.concatenate([np.array([xmin]), xH[0:np.size(xH) - 1]])
-        # if xH[1] - xH[0] > 0.5 * big_dx:
-        #   xH = np.concatenate(xH[0], xH[2:])
 
-        # interpfunc = interpolate.interp1d(xfine, Tifine, kind='linear', fill_value="extrapolate")
-        # TiH = interpfunc(xH)
+
         TiH = np.interp(xH, xfine, Tifine)
-        interpfunc = interpolate.interp1d(xfine, Tefine)
-        TeH = interpfunc(xH)
-        interpfunc = interpolate.interp1d(xfine, nfine)
-        neH = interpfunc(xH)
-        interpfunc = interpolate.interp1d(xfine, PipeDiafine)
-        PipeDiaH = interpfunc(xH)
+        TeH = interp_1d(xfine, Tefine, xH)
+        neH = interp_1d(xfine, nfine, xH)
+        PipeDiaH = interp_1d(xfine, PipeDiafine, xH)
 
         vx, vr, Tnorm = create_vr_vx_mesh(nv, TiH, E0=E0)
 
+
+        self.mesh_type : str = mesh_type
         self.x : NDArray = xH
         self.Ti : NDArray = TiH
         self.Te : NDArray = TeH
