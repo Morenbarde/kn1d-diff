@@ -1,6 +1,6 @@
 import numpy as np
 
-from .reverse import reverse
+from .utils import reverse
 
 def integ_bl(X,Y,value_only=None,rev=None):
 # X, Y are input np.arrays

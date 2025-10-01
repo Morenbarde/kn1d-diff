@@ -16,3 +16,6 @@ pip install -r requirements.txt
 Currently, anything using the Johnson-Hinov Tables are not working.
 This includes Lyman_Alpha and Balmer Alpha, which will return 0 for the moment.
 As such, the default choice for ionization coefficients has been set to Collrad Ionization.
+
+There are also various other features that are currently not implemented.
+These may be added later once the core program is completed.

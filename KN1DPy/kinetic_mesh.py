@@ -64,13 +64,14 @@ class kinetic_mesh:
             y[k] = y[k-1] - ((x[k] - x[k-1])*0.5*(react_rate[k] + react_rate[k-1]))/v0
         if mesh_type == 'h':
             # Find x location where Y = -5, i.e. where nH should be down by exp(-5)
-            interpfunc = interpolate.interp1d(y, x, kind = 'linear', bounds_error=False, fill_value="extrapolate")
+            interpfunc = interpolate.interp1d(y, x, bounds_error=False, fill_value="extrapolate")
             xmax = np.minimum(interpfunc(-5), max(x))
         elif mesh_type == 'h2':
             #Find x location where Y = -10, i.e., where nH2 should be down by exp(-10)
             interpfunc = interpolate.interp1d(y, x)
             xmax = np.minimum(interpfunc(-10.0), max(x))
         xmin = x[0]
+
 
         # Interpolate Ti and Te onto a fine mesh between xmin and xmax 
         xfine = xmin + (xmax - xmin)*np.arange(1001)/1000
@@ -87,10 +88,11 @@ class kinetic_mesh:
         interpfunc = interpolate.interp1d(x, PipeDia)
         PipeDiafine = interpfunc(xfine)
 
+
         # Set up a vx, vr mesh based on raw data to get typical vx, vr values 
         vx, vr, Tnorm = create_vr_vx_mesh(nv, Tifine, E0 = E0)
 
-        vth = np.sqrt( (2 * CONST.Q * Tnorm) / (mu * CONST.H_MASS))
+        vth = np.sqrt( (2*CONST.Q*Tnorm) / (mu*CONST.H_MASS))
         # Estimate interaction rate with side walls
         nxfine = np.size(xfine)
         gamma_wall = np.zeros(nxfine, float)

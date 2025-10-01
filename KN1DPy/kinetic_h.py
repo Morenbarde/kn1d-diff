@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 
-from .reverse import reverse
+from .utils import reverse
 from .make_dvr_dvx import make_dvr_dvx
 from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .kinetic_mesh import kinetic_mesh

@@ -1,8 +1,7 @@
-#from cmath import sqrt     replaced with np.sqrt - nh
 import numpy as np
 from numpy.typing import NDArray
 
-from .reverse import * # fixed import
+from .utils import reverse
 
 # sets up optimum Vr and Vx velocity space mesh for Kinetic_Neutrals procedure 
 # Input: 
@@ -13,39 +12,36 @@ from .reverse import * # fixed import
 #
 # Gwendolyn Galleher 
 
-def create_vr_vx_mesh(nv : int, Ti : NDArray, E0 : NDArray = np.array([0.0]), Tmax : float = 0.0, debug_flag = False
-                      ) -> tuple[NDArray, NDArray, float, NDArray, NDArray] : # removed unused input parameters
-    _Ti = np.array(Ti) 
-    _Ti = np.concatenate([_Ti, E0[E0>0]])
+def create_vr_vx_mesh(nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :
+    Ti = np.array(Ti) 
+    Ti = np.concatenate([Ti, E0[E0>0]])
     if Tmax > 0:
-        ii = np.where(_Ti < Tmax)
-        _Ti = _Ti[ii]
-        # _Ti = _Ti[_Ti<Tmax] # simplified previous lines by replacing loops - nh
-    maxTi = np.max(_Ti)
-    minTi = min(_Ti)
-    Tnorm = np.nanmean(_Ti)
+        ii = np.where(Ti < Tmax)
+        Ti = Ti[ii]
+    
+    maxTi = Ti.max()
+    minTi = Ti.min()
+    Tnorm = np.nanmean(Ti)
     vmax = 3.5
-    if maxTi - minTi <= 0.1 * maxTi: # changed < to <= like from IDL code - nh
-        v = np.arange(nv+1)*vmax/nv # added *vmax/nv from IDL code - nh // deleted float type because it caused bug - GG
+    if (maxTi-minTi) <= (0.1*maxTi):
+        v = np.arange(nv+1)*vmax/nv
     else:
-        G = 2 * nv * np.sqrt(minTi / maxTi) / (1- np.sqrt(minTi / maxTi))
-        b = vmax / (nv * (nv + G))
-        a = G * b 
-        v = a * np.arange(nv +1) + b * (np.arange(nv+1) ** 2)
+        g = 2*nv*np.sqrt(minTi/maxTi) / (1 - np.sqrt(minTi/maxTi))
+        b = vmax / (nv*(nv + g))
+        v = (g*b)*np.arange(nv+1) + b*(np.arange(nv+1)**2)
 
-        # Option: add velocity bins corresponding to E0 
-        
-    v0=0 # this line was missing - nh
-    for k in range(np.size(E0)): # fixed range - nh
+    # Option: add velocity bins corresponding to E0     
+    v0 = 0
+    for k in range(np.size(E0)):
         if E0[k] > 0.0:
             v0 = np.sqrt(E0[k]/Tnorm)
-            ii = np.argwhere(v > v0).T[0] # argwhere has a weird output, but this should put it in a usable format - nh
-            if np.size(ii) > 0: # removed count variable
-                v = np.concatenate([v[0 : ii[0]], [v0], v[ii[0] : ]])
+            ii = np.argwhere(v > v0).T[0]
+            if np.size(ii) > 0:
+                v = np.concatenate([v[0:ii[0]], [v0], v[ii[0]:]])
             else: 
-                v = np.concatenate([v, v0]) # changed lines to np.concatenate - nh
+                v = np.concatenate([v, v0])
         
-    vr = v[1 : ] # fixed indexing - nh
+    vr = v[1:]
     vx = np.concatenate([-reverse(vr), vr]) 
 
     return vx,vr,Tnorm
