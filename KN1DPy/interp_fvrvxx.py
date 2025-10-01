@@ -5,7 +5,7 @@ from scipy import interpolate
 
 from .make_dvr_dvx import make_dvr_dvx
 from .locate import locate
-from .sval import sval
+from .utils import sval
 from .kinetic_mesh import kinetic_mesh
 
 from .common import constants as CONST

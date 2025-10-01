@@ -1,12 +1,12 @@
 import numpy as np
 import copy
 
-from .utils import reverse
+from .utils import sval
 from .make_dvr_dvx import make_dvr_dvx
 from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .kinetic_mesh import kinetic_mesh
 
-from .collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
+from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
 from .jh_related.jhs_coef import jhs_coef
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .jh_related.jhalpha_coef import jhalpha_coef
@@ -16,9 +16,6 @@ from .sigma.sigma_el_h_h import sigma_el_h_h
 from .sigma.sigma_el_h_hh import sigma_el_h_hh
 from .sigma.sigma_el_p_h import sigma_el_p_h
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
-
-from .sign import sign #NOTE replace sign with np.sign
-from .sval import sval
 
 from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
@@ -1123,7 +1120,7 @@ def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP,
                 for k in range(nx):
                     DeltaVx = (VxH[k] - vxi[k]) / Vth
                     MagDeltaVx = np.maximum(abs(DeltaVx), DeltaVx_tol)
-                    DeltaVx = sign(DeltaVx)*MagDeltaVx
+                    DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                     Omega_H_P[k] = np.sum(Vr2pidVr*((Alpha_H_P[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
                 Omega_H_P = np.maximum(Omega_H_P, 0)
                 # print("Omega_H_P", Omega_H_P)
@@ -1137,7 +1134,7 @@ def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP,
                 for k in range(nx):
                     DeltaVx = (VxH[k] - vxH2[k]) / Vth
                     MagDeltaVx = np.maximum(abs(DeltaVx), DeltaVx_tol)
-                    DeltaVx = sign(DeltaVx)*MagDeltaVx
+                    DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                     # print("Mag", fH[:,:,k].T)
                     # input()
                     Omega_H_H2[k] = np.sum(Vr2pidVr*((Alpha_H_H2[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
@@ -1164,7 +1161,7 @@ def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP,
                     Alpha_H_H[:] = (SIG_H_H @ Work).reshape(Alpha_H_H.shape, order='F')
                     Wpp = Wperp_paraH[k]
                     MagWpp = np.maximum(np.abs(Wpp), Wpp_tol)
-                    Wpp = sign(Wpp)*MagWpp
+                    Wpp = np.sign(Wpp)*MagWpp
                     Omega_H_H[k] = np.sum(Vr2pidVr*((Alpha_H_H*Work.reshape(Alpha_H_H.shape, order='F')) @ dVx)) / (nH[k]*Wpp)
                 Omega_H_H = np.maximum(Omega_H_H, 0)
                 # print("Omega_H_H", Omega_H_H)

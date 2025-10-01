@@ -2,6 +2,8 @@ import numpy as np
 
 from .utils import reverse
 
+#NOTE Replace with scipy.integrate.cumulative_trapeziod?
+
 def integ_bl(X,Y,value_only=None,rev=None):
 # X, Y are input np.arrays
 # value_only returns only the final calculated value if set.

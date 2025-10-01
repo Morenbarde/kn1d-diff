@@ -26,6 +26,10 @@ def debrief(statement: str, condition: bool):
     if condition:
         print(statement)
 
+def sval(s,length=None):
+  # removes leading / trailing spaces and truncates string to a specified length
+  return str(s).strip()[:length]
+
 
 #Interpolation
 

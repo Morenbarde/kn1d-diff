@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.ndimage import shift
 import matplotlib.pyplot as plt
 import copy
 
@@ -25,8 +24,7 @@ from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .sign import sign #NOTE Replace sign with np.sign
-from .sval import sval
+from .utils import sval
 from .locate import locate
 
 from .common.Kinetic_H2 import Kinetic_H2_Common
@@ -1247,7 +1245,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                 for k in range(0, nx):
                     DeltaVx = (VxH2[k] - vxi[k])/Vth
                     MagDeltaVx = np.maximum(np.abs(DeltaVx), DeltaVx_tol)
-                    DeltaVx = sign(DeltaVx)*MagDeltaVx
+                    DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                     Omega_H2_P[k] = np.sum(Vr2pidVr*(((Alpha_H2_P[:,:,k]*fH2[:,:,k]) @ dVx)))/(nH2[k]*DeltaVx)
                 Omega_H2_P =  np.maximum(Omega_H2_P, 0)
                 # print("Omega_H2_P", Omega_H2_P)
@@ -1260,7 +1258,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                 for k in range(nx):
                     DeltaVx = (VxH2[k] - VxH[k])/Vth
                     MagDeltaVx = np.maximum(np.abs(DeltaVx), DeltaVx_tol)
-                    DeltaVx = sign(DeltaVx)*MagDeltaVx
+                    DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                     Omega_H2_H[k] = np.sum(Vr2pidVr*((Alpha_H2_H[:,:,k]*fH2[:,:,k]) @ dVx)/(nH2[k]*DeltaVx))
                 Omega_H2_H = np.maximum(Omega_H2_H, 0)
                 # print("Omega_H2_H", Omega_H2_H)
@@ -1285,7 +1283,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                     Alpha_H2_H2[:] = (SIG_H2_H2 @ Work).reshape(Alpha_H2_H2.shape, order='F')
                     Wpp = Wperp_paraH2[k]
                     MagWpp = np.maximum(abs(Wpp), Wpp_tol)
-                    Wpp = sign(Wpp)*MagWpp  
+                    Wpp = np.sign(Wpp)*MagWpp  
                     Omega_H2_H2[k] = np.sum(Vr2pidVr*((Alpha_H2_H2*Work.reshape(Alpha_H2_H2.shape, order='F')) @ dVx))/(nH2[k]*Wpp)
                     
                 Omega_H2_H2 = np.maximum(Omega_H2_H2, 0)

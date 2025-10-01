@@ -1,6 +1,5 @@
 import numpy as np 
 from numpy.typing import NDArray
-from scipy import interpolate
 
 from .utils import get_config, interp_1d
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
@@ -9,7 +8,7 @@ from .sigma.sigmav_ion_hh import sigmav_ion_hh
 from .sigma.sigmav_h1s_h1s_hh import sigmav_h1s_h1s_hh
 from .sigma.sigmav_h1s_h2s_hh import sigmav_h1s_h2s_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
-from .collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
+from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
 from .jh_related.jhs_coef import jhs_coef
 from .create_vr_vx_mesh import create_vr_vx_mesh
 

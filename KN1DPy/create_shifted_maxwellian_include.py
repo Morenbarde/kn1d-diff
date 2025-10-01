@@ -1,6 +1,6 @@
 import numpy as np
 
-from .sval import sval
+from .utils import sval
 from .common import constants as CONST
 from .make_dvr_dvx import make_dvr_dvx
 import copy
