@@ -21,7 +21,6 @@ from .sigma.sigma_cx_hh import sigma_cx_hh
 from .sigma.sigma_el_h_hh import sigma_el_h_hh
 from .sigma.sigma_el_p_hh import sigma_el_p_hh
 from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
-from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
 from .utils import sval, get_config
@@ -905,10 +904,8 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
         vx_shift = vxi
         Tmaxwell = Ti
         mol = 1
-        Maxwell = create_shifted_maxwellian_include(vr, vx, Tnorm, vx_shift, Tmaxwell, shifted_Maxwellian_debug, mu, mol, nx, nvx, nvr, \
-                                          Vth, Vth2, Maxwell, vr2_2vx_ran2, Vr2pidVr, dVx, vol, \
-                                          Vth_DeltaVx, Vx_DeltaVx, Vr_DeltaVr, vr2_2vx2_2D, jpa, jpb, jna, jnb)
-        fi_hat = copy.copy(Maxwell) #NOTE Modify create_shifted_maxwellian to create new array, so copying not necessary
+        Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
+        fi_hat = copy.copy(Maxwell)
         # print("fi_hat", fi_hat.T)
         # input()
 
@@ -1169,9 +1166,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
             vx_shift = vxi
             Tmaxwell = THP
             mol = 2
-            Maxwell = create_shifted_maxwellian_include(vr, vx, Tnorm, vx_shift, Tmaxwell, shifted_Maxwellian_debug, mu, mol, nx, nvx, nvr, \
-                                            Vth, Vth2, Maxwell, vr2_2vx_ran2, Vr2pidVr, dVx, vol, \
-                                            Vth_DeltaVx, Vx_DeltaVx, Vr_DeltaVr, vr2_2vx2_2D, jpa, jpb, jna, jnb)
+            Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
             fHp_hat = copy.copy(Maxwell)
             # print("fHp_hat", fHp_hat)
             # input()
@@ -1475,9 +1470,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                     vx_shift = VxH2G
                     Tmaxwell = TH2G
                     mol = 2
-                    Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                            nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                            Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+                    Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
                     # print("Maxwell", Maxwell.T)
                     # input()
 
@@ -1496,9 +1489,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                     vx_shift = (2 * VxH2G + vxi)/3
                     Tmaxwell = TH2G + (4/9)*(Ti - TH2G + ((mu*CONST.H_MASS*(vxi - VxH2G)**2)/(6*CONST.Q)))
                     mol = 2
-                    Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                            nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                            Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+                    Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
                     # print("Maxwell", Maxwell.T)
                     # input()
 
@@ -1516,9 +1507,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                     vx_shift = (2*VxH2G + VxH)/3
                     Tmaxwell = TH2G + (4/9)*(TH - TH2G + ((mu*CONST.H_MASS*(VxH - VxH2G)**2)/(6*CONST.Q)))
                     mol = 2
-                    Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                            nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                            Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+                    Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
                     # print("Maxwell", Maxwell.T)
                     # input()
 
@@ -1721,9 +1710,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
             vx_shift = VxH2G
             Tmaxwell = np.copy(TH2G)
             mol = 2
-            Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                      nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                      Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+            Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
             for k in range(0, nx):
                 MH2_H2[:,:,k] = Maxwell[:,:,k]*NH2G[k,igen]
                 OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H2_H2[k]*MH2_H2[:,:,k]
@@ -1738,9 +1725,8 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
             vx_shift = (2*VxH2G + vxi)/3
             Tmaxwell = TH2G + (4/9)*(Ti - TH2G + mu*CONST.H_MASS*((vxi - VxH2G)**2) / (6*CONST.Q))
             mol = 2
-            Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                    nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                    Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+            Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
+            
             for k in range(0, nx):
                 MH2_P[:,:,k] = Maxwell[:,:,k]*NH2G[k,igen]
                 OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H2_P[k]*MH2_P[:,:,k]
@@ -1755,9 +1741,8 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
                 vx_shift = (2*VxH2G + VxH)/3
                 Tmaxwell = TH2G + (4/9)*(TH - TH2G + mu*CONST.H_MASS*((VxH - VxH2G)**2)/(6*CONST.Q))
                 mol = 2
-                Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                        nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                        Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+                Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
+                
                 for k in range(0, nx):
                     MH2_H[:,:,k] = Maxwell[:,:,k]*NH2G[k,igen]
                     OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H2_H[k]*MH2_H[:,:,k]
@@ -2428,9 +2413,7 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
             vx_shift = np.zeros_like(TFC)
             Tmaxwell = TFC
             mol = 1
-            Maxwell = create_shifted_maxwellian_include(vr,vx,Tnorm,vx_shift,Tmaxwell,shifted_Maxwellian_debug,mu,mol,
-                                      nx,nvx,nvr,Vth,Vth2,Maxwell,vr2vx2_ran2,
-                                      Vr2pidVr,dVx,vol,Vth_DeltaVx,Vx_DeltaVx,Vr_DeltaVr,vr2_2vx2_2D,jpa,jpb,jna,jnb)
+            Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
             vbar_test = Vth*np.sqrt(vr2vx2[:,:,0])
             for k in range(0, nx):
                 vbar = np.sum(Vr2pidVr*((vbar_test*Maxwell[:,:,k]) @ dVx))

@@ -141,7 +141,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     ipM = np.where(kh2_mesh.vx > 0)
     
-    
     #  Initialize fH and fH2 (these may be over-written by data from and old run below)
     
     # NOTE Refine Deleted, possibly re-add later
@@ -154,7 +153,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     #   Convert pressure (mtorr) to molecular density and flux
 
-    fh2BC = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size), float) # fixed mistake in defining the array - GG
+    fh2BC = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size), float)
     DensM = 3.537e19*GaugeH2
     GammaxH2BC = 0.25*DensM*v0_bar
     #Tmaxwell=np.full(kh2_mesh.vx.size, CONST.TWALL) # changed list to numpy array 
