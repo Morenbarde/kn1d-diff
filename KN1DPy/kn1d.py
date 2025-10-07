@@ -17,7 +17,6 @@ from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
 
 from .common import constants as CONST
-from .common.KN1D import KN1D_Internal
 from .common.Kinetic_H2 import Kinetic_H2_Common
 from .common.Kinetic_H import Kinetic_H_Common
 from .common.INTERP_FVRVXX import INTERP_FVRVXX_internal
@@ -37,10 +36,10 @@ from .common.JH_Coef import JH_Coef
  
 
 def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
-         truncate = 1.0e-3, refine = 0, File = '', NewFile = 0, ReadInput = 0, \
+         truncate = 1.0e-3, max_gen = 50, \
          error = 0, compute_errors = 0, plot = 0, debug = 0, debrief = 0, pause = 0, \
          Hplot = 0, Hdebug = 0, Hdebrief = 0, Hpause = 0, \
-         H2plot = 0, H2debug = 0, H2debrief = 0, H2pause = 0) -> dict:
+         H2plot = 0, H2debug = 0, H2debrief = 0, H2pause = 0, interp_debug = 0) -> dict:
 
     # Input: 
     #	x	        - fltarr(nx), cross-field coordinate (meters)
@@ -65,15 +64,16 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     #		            until the maximum change in molecular neutral density (over its profile) normalized to 
     #		            the maximum value of molecular density is less than this 
     #	    	        value in a subsequent iteration. Default value is 1.0e-3
-    #   refine      - if set, then use previously computed atomic and molecular distribution functions
+    #   max_gen     - integer, maximum number of collision generations to try including before giving up.
+    #   refine      - NOTE Not Currently Implemented. if set, then use previously computed atomic and molecular distribution functions
     #		            stored in internal common block (if any) or from FILE (see below) as the initial 'seed' value'
-    #   file        - string, if not null, then read in 'file'.kn1d_mesh save set and compare contents
+    #   file        - NOTE Not Currently Implemented. string, if not null, then read in 'file'.kn1d_mesh save set and compare contents
     #                   to the present input parameters and computational mesh. If these are the same
     #		            then read results from previous run in 'file'.kn1d_H2 and 'file'.kn1d_H.
-    #   Newfile     - if set, then do not generate an error and exit if 'file'.KN1D_mesh or 'file'.KN1D_H2
+    #   Newfile     - NOTE Not Currently Implemented. if set, then do not generate an error and exit if 'file'.KN1D_mesh or 'file'.KN1D_H2
     #                   or 'file'.KN1D_H do not exist or differ from the present input parameters. Instead, write 
     #                   new mesh and output files on exiting.
-    #   ReadInput   - if set, then reset all input variables to that contained in 'file'.KN1D_input
+    #   ReadInput   - NOTE Not Currently Implemented. if set, then reset all input variables to that contained in 'file'.KN1D_input
 
     # Output:
     #   Molecular info
@@ -105,20 +105,12 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
 
     x = np.array(x, dtype=np.float64)
-    
-    prompt = 'KN1D => '
-    
-    kn1d_internal = KN1D_Internal()
-    fH_s = kn1d_internal.fH_s
-    fH2_s = kn1d_internal.fH2_s
-    nH2_s = kn1d_internal.nH2_s
-    SpH2_s = kn1d_internal.SpH2_s
-    nHP_s = kn1d_internal.nHP_s
-    THP_s = kn1d_internal.THP_s
 
-    # Set defaults - GG - 2/15
-    interp_debug = 0 
-    max_gen = 100
+    # directed random velocity of diatomic molecule
+    v0_bar = np.sqrt((8.0*CONST.TWALL*CONST.Q) / (np.pi*2*mu*CONST.H_MASS))
+
+    prompt = 'KN1D => '
+
 
     #Generates JH_Coef class, Used in place of IDL version's JH_Coef Common block
     jh_coefficients = JH_Coef()
@@ -144,47 +136,30 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     kh_mesh = create_kinetic_h_mesh(mu, x, Ti, Te, n, PipeDia, jh_coeffs=jh_coefficients, fctr=fctr) 
     TnormA = kh_mesh.Tnorm
 
-    v0_bar = np.sqrt(8.0*CONST.TWALL*CONST.Q/(np.pi*2*mu*CONST.H_MASS))
 
     #   Set up molecular flux BC from inputted neutral pressure
 
-    # ipM=(kh2_mesh.vx>0).nonzero()[0]
-    # inM=(kh2_mesh.vx<0).nonzero()[0]
     ipM = np.where(kh2_mesh.vx > 0)
-    inM = np.where(kh2_mesh.vx < 0)
-    nvrM = kh2_mesh.vr.size
-    nvxM = kh2_mesh.vx.size
-    nxH2 = kh2_mesh.x.size
     
-    #   Code below uses variables defined in create_kinetic_h_mesh
     
-    # ipA=(kh_mesh.vx>0).nonzero()[0]
-    # inA=(kh_mesh.vx<0).nonzero()[0]
-    ipA = np.where(kh_mesh.vx > 0)
-    inA = np.where(kh_mesh.vx < 0)
-    nvrA = kh_mesh.vr.size
-    nvxA = kh_mesh.vx.size
-    nxH = kh_mesh.x.size
-    
-    #  Code blocks below use common block variables, should be filled in later
     #  Initialize fH and fH2 (these may be over-written by data from and old run below)
     
     # NOTE Refine Deleted, possibly re-add later
-    fH = np.zeros((nvrA,nvxA,nxH))
-    fH2 = np.zeros((nvrM,nvxM,nxH2))
-    nH2 = np.zeros(nxH2)
-    nHP = np.zeros(nxH2)
-    THP = np.zeros(nxH2)
-    print("Vals", nvrA, nvxA, nxH, nvrM, nvxM, nxH2)
+    fH = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size,kh_mesh.x.size))
+    fH2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size,kh2_mesh.x.size))
+    nH2 = np.zeros(kh2_mesh.x.size)
+    nHP = np.zeros(kh2_mesh.x.size)
+    THP = np.zeros(kh2_mesh.x.size)
         
+
     #   Convert pressure (mtorr) to molecular density and flux
 
-    fh2BC = np.zeros((nvrM,nvxM), float) # fixed mistake in defining the array - GG
+    fh2BC = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size), float) # fixed mistake in defining the array - GG
     DensM = 3.537e19*GaugeH2
     GammaxH2BC = 0.25*DensM*v0_bar
-    #Tmaxwell=np.full(nvxM, CONST.TWALL) # changed list to numpy array 
+    #Tmaxwell=np.full(kh2_mesh.vx.size, CONST.TWALL) # changed list to numpy array 
     Tmaxwell = np.array([CONST.TWALL])
-    #vx_shift=np.zeros(nvxM) # fixed size of arrays, its unclear in the original code if this is whats supposed to be done but the for loop in create shifted_maxwellian_include wont owrk otherwise - G
+    #vx_shift=np.zeros(kh2_mesh.vx.size) # fixed size of arrays, its unclear in the original code if this is whats supposed to be done but the for loop in create shifted_maxwellian_include wont owrk otherwise - G
     vx_shift = np.array([0.0])
     mol = 2
     Maxwell = create_shifted_maxwellian(kh2_mesh.vr, kh2_mesh.vx, Tmaxwell, vx_shift, mu, mol, kh2_mesh.Tnorm)
@@ -225,13 +200,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     SpH2_hat = SpH2_hat/integ_bl(kh2_mesh.x, SpH2_hat, value_only=1) # not sure if this line is correct
     beta = (2/3)*GammaxH2BC
-    if refine: # readded this section now that we have the internal common block called - GG 2/15
-        if SpH2_s != None:
-            SpH2 = SpH2_s # from kn1d_internal common block
-        else:
-            SpH2 = beta*SpH2_hat
-    else:
-        SpH2 = beta*SpH2_hat
+    SpH2 = beta*SpH2_hat
     SH2 = SpH2
     # print("SH2", SH2)
     # input()
@@ -278,9 +247,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # print("vbarM_error", vbarM_error)
     # input()
 
-    nvrM = kh2_mesh.vr.size
-    nvxM = kh2_mesh.vx.size
-    vr2vx2_ran2 = np.zeros((nvrM,nvxM)) # fixed indexing - GG
+    vr2vx2_ran2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size)) # fixed indexing - GG
 
     mwell = Maxwell[:,:,0] #  variable named 'Max' in original code; changed here to avoid sharing name with built in function
     # print("mwell", mwell.T)
@@ -292,7 +259,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # print("2", dVxM)
     # print("3", vthM)
     # print("4", Vr2pidVrM)
-    for i in range(nvrM):
+    for i in range(kh2_mesh.vr.size):
         vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
     TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(Vr2pidVrM*((vr2vx2_ran2*mwell) @ dVxM))/(3*CONST.Q*nbarMax)
     # print("nbarMax", nbarMax)
@@ -302,7 +269,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # input()
 
     UxHMax = vthM*np.sum(Vr2pidVrM*(fh2BC @ (kh2_mesh.vx*dVxM)))/nbarHMax
-    for i in range(nvrM):
+    for i in range(kh2_mesh.vr.size):
         vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
     THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(Vr2pidVrM*((vr2vx2_ran2*fh2BC) @ dVxM))/(3*CONST.Q*nbarHMax)
     # print("UxHMax", UxHMax)
@@ -407,8 +374,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
             # Compute fH using Kinetic_H
             GammaxHBC = 0
-            # fHBC = np.zeros((nvrA,nvxA,nxH))
-            fHBC = np.zeros((nvrA,nvxA))
+            # fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size,kh_mesh.x.size))
+            fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
             ni_correct = 1
             Hcompute_errors = compute_errors and Hdebrief
 
@@ -508,8 +475,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     
     # fH_fH2_done code section  
 
-    # NOTE Removed calculations for GammaHLim, gammaxh, gammaxH2, etc
-    # Implement Later
+    # NOTE Removed calculations for GammaHLim, gammaxh, gammaxH2, etc, Implement Later
 
     
     # Compute Lyman and Balmer NOTE These are not functioning yet
