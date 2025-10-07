@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 
-from .utils import sval
+from .utils import sval, get_config
 from .make_dvr_dvx import make_dvr_dvx
 from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .kinetic_mesh import kinetic_mesh
@@ -55,9 +55,10 @@ from .common.Kinetic_H import Kinetic_H_Common
 
 def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, jh_coeffs : JH_Coef, KH : Kinetic_H_Common, fH = None,
               truncate = 1e-4, Compute_Errors = 0, plot = 0, debug = 0, pause = 0, debrief = 0,
-              Simple_CX = 1, Max_Gen = 50, No_Johnson_Hinnov = 0, Use_Collrad_Ionization = 0,
-              No_Recomb = 0, H_H_EL = 0, H_P_EL = 0, _H_H2_EL = 0, H_P_CX = 0, ni_correct = 0): # changed fH default to None and Use_Collrad_Ionization capitalization
+              Max_Gen = 50, No_Johnson_Hinnov = 0, Use_Collrad_Ionization = 0,
+              No_Recomb = 0, ni_correct = 0):
 
+    #NOTE Temporarily store in old variable, replace later
     vx = mesh.vx
     vr = mesh.vr
     x = mesh.x
@@ -66,6 +67,14 @@ def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP,
     Te = mesh.Te
     n = mesh.ne
     PipeDia = mesh.PipeDia
+
+    COLLISIONS = get_config()['collisions']
+    H_H_EL = COLLISIONS['H_H_EL']
+    H_P_EL = COLLISIONS['H_P_EL']
+    _H_H2_EL = COLLISIONS['H2_H_EL']
+    H_P_CX = COLLISIONS['H_P_CX']
+    Simple_CX = COLLISIONS['SIMPLE_CX']
+
 
     #	Input:
     #		vx(*)	- fltarr(nvx), normalized x velocity coordinate 

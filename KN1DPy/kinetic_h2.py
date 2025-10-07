@@ -24,7 +24,7 @@ from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .create_shifted_maxwellian_include import create_shifted_maxwellian_include
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .utils import sval
+from .utils import sval, get_config
 from .locate import locate
 
 from .common.Kinetic_H2 import Kinetic_H2_Common
@@ -63,24 +63,11 @@ from .common import constants as CONST
 #       atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
 
 def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2, fH2, nHP, THP, KH2 : Kinetic_H2_Common, 
-               truncate = 1.0e-4, Simple_CX = 1, Max_Gen = 50,  Compute_H_Source = 0,
-               No_Sawada = 0, H2_H2_EL = 0, H2_P_EL = 0, H2_H_EL = 0, H2_HP_CX = 0,
+               truncate = 1.0e-4, Max_Gen = 50,  Compute_H_Source = 0, No_Sawada = 0,
                ni_correct = 0, ESH = 0, Eaxis = 0, Compute_Errors = 0,  plot = 0, debug = 0,
                debrief = 0, pause = 0):
     
-    #Print Inputs
-    # print(mesh)
-    # print("mu", mu)
-    # print("vxi", vxi)
-    # print("fH2BC", fH2BC)
-    # print("GammaxH2BC", GammaxH2BC)
-    # print("NuLoss", NuLoss)
-    # print("fH", fH)
-    # print("SH2", SH2)
-    # print("fH2", fH2)
-    # print("nHP", nHP)
-    # print("THP", THP)
-    # input()
+    #NOTE Temporarily store in old variable, replace later
     
     vx = mesh.vx
     vr = mesh.vr
@@ -114,6 +101,13 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
     H2_H2_error = KH2.Errors.H2_H2_error
     qxH2_total_error = KH2.Errors.qxH2_total_error
     QH2_total_error = KH2.Errors.QH2_total_error
+
+    COLLISIONS = get_config()['collisions']
+    H2_H2_EL = COLLISIONS['H2_H2_EL']
+    H2_P_EL = COLLISIONS['H2_P_EL']
+    H2_H_EL = COLLISIONS['H2_H_EL']
+    H2_HP_CX = COLLISIONS['H2_HP_CX']
+    Simple_CX = COLLISIONS['SIMPLE_CX']
 
     #  Input:
     #		  vx(*)	- fltarr(nvx), normalized x velocity coordinate 

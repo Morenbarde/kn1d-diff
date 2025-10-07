@@ -2,7 +2,7 @@ import numpy as np
 
 from .poly import poly
 
-# Returns maxwellian averaged <sigma V) for electron impact
+# Returns maxwellian averaged <sigma V> for electron impact
 # ionization of atomic hydrogen. Coefficients are taken 
 # from Janev, "Elementary Processes in Hydrogen-Helium Plasmas",
 # Springer-Verlag, 1987, p.258.

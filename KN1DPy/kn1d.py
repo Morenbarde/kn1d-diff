@@ -17,11 +17,12 @@ from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
 
 from .common import constants as CONST
-from .common.KN1D import KN1D_Collisions, KN1D_Internal
+from .common.KN1D import KN1D_Internal
 from .common.Kinetic_H2 import Kinetic_H2_Common
 from .common.Kinetic_H import Kinetic_H_Common
 from .common.INTERP_FVRVXX import INTERP_FVRVXX_internal
 from .common.JH_Coef import JH_Coef
+
 
 #   Computes the molecular and atomic neutral profiles for inputted profiles
 # of Ti(x), Te(x), n(x), and molecular neutral pressure, GaugeH2, at the boundary using
@@ -74,32 +75,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     #                   new mesh and output files on exiting.
     #   ReadInput   - if set, then reset all input variables to that contained in 'file'.KN1D_input
 
-    x = np.array(x, dtype=np.float64)
-    COLLISIONS = KN1D_Collisions()
-
-    # Collision options inputted via common block KN1D_collisions (default parameter values is true for all collisions):
-
-    #NOTE These are used in the kh files, move to config file, remove from here
-    H2_H2_EL = COLLISIONS.H2_H2_EL
-    H2_P_EL = COLLISIONS.H2_P_EL
-    H2_H_EL = COLLISIONS.H2_H_EL
-    H2_HP_CX = COLLISIONS.H2_HP_CX
-    H_H_EL = COLLISIONS.H_H_EL
-    H_P_EL = COLLISIONS.H_P_EL
-    H_P_CX = COLLISIONS.H_P_CX
-    SIMPLE_CX = COLLISIONS.Simple_CX 
-
-    # H2_H2_EL	- if set, then include H2 -> H2 elastic self collisions
-    # H2_P_EL	- if set, then include H2 -> H(+) elastic collisions 
-    # H2_H_EL	- if set, then include H2 <-> H elastic collisions 
-    # H2_HP_CX	- if set, then include H2 -> H2(+) charge exchange collisions
-    # H_H_EL	- if set, then include H -> H elastic self collisions
-    # H_P_CX	- if set, then include H -> H(+) charge exchange collisions 
-    # H_P_EL	- if set, then include H -> H(+) elastic collisions 
-    # SIMPLE_CX	- if set, then use CX source option (B): Neutrals are born
-    #              in velocity with a distribution proportional to the local
-    #              ion distribution function. Simple_CX=1 is default.
-
     # Output:
     #   Molecular info
     #       xH2	        - fltarr(nxH2), cross-field coordinate for molecular quantities (meters)
@@ -129,9 +104,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     #	    Balmer      - fltarr(nxH), Balmer-alpha emissivity (watts m^-3) using rate coefficients of L.C.Johnson and E. Hinnov
 
 
+    x = np.array(x, dtype=np.float64)
+    
     prompt = 'KN1D => '
-
-    #   KN1D_internal common block - GG 2/15
     
     kn1d_internal = KN1D_Internal()
     fH_s = kn1d_internal.fH_s
@@ -149,27 +124,24 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     jh_coefficients = JH_Coef()
         
     # Option: Read input parameters stored in file from previous run
-    # NOTE Removed, consider implementing later
+    #   NOTE Removed, consider implementing later
     
+
+
     # determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
     Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
     fctr = 0.3
     if GaugeH2 > 15.0:
-        fctr = fctr * 15 / GaugeH2
+        fctr = fctr*15 / GaugeH2
 
     kh2_mesh = create_kinetic_h2_mesh(mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
-    # print(kh2_mesh)
-    # input()
-    #xH2,TiM,TeM,nM,PipeDiaM,vxM,vrM,TnormM = kh2_mesh
     
     # determine optimized vr, vx grid for kinetic_h (atoms, A)
-    #nv = 10 NOTE Replaced with Constants
     fctr = 0.3
     if GaugeH2 > 30.0 :
         fctr = fctr * 30 / GaugeH2
 
-    # finished line since create_kinetic_h_mesh has been programmed - nh // fixed capitalization - GG // fixed keyword inputs - GG
-    kh_mesh = create_kinetic_h_mesh(mu, x, Ti, Te, n, PipeDia, jh_coeffs=jh_coefficients, fctr = fctr) 
+    kh_mesh = create_kinetic_h_mesh(mu, x, Ti, Te, n, PipeDia, jh_coeffs=jh_coefficients, fctr=fctr) 
     TnormA = kh_mesh.Tnorm
 
     v0_bar = np.sqrt(8.0*CONST.TWALL*CONST.Q/(np.pi*2*mu*CONST.H_MASS))
@@ -394,8 +366,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # input()
             kh2_results = kinetic_h2(
                     kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, fHM, SH2, fH2, nHP, THP, KH2_Common,\
-                    truncate=truncate, Simple_CX=SIMPLE_CX, Max_Gen=max_gen, Compute_H_Source=Compute_H_Source,\
-                    H2_H2_EL=H2_H2_EL,H2_P_EL=H2_P_EL,H2_H_EL=H2_H_EL,H2_HP_CX=H2_HP_CX, ni_correct=ni_correct,\
+                    truncate=truncate, Max_Gen=max_gen, Compute_H_Source=Compute_H_Source,\
+                    ni_correct=ni_correct,\
                     Compute_Errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
             
             fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
@@ -442,8 +414,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
             kh_results = kinetic_h(
                     kh_mesh, mu, vxiA, fHBC, GammaxHBC, fH2A, fSHA, nHPA, THPA, jh_coefficients, KH_Common, fH=fH,\
-                    truncate=truncate, Simple_CX=SIMPLE_CX, Max_Gen=max_gen, \
-                    H_H_EL=H_H_EL, H_P_EL=H_P_EL, _H_H2_EL= H2_H_EL, H_P_CX=H_P_CX, ni_correct=ni_correct, \
+                    truncate=truncate, Max_Gen=max_gen, \
+                    ni_correct=ni_correct, \
                     Compute_Errors=Hcompute_errors, plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause) # Not sure where some of the keywords are defined
             
             fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH,error = kh_results
@@ -536,31 +508,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     
     # fH_fH2_done code section  
 
-    # NOTE Implement Later
-
-    # error = 0
-    # # Compute total H flux through crossing limiter radius
-    # _GammaxH2 = interp_scalarx(GammaxH2, xH2, xH, do_warn=do_warn, debug=interp_debug)
-    # Gam=2*_GammaxH2+GammaxH
-    # interpfunc = interpolate.interp1d(xH, Gam, fill_value="extrapolate")
-    # GammaHLim = interpfunc(xlimiter)
-
-    # # Compute positive and negative particle flux contributions
-    # gammaxH_plus = np.zeros(nxH)
-    # gammaxH_minus = np.zeros(nxH)
-    # i_p = np.argwhere(vxA > 0).T[0]
-    # i_n = np.argwhere(vxA < 0).T[0] # changed formatting to avoid confusion with python function in
-    # for k in range(0, nxH):
-    #     gammaxH_plus[k] = vthA * np.sum(Vr2pidVrA* np.dot(fH[k][i_p][:], vxA[i_p] * dVxA[i_p]))
-    #     gammaxH_minus[k] = vthA * np.sum(Vr2pidVrA* np.dot(fH[k][i_n][:], vxA[i_n] * dVxA[i_n]))
-    
-    # gammaxH2_plus = np.zeros(nxH2)
-    # gammaxH2_minus = np.zeros(nxH2)
-    # i_p = np.argwhere(vxM > 0).T[0]
-    # i_n = np.argwhere(vxM < 0).T[0]
-    # for k in range(0, nxH2):
-    #     gammaxH2_plus[k] = vthM * np.sum(Vr2pidVrM* np.dot(fH2[k][i_p][:], vxM[i_p] * dVxM[i_p]))
-    #     gammaxH2_minus[k] = vthM * np.sum(Vr2pidVrM* np.dot(fH2[k][i_n][:], vxM[i_n] * dVxM[i_n]))
+    # NOTE Removed calculations for GammaHLim, gammaxh, gammaxH2, etc
+    # Implement Later
 
     
     # Compute Lyman and Balmer NOTE These are not functioning yet
@@ -569,14 +518,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # Lyman = lyman_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
     # Balmer = balmer_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
 
-    #   Update KN1D_internal common block - GG 2/15
-    #   NOTE What is the purpose of this, can it be removed?
-    kn1d_internal.fH_s = fH 
-    kn1d_internal.fH2_s = fH2 
-    kn1d_internal.nH2_s = nH2
-    kn1d_internal.SpH2_s = SpH2
-    kn1d_internal.nHP_s = nHP
-    kn1d_internal.THP_s = THP
 
     # Store Outputs
     output_file = 'Results/output'
@@ -584,10 +525,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     np.savez(output_file, xH2=kh2_mesh.x, nH2=nH2, GammaxH2=GammaxH2, TH2=TH2, qxH2_total=qxH2_total, nHP=nHP, THP=THP, SH=SH, SP=SP,
              xH=kh_mesh.x, nH=nH, GammaxH=GammaxH, TH=TH, qxH_total=qxH_total, NetHSource=NetHSource, Sion=Sion, QH_total=QH_total, SideWallH=SideWallH, Lyman=Lyman, Balmer=Balmer)
     
-    # NOTE Add plotting later
 
-    # return kh2_mesh.x, nH2, GammaxH2, TH2, qxH2_total, nHP, THP, SH, SP, \
-    #     kh_mesh.x, nH, GammaxH, TH, qxH_total, NetHSource, Sion, QH_total, SideWallH, Lyman, Balmer
+    # NOTE Add plotting later
 
     results = {}
     results["xH2"] = kh2_mesh.x

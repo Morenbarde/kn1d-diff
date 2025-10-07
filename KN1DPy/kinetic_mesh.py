@@ -102,7 +102,6 @@ class kinetic_mesh:
                     raise Exception("kinetic_h_mesh generated using JH, but no JH coefficients given")
                 ioniz_rate = jhs_coef(nfine, Tefine, jh_coeffs, no_null = True)
             else:
-                #NOTE Not tested yet
                 ioniz_rate = sigmav_ion_h0(Tefine)
             react_rate = nfine*(ioniz_rate + sigmav_cx_h0(Tifine, np.full(xfine.shape, minE0))) + gamma_wall
 
