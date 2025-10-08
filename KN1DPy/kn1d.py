@@ -6,8 +6,8 @@ from scipy import interpolate
 from .read import sav_read, nc_read
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .integ_bl import integ_bl
-from .make_dvr_dvx import make_dvr_dvx
-from .utils import sval
+from .make_dvr_dvx import make_dvr_dvx, VSpace_Differentials
+from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import create_kinetic_h_mesh, create_kinetic_h2_mesh
 from .kinetic_h import kinetic_h 
@@ -156,16 +156,11 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     fh2BC = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size), float)
     DensM = 3.537e19*GaugeH2
     GammaxH2BC = 0.25*DensM*v0_bar
-    #Tmaxwell=np.full(kh2_mesh.vx.size, CONST.TWALL) # changed list to numpy array 
     Tmaxwell = np.array([CONST.TWALL])
-    #vx_shift=np.zeros(kh2_mesh.vx.size) # fixed size of arrays, its unclear in the original code if this is whats supposed to be done but the for loop in create shifted_maxwellian_include wont owrk otherwise - G
     vx_shift = np.array([0.0])
     mol = 2
     Maxwell = create_shifted_maxwellian(kh2_mesh.vr, kh2_mesh.vx, Tmaxwell, vx_shift, mu, mol, kh2_mesh.Tnorm)
-    fh2BC[:,ipM] = Maxwell[:,ipM,0] # fixed indexing - GG
-    # print("fh2BC", fh2BC.T)
-    # print(fh2BC.shape)
-    # input()
+    fh2BC[:,ipM] = Maxwell[:,ipM,0]
 
 
     # Compute NuLoss:
@@ -173,36 +168,29 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     Cs_LC = np.zeros(LC.size)
     for ii in range(LC.size):
         if LC[ii] > 0:
-            Cs_LC[ii] = np.sqrt(CONST.Q*(Ti[ii] + Te[ii])/(mu*CONST.H_MASS))/LC[ii] # fixed notation of indexing arrays - GG
-    interpfunc = interpolate.interp1d(x, Cs_LC) # fixed the way interpolation was called - GG
-    NuLoss = interpfunc(kh2_mesh.x)
-    # print("NuLoss", NuLoss)
-    # input()
+            Cs_LC[ii] = np.sqrt(CONST.Q*(Ti[ii] + Te[ii]) / (mu*CONST.H_MASS)) / LC[ii]
+    NuLoss = interp_1d(x, Cs_LC, kh2_mesh.x)
     
     #  Compute first guess SpH2
-
+    #_____________________________________________________________________________________________________________
     #   If plasma recycling accounts for molecular source, then SpH2 = 1/2 n Cs/LC (1/2 accounts for H2 versus H)
     #   But, allow for SpH2 to be proportional to this function:
     #      SpH2 = beta n Cs/LC 
     #   with beta being an adjustable parameter, set by achieving a net H flux of zero onto the wall.
     #   For first guess of beta, set the total molecular source according to the formula
-    
+    #
     # (See notes "Procedure to adjust the normalization of the molecular source at the 
     #   limiters (SpH2) to attain a net zero atom/molecule flux from wall")
-    
+    #
     #	Integral{SpH2}dx =  (2/3) GammaxH2BC = beta Integral{n Cs/LC}dx
-    
-    nCs_LC = n*Cs_LC
+    #______________________________________________________________________________________________________________
 
-    interpfunc = interpolate.interp1d(x, nCs_LC, fill_value="extrapolate") # fixed the way interpolation was called - GG
-    SpH2_hat = interpfunc(kh2_mesh.x)
+    SpH2_hat = interp_1d(x, n*Cs_LC, kh2_mesh.x, fill_value="extrapolate")
 
-    SpH2_hat = SpH2_hat/integ_bl(kh2_mesh.x, SpH2_hat, value_only=1) # not sure if this line is correct
+    SpH2_hat /= integ_bl(kh2_mesh.x, SpH2_hat, value_only=1)
     beta = (2/3)*GammaxH2BC
     SpH2 = beta*SpH2_hat
     SH2 = SpH2
-    # print("SH2", SH2)
-    # input()
 
     #   Interpolate for vxiM and vxiA
 
@@ -221,25 +209,22 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     oldrun = 0
 
     #   Option: Read results from previous run
-
-        #   Will do later after discussing save/restore
+        #   NOTE Implement Later
 
     #   Starting back at line 378 from IDL code
     #   Test for v0_bar consistency in the numerics by computing it from a half maxwellian at the wall temperature
 
     vthM = np.sqrt(2*CONST.Q*kh2_mesh.Tnorm/(mu*CONST.H_MASS))
-    Vr2pidVrM,VrVr4pidVrM,dVxM = make_dvr_dvx(kh2_mesh.vr, kh2_mesh.vx)[0:3] #NOTE Get a better way to return these values, object maybe?
-    # print("Vr2pidVrM", Vr2pidVrM)
-    # print("dVxM", dVxM)
-    # input()
-    vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
-    Vr2pidVrA,VrVr4pidVrA,dVxA = make_dvr_dvx(kh_mesh.vr, kh_mesh.vx)[0:3]
-    # print("Vr2pidVrA", Vr2pidVrA)
-    # print("dVxA", dVxA)
-    # input()
+    kh2_differentials = VSpace_Differentials(kh2_mesh.vr, kh2_mesh.vx)
+    kh2_differentials.dvx
 
-    nbarHMax = np.sum(Vr2pidVrM*(fh2BC @ dVxM))
-    vbarM = 2*vthM*np.sum(Vr2pidVrM*((fh2BC @ (kh2_mesh.vx*dVxM))))/nbarHMax
+    #NOTE Used in gammalim calculation, will be needed later
+    vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
+    kh_differentials = VSpace_Differentials(kh_mesh.vr, kh_mesh.vx)
+
+
+    nbarHMax = np.sum(kh2_differentials.dvr_vol*(fh2BC @ kh2_differentials.dvx))
+    vbarM = 2*vthM*np.sum(kh2_differentials.dvr_vol*((fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx))))/nbarHMax
     vbarM_error = abs(vbarM - v0_bar)/max(vbarM, v0_bar)
     # print("nbarHMax", nbarHMax)
     # print("vbarM", vbarM)
@@ -252,25 +237,25 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # print("mwell", mwell.T)
     # input()
 
-    nbarMax = np.sum(Vr2pidVrM*(mwell @ dVxM))
-    UxMax = vthM*np.sum(Vr2pidVrM*(mwell @ (kh2_mesh.vx*dVxM)))/nbarMax
+    nbarMax = np.sum(kh2_differentials.dvr_vol*(mwell @ kh2_differentials.dvx))
+    UxMax = vthM*np.sum(kh2_differentials.dvr_vol*(mwell @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarMax
     # print("1", kh2_mesh.vx)
     # print("2", dVxM)
     # print("3", vthM)
     # print("4", Vr2pidVrM)
     for i in range(kh2_mesh.vr.size):
         vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
-    TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(Vr2pidVrM*((vr2vx2_ran2*mwell) @ dVxM))/(3*CONST.Q*nbarMax)
+    TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*mwell) @ kh2_differentials.dvx))/(3*CONST.Q*nbarMax)
     # print("nbarMax", nbarMax)
     # print("UxMax", UxMax)
     # print("vr2vx2_ran2", vr2vx2_ran2.T)
     # print("Tmax", TMax)
     # input()
 
-    UxHMax = vthM*np.sum(Vr2pidVrM*(fh2BC @ (kh2_mesh.vx*dVxM)))/nbarHMax
+    UxHMax = vthM*np.sum(kh2_differentials.dvr_vol*(fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarHMax
     for i in range(kh2_mesh.vr.size):
         vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
-    THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(Vr2pidVrM*((vr2vx2_ran2*fh2BC) @ dVxM))/(3*CONST.Q*nbarHMax)
+    THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*fh2BC) @ kh2_differentials.dvx))/(3*CONST.Q*nbarHMax)
     # print("UxHMax", UxHMax)
     # print("vr2vx2_ran2", vr2vx2_ran2.T)
     # print("THMax", THMax)
