@@ -91,12 +91,12 @@ class VSpace_Differentials:
         # --------------------------------------------------------------------
 
         # Compute v^2
-        vr2vx2=np.zeros((nvr,nvx), dtype=np.float64)
+        vr2vx2 = np.zeros((nvr,nvx), dtype=np.float64)
         vr2vx2 = vr[:, np.newaxis]**2 + vx**2 
 
         # vx's positive index
         jp = np.where(vx>0)[0]   # This saves the positives index of vx
-        jpa = int(jp[0])                    # This saves the first index of jp
+        jpa = int(jp[0])         # This saves the first index of jp
         jpb = int(jp[len(jp)-1])            # This saves the last index of jp
 
         # vx's negative index   
