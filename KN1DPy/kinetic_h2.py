@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 
-from .make_dvr_dvx import make_dvr_dvx
+from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .kinetic_mesh import kinetic_mesh
 
@@ -671,7 +671,11 @@ def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2,
     CI_H2_H2_error = np.zeros(nx)
     Maxwell = np.zeros((nvr,nvx,nx))
 
-    Vr2pidVr, VrVr4pidVr, dVx, VrL, VrR, VxL, VxR, vol, Vth_DeltaVx, Vx_DeltaVx, Vr_DeltaVr, Vr2Vx2, jpa, jpb, jna, jnb = make_dvr_dvx(vr, vx)
+    #NOTE Fix Later
+    differentials = VSpace_Differentials(vr, vx)
+    Vr2pidVr = differentials.dvr_vol
+    VrVr4pidVr = differentials.dvr_vol_h_order
+    dVx = differentials.dvx
 
     # print("Vr2pidVr", Vr2pidVr)
     # print("VrVr4pidVr", VrVr4pidVr)

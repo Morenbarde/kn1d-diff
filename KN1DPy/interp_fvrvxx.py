@@ -3,7 +3,7 @@ import copy
 from warnings import warn
 from scipy import interpolate
 
-from .make_dvr_dvx import make_dvr_dvx
+from .make_dvr_dvx import VSpace_Differentials
 from .locate import locate
 from .utils import sval
 from .kinetic_mesh import kinetic_mesh
@@ -113,12 +113,33 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
 
     fb = np.zeros((nvrb, nvxb, nxb))
 
-    make_dvr_dvx_out = make_dvr_dvx(mesh_a.vr,mesh_a.vx)
-    Vr2pidVra,VrVr4pidVra,dVxa,vraL,vraR,vxaL,vxaR = make_dvr_dvx_out[:7]
-    Vra2Vxa2 = make_dvr_dvx_out[11]
+    # --- Generate differentials ---
+    #NOTE Move values into functions later
+    differentials_a = VSpace_Differentials(mesh_a.vr, mesh_a.vx)
+    Vr2pidVra = differentials_a.dvr_vol
+    dVxa = differentials_a.dvx
+    vraL = differentials_a.vr_left_bound
+    vraR = differentials_a.vr_right_bound
+    vxaL = differentials_a.vx_left_bound
+    vxaR = differentials_a.vx_right_bound
+    Vra2Vxa2 = differentials_a.v_squared
 
-    make_dvr_dvx_out = make_dvr_dvx(mesh_b.vr,mesh_b.vx)
-    Vr2pidVrb,VrVr4pidVrb,dVxb,vrbL,vrbR,vxbL,vxbR,Vol,Vth_DVx,Vx_DVx,Vr_DVr,Vrb2Vxb2,jpa,jpb,jna,jnb = make_dvr_dvx_out
+    differentials_b = VSpace_Differentials(mesh_b.vr, mesh_b.vx)
+    Vr2pidVrb = differentials_b.dvr_vol
+    dVxb = differentials_b.dvx
+    vrbL = differentials_b.vr_left_bound
+    vrbR = differentials_b.vr_right_bound
+    vxbL = differentials_b.vx_left_bound
+    vxbR = differentials_b.vx_right_bound
+    Vol = differentials_b.volume
+    Vth_DVx = differentials_b.vth_dvx
+    Vx_DVx = differentials_b.vx_dvx
+    Vr_DVr = differentials_b.vr_dvr
+    Vrb2Vxb2 = differentials_b.v_squared
+    jpa = differentials_b.pos_vx0
+    jpb = differentials_b.pos_vxn
+    jna = differentials_b.neg_vx0
+    jnb = differentials_b.neg_vxn
 
     #   Determine if Weight was already computed by checking vra_s,vxa_s,Tnorma_s,vrb_s,vxb_s,Tnormb_s for cases 1 and 2
 

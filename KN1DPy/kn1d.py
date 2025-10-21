@@ -6,7 +6,7 @@ from scipy import interpolate
 from .read import sav_read, nc_read
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .integ_bl import integ_bl
-from .make_dvr_dvx import make_dvr_dvx, VSpace_Differentials
+from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import create_kinetic_h_mesh, create_kinetic_h2_mesh
