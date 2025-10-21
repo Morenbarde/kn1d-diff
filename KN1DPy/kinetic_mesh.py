@@ -1,7 +1,7 @@
 import numpy as np 
 from numpy.typing import NDArray
 
-from .utils import get_config, interp_1d
+from .utils import get_config, interp_1d, reverse
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
@@ -10,14 +10,14 @@ from .sigma.sigmav_h1s_h2s_hh import sigmav_h1s_h2s_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
 from .jh_related.jhs_coef import jhs_coef
-from .create_vr_vx_mesh import create_vr_vx_mesh
 
 from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
 
+
 class kinetic_mesh:
 
-    def __init__(
+    def __init__( #NOTE Simplify this later, consider using class inheritance
             self, 
             mesh_type   : str, #'h' for kinetic_h_mesh, 'h2' for kinetic_h2_mesh
             mu          : int, 
@@ -77,7 +77,7 @@ class kinetic_mesh:
 
 
         # Set up a vx, vr mesh based on raw data to get typical vx, vr values 
-        vx, vr, Tnorm = create_vr_vx_mesh(nv, Tifine, E0=E0)
+        vx, vr, Tnorm = self.create_vr_vx_mesh(nv, Tifine, E0=E0)
 
         vth = np.sqrt( (2*CONST.Q*Tnorm) / (mu*CONST.H_MASS))
         # Estimate interaction rate with side walls
@@ -139,7 +139,7 @@ class kinetic_mesh:
         neH = interp_1d(xfine, nfine, xH)
         PipeDiaH = interp_1d(xfine, PipeDiafine, xH)
 
-        vx, vr, Tnorm = create_vr_vx_mesh(nv, TiH, E0=E0)
+        vx, vr, Tnorm = self.create_vr_vx_mesh(nv, TiH, E0=E0)
 
 
         self.mesh_type : str = mesh_type
@@ -151,6 +151,51 @@ class kinetic_mesh:
         self.vx : NDArray = vx
         self.vr : NDArray = vr
         self.Tnorm : float = Tnorm
+
+
+    def create_vr_vx_mesh(self, nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :
+        # sets up optimum Vr and Vx velocity space mesh for Kinetic_Neutrals procedure 
+        # Input: 
+        #   nv - Integer, number of elements desired in vr mesh
+        #   Ti - arrray, Ti profile
+        #   E0 - array, energy where a velocity is desired ( optional )
+        #   Tmax - float, ignore Ti above this value
+        #
+        # Gwendolyn Galleher 
+
+        Ti = np.array(Ti) 
+        Ti = np.concatenate([Ti, E0[E0>0]])
+        if Tmax > 0:
+            ii = np.where(Ti < Tmax)
+            Ti = Ti[ii]
+        
+        maxTi = Ti.max()
+        minTi = Ti.min()
+        Tnorm = np.nanmean(Ti)
+        vmax = 3.5
+        if (maxTi-minTi) <= (0.1*maxTi):
+            v = (np.arange(nv+1)*vmax) / nv
+        else:
+            g = 2*nv*np.sqrt(minTi/maxTi) / (1 - np.sqrt(minTi/maxTi))
+            b = vmax / (nv*(nv + g))
+            v = (g*b)*np.arange(nv+1) + b*(np.arange(nv+1)**2)
+
+        # Option: add velocity bins corresponding to E0     
+        v0 = 0
+        for k in range(np.size(E0)):
+            if E0[k] > 0.0:
+                v0 = np.sqrt(E0[k]/Tnorm)
+                ii = np.argwhere(v > v0).T[0]
+                if np.size(ii) > 0:
+                    v = np.concatenate([v[0:ii[0]], [v0], v[ii[0]:]])
+                else: 
+                    v = np.concatenate([v, v0])
+            
+        vr = v[1:]
+        vx = np.concatenate([-reverse(vr), vr]) 
+
+        return vx,vr,Tnorm
+
 
     #Setup string conversion for printing
     def __str__(self):
@@ -164,6 +209,7 @@ class kinetic_mesh:
         string += "    vr: " + str(self.vr) + "\n"
         string += "    Tnorm: " + str(self.Tnorm) + "\n"
         return string
+
 
         
 def create_kinetic_h_mesh(

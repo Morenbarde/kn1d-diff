@@ -71,7 +71,9 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         # Compute desired moments
 
-        ED = (vx_shift[k]**2)+3*CONST.Q*Tmaxwell[k]/(mol*mu*CONST.H_MASS)
+        # NOTE get this name checked by a physicist
+        # Target energy density
+        target_energy = (vx_shift[k]**2)+3*CONST.Q*Tmaxwell[k]/(mol*mu*CONST.H_MASS)
 
         # Compute present moments of Maxwell, WxMax, and EMax 
         WxMax = vth*(np.nansum(diffs.dvr_vol*np.dot(maxwell[:, :, k], (vx*diffs.dvx))))
@@ -152,7 +154,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
                 b_max = 0
                 a_max = 0
                 if (denom != 0) and (TA1 != 0):
-                    b_max = (TA2*(vx_shift[k] - WxMax) - TA1*(ED - EMax)) / denom
+                    b_max = (TA2*(vx_shift[k] - WxMax) - TA1*(target_energy - EMax)) / denom
                     a_max = (vx_shift[k] - WxMax - TB1[ib]*b_max) / TA1
                     
                     # NOTE Some of these values are still off, but maxwell seems to be working for now
@@ -164,7 +166,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
                 ib += 1
             ia += 1
 
-        maxwell[:,:,k] /= np.sum(diffs.dvr_vol * (np.matmul(maxwell[:, :, k], diffs.dvx)))
+        maxwell[:,:,k] /= np.sum(diffs.dvr_vol*(np.matmul(maxwell[:, :, k], diffs.dvx)))
 
         if shifted_maxwellian_debug:
             vx_out2 = vth*np.sum(diffs.dvr_vol*np.matmul((vx*diffs.dvx), maxwell[k,:,:]))

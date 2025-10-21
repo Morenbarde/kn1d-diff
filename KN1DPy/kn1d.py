@@ -158,8 +158,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     GammaxH2BC = 0.25*DensM*v0_bar
     Tmaxwell = np.array([CONST.TWALL])
     vx_shift = np.array([0.0])
-    mol = 2
-    Maxwell = create_shifted_maxwellian(kh2_mesh.vr, kh2_mesh.vx, Tmaxwell, vx_shift, mu, mol, kh2_mesh.Tnorm)
+    Maxwell = create_shifted_maxwellian(kh2_mesh.vr, kh2_mesh.vx, Tmaxwell, vx_shift, mu, 2, kh2_mesh.Tnorm)
     fh2BC[:,ipM] = Maxwell[:,ipM,0]
 
 
