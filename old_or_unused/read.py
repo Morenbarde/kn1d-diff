@@ -25,8 +25,9 @@ def sav_read(sav_path, nc_path):
 def nc_read(nc_path):
     # Inputs:
     #   nc_path  - the path to the .nc file you are creating 
-    #Ouputs:
+    # Ouputs:
     #    input_dict - a dictionary of all inputs from the input file
+    
     fn = nc_path
     ds = nc.Dataset(fn) 
     input_dict = ds.__dict__

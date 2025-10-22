@@ -6,8 +6,10 @@ from typing import Any
 from numpy.typing import NDArray
 import numpy as np
 from scipy import interpolate
+from scipy.io import readsav
+import netCDF4 as nc
 
-# Json Files
+# --- Json Files ---
 
 def get_json(file_path:str) -> dict[str, Any]:
     # Load json file
@@ -19,7 +21,7 @@ def get_config() -> dict[str, Any]:
     return get_json('config.json')
 
 
-# Printing
+# --- Printing ---
 
 def debrief(statement: str, condition: bool):
     # Print statement if condition is true
@@ -31,7 +33,7 @@ def sval(s,length=None):
   return str(s).strip()[:length]
 
 
-#Interpolation
+# --- Interpolation ---
 
 def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', axis: int = -1,
         copy: bool = True, bounds_error: Any | None = None, fill_value: float = np.nan, assume_sorted: bool = False):
@@ -41,7 +43,7 @@ def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', ax
     return interpfunc(x)
 
 
-#Reverse Function from reverse.pro
+# --- Reverse Function from reverse.pro ---
 
 def reverse(a, subscript=1):
     #reverses the order of a list at the given dimension (subscript)
@@ -72,3 +74,36 @@ def rev_rec(a, subscript, dim_tracker):
             a[i] = rev_rec(a[i], subscript, dim_tracker+1)
         i += 1
     return a
+
+
+# --- Read Functions ---
+
+def sav_read(sav_path, nc_path):
+    # used to read and save .sav files
+
+    # Inputs:
+    #   sav_path - the path to the .sav input file
+    #   nc_path  - the path to the .nc file you are creating 
+    #Ouputs:
+    #    input_dict - a dictionary of all inputs from the input file
+
+    sav_data = readsav(sav_path)
+    fn = nc_path
+    ds = nc.Dataset(fn, 'w', format = 'NETCDF4') 
+    for k,v in sav_data.items(): 
+        setattr(ds, k, v)
+    input_dict = ds.__dict__
+    return input_dict
+
+def nc_read(nc_path):
+    # Used to read and save .nc files (netCDF)
+
+    # Inputs:
+    #   nc_path  - the path to the .nc file you are creating 
+    # Ouputs:
+    #    input_dict - a dictionary of all inputs from the input file
+    
+    fn = nc_path
+    ds = nc.Dataset(fn) 
+    input_dict = ds.__dict__
+    return input_dict

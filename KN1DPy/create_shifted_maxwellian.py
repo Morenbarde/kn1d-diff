@@ -79,7 +79,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
         # NOTE get these names checked by a physicist
         vx_moment = vth*np.nansum(d_vspace.dvr_vol*np.dot(maxwell[:, :, k], (vx*d_vspace.dvx)))
-        energy_moment = vth_squared*np.nansum(d_vspace.dvr_vol*np.dot((d_vspace.v_squared*maxwell[:, :, k]), d_vspace.dvx))
+        energy_moment = vth_squared*np.nansum(d_vspace.dvr_vol*np.dot((d_vspace.vmag_squared*maxwell[:, :, k]), d_vspace.dvx))
 
         # Compute Nij from Maxwell, padded with zeros
         weighted_maxwell = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
@@ -90,9 +90,9 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         weighted_maxwell[vr_slice, vx_slice] = maxwell[:,:,k]*d_vspace.volume
         vx_maxwell = weighted_maxwell*d_vspace.vx_dvx
         vr_maxwell = weighted_maxwell*d_vspace.vr_dvr
+        vth_maxwell = weighted_maxwell*d_vspace.vth_dvx
 
         # Compute Ap, Am, Bp, and Bm (0=p 1=m)
-        vth_maxwell = weighted_maxwell*d_vspace.vth_dvx
 
         diff_padded = np.roll(vth_maxwell, shift=1, axis=1) - vth_maxwell
         vth_diffs[:,:,0]   = np.copy(diff_padded[vr_slice, vx_slice])
@@ -108,19 +108,17 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         neg_slice_plus1 = slice(d_vspace.neg_vx0+1, d_vspace.neg_vxn+1)
         neg_slice_plus2 = slice(d_vspace.neg_vx0+2, d_vspace.neg_vxn+2)
 
-        vrvx_diffs[:, pos_slice_plus1, 0]       =  vx_maxwell[vr_slice, pos_slice_plus1]                    - vx_maxwell[vr_slice,pos_slice_plus2]
+        vrvx_diffs[:, pos_slice_plus1, 0]       =  vx_maxwell[vr_slice, pos_slice_plus1]                    - vx_maxwell[vr_slice, pos_slice_plus2]
         vrvx_diffs[:, d_vspace.pos_vx0, 0]      = -vx_maxwell[vr_slice, d_vspace.pos_vx0+1]
         vrvx_diffs[:, d_vspace.neg_vxn, 0]      =  vx_maxwell[vr_slice, d_vspace.neg_vxn+1]
-        vrvx_diffs[:, neg_slice, 0]             = -vx_maxwell[vr_slice, neg_slice_plus2]                    + vx_maxwell[vr_slice,neg_slice_plus1]
-        vrvx_diffs[:,:,0]                      +=  vr_maxwell[vr_slice_min1, vx_slice]  #NOTE Can probably recombine these, but give slightly different result
-        vrvx_diffs[:,:,0]                      -=  vr_maxwell[vr_slice, vx_slice]
+        vrvx_diffs[:, neg_slice, 0]             = -vx_maxwell[vr_slice, neg_slice_plus2]                    + vx_maxwell[vr_slice, neg_slice_plus1]
+        vrvx_diffs[:,:,0]                      +=  vr_maxwell[vr_slice_min1, vx_slice]                      - vr_maxwell[vr_slice, vx_slice]
 
-        vrvx_diffs[:, pos_slice_plus1, 1]       = -vx_maxwell[vr_slice, pos_slice_plus3]                    + vx_maxwell[vr_slice,pos_slice_plus2]
+        vrvx_diffs[:, pos_slice_plus1, 1]       = -vx_maxwell[vr_slice, pos_slice_plus3]                    + vx_maxwell[vr_slice, pos_slice_plus2]
         vrvx_diffs[:, d_vspace.pos_vx0, 1]      = -vx_maxwell[vr_slice, d_vspace.pos_vx0+2]
         vrvx_diffs[:, d_vspace.neg_vxn, 1]      =  vx_maxwell[vr_slice, d_vspace.neg_vxn]
         vrvx_diffs[:, neg_slice, 1]             =  vx_maxwell[vr_slice, neg_slice]                          - vx_maxwell[vr_slice, neg_slice_plus1]
-        vrvx_diffs[1:vr.size, :, 1]            -=  vr_maxwell[3:vr.size+2, vx_slice]
-        vrvx_diffs[1:vr.size, :, 1]            +=  vr_maxwell[2:vr.size+1, vx_slice]
+        vrvx_diffs[1:vr.size, :, 1]            +=  vr_maxwell[2:vr.size+1, vx_slice]                        - vr_maxwell[3:vr.size+2, vx_slice]
         vrvx_diffs[0,:,1]                      -=  vr_maxwell[2, vx_slice]
 
         # Remove padded zeros in Nij
@@ -136,7 +134,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
             # Compute TA1, TA2
             TA1 = vth*np.sum(np.matmul(vth_diffs[:,:,ia], vx))
-            TA2 = vth_squared*np.sum(d_vspace.v_squared*vth_diffs[:,:,ia])
+            TA2 = vth_squared*np.sum(d_vspace.vmag_squared*vth_diffs[:,:,ia])
 
             ib = 0
             while (ib < 2):
@@ -146,7 +144,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
                     TB1[ib] = vth*np.sum(np.dot(vrvx_diffs[:,:,ib], vx))
 
                 if TB2[ib] == 0:
-                    TB2[ib] = vth_squared*np.sum(d_vspace.v_squared*vrvx_diffs[:,:,ib])
+                    TB2[ib] = vth_squared*np.sum(d_vspace.vmag_squared*vrvx_diffs[:,:,ib])
 
                 denom = TA2*TB1[ib] - TA1*TB2[ib]
 

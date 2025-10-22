@@ -122,7 +122,7 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
     vraR = differentials_a.vr_right_bound
     vxaL = differentials_a.vx_left_bound
     vxaR = differentials_a.vx_right_bound
-    Vra2Vxa2 = differentials_a.v_squared
+    Vra2Vxa2 = differentials_a.vmag_squared
 
     differentials_b = VSpace_Differentials(mesh_b.vr, mesh_b.vx)
     Vr2pidVrb = differentials_b.dvr_vol
@@ -135,7 +135,7 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
     Vth_DVx = differentials_b.vth_dvx
     Vx_DVx = differentials_b.vx_dvx
     Vr_DVr = differentials_b.vr_dvr
-    Vrb2Vxb2 = differentials_b.v_squared
+    Vrb2Vxb2 = differentials_b.vmag_squared
     jpa = differentials_b.pos_vx0
     jpb = differentials_b.pos_vxn
     jna = differentials_b.neg_vx0

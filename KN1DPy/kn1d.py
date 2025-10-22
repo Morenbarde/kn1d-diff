@@ -3,7 +3,7 @@ from numpy.typing import NDArray
 import os
 from scipy import interpolate
 
-from .read import sav_read, nc_read
+from .utils import sav_read, nc_read
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .integ_bl import integ_bl
 from .make_dvr_dvx import VSpace_Differentials
