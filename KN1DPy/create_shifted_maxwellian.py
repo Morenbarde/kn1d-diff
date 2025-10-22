@@ -83,8 +83,9 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         # Compute Nij from Maxwell, padded with zeros
         weighted_maxwell = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
+
+        #Shorthand slices for center of padded maxwell
         vr_slice = slice(1, vr.size+1)
-        vr_slice_min1 = slice(0, vr.size)
         vx_slice = slice(1, vx.size+1)
 
         weighted_maxwell[vr_slice, vx_slice] = maxwell[:,:,k]*d_vspace.volume
@@ -100,26 +101,24 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         diff_padded = -np.roll(vth_maxwell, shift=-1, axis=1) + vth_maxwell
         vth_diffs[:,:,1]   = np.copy(diff_padded[vr_slice, vx_slice])
 
-        # Define shorthand array slices
-        pos_slice_plus1 = slice(d_vspace.pos_vx0+1, d_vspace.pos_vxn+1)  #NOTE Check for simplification later
-        pos_slice_plus2 = slice(d_vspace.pos_vx0+2, d_vspace.pos_vxn+2)
-        pos_slice_plus3 = slice(d_vspace.pos_vx0+3, d_vspace.pos_vxn+3)
-        neg_slice       = slice(d_vspace.neg_vx0  , d_vspace.neg_vxn)
-        neg_slice_plus1 = slice(d_vspace.neg_vx0+1, d_vspace.neg_vxn+1)
-        neg_slice_plus2 = slice(d_vspace.neg_vx0+2, d_vspace.neg_vxn+2)
+        # Indices for pos/neg vx values
+        pvx0 = d_vspace.pos_vx0  # First positive vx index
+        pvxn = d_vspace.pos_vxn  # Last positive vx index
+        nvx0 = d_vspace.neg_vx0  # First negative vx index
+        nvxn = d_vspace.neg_vxn  # Last negative vx index
 
-        vrvx_diffs[:, pos_slice_plus1, 0]       =  vx_maxwell[vr_slice, pos_slice_plus1]                    - vx_maxwell[vr_slice, pos_slice_plus2]
-        vrvx_diffs[:, d_vspace.pos_vx0, 0]      = -vx_maxwell[vr_slice, d_vspace.pos_vx0+1]
-        vrvx_diffs[:, d_vspace.neg_vxn, 0]      =  vx_maxwell[vr_slice, d_vspace.neg_vxn+1]
-        vrvx_diffs[:, neg_slice, 0]             = -vx_maxwell[vr_slice, neg_slice_plus2]                    + vx_maxwell[vr_slice, neg_slice_plus1]
-        vrvx_diffs[:,:,0]                      +=  vr_maxwell[vr_slice_min1, vx_slice]                      - vr_maxwell[vr_slice, vx_slice]
+        vrvx_diffs[:, pvx0+1:pvxn+1, 0] =  vx_maxwell[vr_slice, pvx0+1:pvxn+1]  -  vx_maxwell[vr_slice, pvx0+2:pvxn+2]
+        vrvx_diffs[:, pvx0, 0]          = -vx_maxwell[vr_slice, pvx0+1]
+        vrvx_diffs[:, nvxn, 0]          =  vx_maxwell[vr_slice, nvxn+1]
+        vrvx_diffs[:, nvx0:nvxn, 0]     = -vx_maxwell[vr_slice, nvx0+2:nvxn+2]  +  vx_maxwell[vr_slice, nvx0+1:nvxn+1]
+        vrvx_diffs[:,:,0]              +=  vr_maxwell[0:vr.size, vx_slice]      -  vr_maxwell[vr_slice, vx_slice     ]
 
-        vrvx_diffs[:, pos_slice_plus1, 1]       = -vx_maxwell[vr_slice, pos_slice_plus3]                    + vx_maxwell[vr_slice, pos_slice_plus2]
-        vrvx_diffs[:, d_vspace.pos_vx0, 1]      = -vx_maxwell[vr_slice, d_vspace.pos_vx0+2]
-        vrvx_diffs[:, d_vspace.neg_vxn, 1]      =  vx_maxwell[vr_slice, d_vspace.neg_vxn]
-        vrvx_diffs[:, neg_slice, 1]             =  vx_maxwell[vr_slice, neg_slice]                          - vx_maxwell[vr_slice, neg_slice_plus1]
-        vrvx_diffs[1:vr.size, :, 1]            +=  vr_maxwell[2:vr.size+1, vx_slice]                        - vr_maxwell[3:vr.size+2, vx_slice]
-        vrvx_diffs[0,:,1]                      -=  vr_maxwell[2, vx_slice]
+        vrvx_diffs[:, pvx0+1:pvxn+1, 1] = -vx_maxwell[vr_slice, pvx0+3:pvxn+3]  +  vx_maxwell[vr_slice, pvx0+2:pvxn+2]
+        vrvx_diffs[:, pvx0, 1]          = -vx_maxwell[vr_slice, pvx0+2]
+        vrvx_diffs[:, nvxn, 1]          =  vx_maxwell[vr_slice, nvxn]
+        vrvx_diffs[:, nvx0:nvxn, 1]     =  vx_maxwell[vr_slice, nvx0:nvxn]      -  vx_maxwell[vr_slice, nvx0+1:nvxn+1]
+        vrvx_diffs[1:vr.size, :, 1]    +=  vr_maxwell[2:vr.size+1, vx_slice]    -  vr_maxwell[3:vr.size+2, vx_slice]
+        vrvx_diffs[0,:,1]              -=  vr_maxwell[2, vx_slice]
 
         # Remove padded zeros in Nij
         weighted_maxwell = weighted_maxwell[vr_slice,vx_slice]
