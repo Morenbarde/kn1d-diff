@@ -61,14 +61,15 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         variable = np.matmul(maxwell[:,:,k], d_vspace.dvx)
         maxwell[:,:,k] = maxwell[:,:,k] / np.nansum(d_vspace.dvr_vol*variable)
         
-        if shifted_maxwellian_debug:
-            vx_out1 = vth*np.sum(d_vspace.dvr_vol*np.matmul((vx*d_vspace.dvx), maxwell[k,:,:]))
-            for i in range(vr.size):
-                vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out1/vth))**2
-            T_out1 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(d_vspace.dvr_vol*(np.matmul(d_vspace.dvx, vr2vx2_ran2*maxwell[k, :, :]))) / (3*CONST.Q)
-            vth_local = 0.1*np.sqrt(2*Tmaxwell[k]*CONST.Q / (mol*mu*CONST.H_MASS))
-            Terror = abs(Tmaxwell[k] - T_out1) / Tmaxwell[k]
-            Verror = abs(vx_out1 - vx_shift[k]) / vth_local
+        # NOTE Debug Code, solve later
+        # if shifted_maxwellian_debug:
+        #     vx_out1 = vth*np.sum(d_vspace.dvr_vol*np.matmul((vx*d_vspace.dvx), maxwell[k,:,:]))
+        #     for i in range(vr.size):
+        #         vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out1/vth))**2
+        #     T_out1 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(d_vspace.dvr_vol*(np.matmul(d_vspace.dvx, vr2vx2_ran2*maxwell[k, :, :]))) / (3*CONST.Q)
+        #     vth_local = 0.1*np.sqrt(2*Tmaxwell[k]*CONST.Q / (mol*mu*CONST.H_MASS))
+        #     Terror = abs(Tmaxwell[k] - T_out1) / Tmaxwell[k]
+        #     Verror = abs(vx_out1 - vx_shift[k]) / vth_local
 
         # Compute desired moments
 
@@ -85,10 +86,10 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         weighted_maxwell = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
 
         #Shorthand slices for center of padded maxwell
-        vr_slice = slice(1, vr.size+1)
-        vx_slice = slice(1, vx.size+1)
+        vr_center = slice(1, vr.size+1)
+        vx_center = slice(1, vx.size+1)
 
-        weighted_maxwell[vr_slice, vx_slice] = maxwell[:,:,k]*d_vspace.volume
+        weighted_maxwell[vr_center, vx_center] = maxwell[:,:,k]*d_vspace.volume
         vx_maxwell = weighted_maxwell*d_vspace.vx_dvx
         vr_maxwell = weighted_maxwell*d_vspace.vr_dvr
         vth_maxwell = weighted_maxwell*d_vspace.vth_dvx
@@ -96,32 +97,32 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         # Compute Ap, Am, Bp, and Bm (0=p 1=m)
 
         diff_padded = np.roll(vth_maxwell, shift=1, axis=1) - vth_maxwell
-        vth_diffs[:,:,0]   = np.copy(diff_padded[vr_slice, vx_slice])
+        vth_diffs[:,:,0]   = np.copy(diff_padded[vr_center, vx_center])
         
         diff_padded = -np.roll(vth_maxwell, shift=-1, axis=1) + vth_maxwell
-        vth_diffs[:,:,1]   = np.copy(diff_padded[vr_slice, vx_slice])
+        vth_diffs[:,:,1]   = np.copy(diff_padded[vr_center, vx_center])
 
         # Indices for pos/neg vx values
-        pvx0 = d_vspace.pos_vx0  # First positive vx index
-        pvxn = d_vspace.pos_vxn  # Last positive vx index
-        nvx0 = d_vspace.neg_vx0  # First negative vx index
-        nvxn = d_vspace.neg_vxn  # Last negative vx index
+        fpi = d_vspace.vx_fpi  # First positive vx index
+        lpi = d_vspace.vx_lpi  # Last positive vx index
+        fni = d_vspace.vx_fni  # First negative vx index
+        lni = d_vspace.vx_lni  # Last negative vx index
 
-        vrvx_diffs[:, pvx0+1:pvxn+1, 0] =  vx_maxwell[vr_slice, pvx0+1:pvxn+1]  -  vx_maxwell[vr_slice, pvx0+2:pvxn+2]
-        vrvx_diffs[:, pvx0, 0]          = -vx_maxwell[vr_slice, pvx0+1]
-        vrvx_diffs[:, nvxn, 0]          =  vx_maxwell[vr_slice, nvxn+1]
-        vrvx_diffs[:, nvx0:nvxn, 0]     = -vx_maxwell[vr_slice, nvx0+2:nvxn+2]  +  vx_maxwell[vr_slice, nvx0+1:nvxn+1]
-        vrvx_diffs[:,:,0]              +=  vr_maxwell[0:vr.size, vx_slice]      -  vr_maxwell[vr_slice, vx_slice     ]
+        vrvx_diffs[:, fpi+1:lpi+1, 0]   =  vx_maxwell[vr_center, fpi+1:lpi+1]   -  vx_maxwell[vr_center, fpi+2:lpi+2]
+        vrvx_diffs[:, fpi, 0]           = -vx_maxwell[vr_center, fpi+1]
+        vrvx_diffs[:, lni, 0]           =  vx_maxwell[vr_center, lni+1]
+        vrvx_diffs[:, fni:lni, 0]       = -vx_maxwell[vr_center, fni+2:lni+2]   +  vx_maxwell[vr_center, fni+1:lni+1]
+        vrvx_diffs[:,:,0]              +=  vr_maxwell[0:vr.size, vx_center]     -  vr_maxwell[vr_center, vx_center     ]
 
-        vrvx_diffs[:, pvx0+1:pvxn+1, 1] = -vx_maxwell[vr_slice, pvx0+3:pvxn+3]  +  vx_maxwell[vr_slice, pvx0+2:pvxn+2]
-        vrvx_diffs[:, pvx0, 1]          = -vx_maxwell[vr_slice, pvx0+2]
-        vrvx_diffs[:, nvxn, 1]          =  vx_maxwell[vr_slice, nvxn]
-        vrvx_diffs[:, nvx0:nvxn, 1]     =  vx_maxwell[vr_slice, nvx0:nvxn]      -  vx_maxwell[vr_slice, nvx0+1:nvxn+1]
-        vrvx_diffs[1:vr.size, :, 1]    +=  vr_maxwell[2:vr.size+1, vx_slice]    -  vr_maxwell[3:vr.size+2, vx_slice]
-        vrvx_diffs[0,:,1]              -=  vr_maxwell[2, vx_slice]
+        vrvx_diffs[:, fpi+1:lpi+1, 1]   = -vx_maxwell[vr_center, fpi+3:lpi+3]   +  vx_maxwell[vr_center, fpi+2:lpi+2]
+        vrvx_diffs[:, fpi, 1]           = -vx_maxwell[vr_center, fpi+2]
+        vrvx_diffs[:, lni, 1]           =  vx_maxwell[vr_center, lni]
+        vrvx_diffs[:, fni:lni, 1]       =  vx_maxwell[vr_center, fni:lni]       -  vx_maxwell[vr_center, fni+1:lni+1]
+        vrvx_diffs[1:vr.size, :, 1]    +=  vr_maxwell[2:vr.size+1, vx_center]   -  vr_maxwell[3:vr.size+2, vx_center]
+        vrvx_diffs[0,:,1]              -=  vr_maxwell[2, vx_center]
 
         # Remove padded zeros in Nij
-        weighted_maxwell = weighted_maxwell[vr_slice,vx_slice]
+        weighted_maxwell = weighted_maxwell[vr_center,vx_center]
 
         # Cycle through 4 possibilies of sign(a_Max),sign(b_Max)
         # NOTE Make better names, discuss with physicist
@@ -165,13 +166,14 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         maxwell[:,:,k] /= np.sum(d_vspace.dvr_vol*(np.matmul(maxwell[:, :, k], d_vspace.dvx)))
 
-        if shifted_maxwellian_debug:
-            vx_out2 = vth*np.sum(d_vspace.dvr_vol*np.matmul((vx*d_vspace.dvx), maxwell[k,:,:]))
-            for i in range(vr.size):
-                vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out2/vth))**2
-            T_out2 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(d_vspace.dvr_vol*np.matmul(d_vspace.dvx, vr2vx2_ran2*maxwell[k,:,:])) / (3*CONST.Q)
-            Terror2 = abs(Tmaxwell[k] - T_out2) / Tmaxwell[k]
-            Verror2 = abs(vx_shift[k] - vx_out2) / vth_local
-            print('CREATE_SHIFTED_MAXWELLIAN=> Terror:' + sval(Terror) + '->' + sval(Terror2) + '  Verror:' + sval(Verror)+'->' + sval(Verror2))
+        # NOTE Debug code, solve later
+        # if shifted_maxwellian_debug:
+        #     vx_out2 = vth*np.sum(d_vspace.dvr_vol*np.matmul((vx*d_vspace.dvx), maxwell[k,:,:]))
+        #     for i in range(vr.size):
+        #         vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out2/vth))**2
+        #     T_out2 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(d_vspace.dvr_vol*np.matmul(d_vspace.dvx, vr2vx2_ran2*maxwell[k,:,:])) / (3*CONST.Q)
+        #     Terror2 = abs(Tmaxwell[k] - T_out2) / Tmaxwell[k]
+        #     Verror2 = abs(vx_shift[k] - vx_out2) / vth_local
+        #     print('CREATE_SHIFTED_MAXWELLIAN=> Terror:' + sval(Terror) + '->' + sval(Terror2) + '  Verror:' + sval(Verror)+'->' + sval(Verror2))
 
     return maxwell

@@ -136,10 +136,10 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
     Vx_DVx = differentials_b.vx_dvx
     Vr_DVr = differentials_b.vr_dvr
     Vrb2Vxb2 = differentials_b.vmag_squared
-    jpa = differentials_b.pos_vx0
-    jpb = differentials_b.pos_vxn
-    jna = differentials_b.neg_vx0
-    jnb = differentials_b.neg_vxn
+    jpa = differentials_b.vx_fpi
+    jpb = differentials_b.vx_lpi
+    jna = differentials_b.vx_fni
+    jnb = differentials_b.vx_lni
 
     #   Determine if Weight was already computed by checking vra_s,vxa_s,Tnorma_s,vrb_s,vxb_s,Tnormb_s for cases 1 and 2
 

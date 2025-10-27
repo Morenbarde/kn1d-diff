@@ -5,7 +5,6 @@ from scipy import interpolate
 
 from .utils import sav_read, nc_read
 from .create_shifted_maxwellian import create_shifted_maxwellian
-from .integ_bl import integ_bl
 from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
@@ -186,7 +185,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     SpH2_hat = interp_1d(x, n*Cs_LC, kh2_mesh.x, fill_value="extrapolate")
 
-    SpH2_hat /= integ_bl(kh2_mesh.x, SpH2_hat, value_only=1)
+    SpH2_hat /= np.trapezoid(SpH2_hat, kh2_mesh.x)
     beta = (2/3)*GammaxH2BC
     SpH2 = beta*SpH2_hat
     SH2 = SpH2
@@ -393,8 +392,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # limiters (SpH2) to attain a net zero atom/molecule flux from wall")
 
             # Compute SI, GammaH2Wall_minus, and GammaHWall_minus
-            SI = integ_bl(kh2_mesh.x, SpH2, value_only=True)
-            SwallI = integ_bl(kh2_mesh.x, 0.5*SideWallHM, value_only = True)
+            SI = np.trapezoid(SpH2, kh2_mesh.x)
+            SwallI = np.trapezoid(0.5*SideWallHM, kh2_mesh.x)
             GammaH2Wall_minus = AlbedoH2*GammaxH2BC
             GammaHWall_minus = -GammaxH[0]
             # print("SI", SI)

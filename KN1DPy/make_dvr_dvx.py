@@ -1,10 +1,3 @@
-# Make_dVr_dVx
-#   Constructs velocity space differentials for distribution functions 
-# used by Kinetic_Neutrals, Kinetic_H2, Kinetic_H, and other related
-# procedures 
-#
-# Gwendolyn Galleher 
-
 import numpy as np
 from numpy.typing import NDArray
 
@@ -15,7 +8,6 @@ Date: August 17th, 2024
 # Restructured into class - Nicholas Brown, Oct 7, 2025
 
 class VSpace_Differentials:
-
     """
         Constructs velocity space differentials for distribution functions.
 
@@ -26,7 +18,7 @@ class VSpace_Differentials:
         vx : np.ndarray
             Array of axial velocities.
 
-        Returns:
+        Attributes:
         --------
         dvr_vol: np.ndarray
             Differential volume element for radial velocities.
@@ -34,17 +26,19 @@ class VSpace_Differentials:
             Differential volume element for radial velocities (higher order).
         dVx : np.ndarray
             Differential for axial velocities.
-        vrL, vrR : np.ndarray
+        dVr : np.ndarray
+            Differential for radial velocities.
+        vr_left_bound, vr_right_bound : np.ndarray
             Left and right boundaries for radial velocities.
-        vxL, vxR : np.ndarray
+        vx_left_bound, vx_right_bound : np.ndarray
             Left and right boundaries for axial velocities.
         volume : np.ndarray
             Volume elements in velocity space.
-        vth_Deltavx, vx_Deltavx, vr_Deltavr : np.ndarray
+        vth_dvx, vx_dvx, vr_dvr : np.ndarray
             Auxiliary quantities for kinetic equations.
-        vr2vx2 : np.ndarray
+        vmag_squared : np.ndarray
             Squared magnitude of the velocity.
-        jpa, jpb, jna, jnb : int
+        vx_fpi, vx_lpi, vx_fni, vx_lni : int
             Indices for positive and negative axial velocities.
     """
     
@@ -89,17 +83,17 @@ class VSpace_Differentials:
 
         # --- Get positive and negaitve indices from vx
         pos_vx_indices = np.where(vx>0)[0]
-        self.pos_vx0 = int(pos_vx_indices[0])
-        self.pos_vxn = int(pos_vx_indices[-1])
+        self.vx_fpi = int(pos_vx_indices[0])  # First Positive Index
+        self.vx_lpi = int(pos_vx_indices[-1]) # Last Positive Index
  
         neg_vx_indices = np.where(vx<0)[0]
-        self.neg_vx0 = int(neg_vx_indices[0])
-        self.neg_vxn = int(neg_vx_indices[-1])
+        self.vx_fni = int(neg_vx_indices[0])  # First Negative Index
+        self.vx_lni = int(neg_vx_indices[-1]) # Last Negative Index
 
     
     #Setup string conversion for printing
     def __str__(self):
-        string = "Kinetic Mesh:\n"
+        string = "Velocity Space Differentials:\n"
         string += "    dvr_vol: " + str(self.dvr_vol) + "\n"
         string += "    dvr_vol_h_order: " + str(self.dvr_vol_h_order) + "\n"
         string += "    dvx: " + str(self.dvx) + "\n"
