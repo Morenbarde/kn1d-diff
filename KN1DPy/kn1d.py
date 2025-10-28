@@ -17,7 +17,6 @@ from .jh_related.balmer_alpha import balmer_alpha
 from .common import constants as CONST
 from .common.Kinetic_H2 import Kinetic_H2_Common
 from .common.Kinetic_H import Kinetic_H_Common
-from .common.INTERP_FVRVXX import INTERP_FVRVXX_internal
 from .common.JH_Coef import JH_Coef
 
 
@@ -271,7 +270,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     print("Satisfaction condition: ", truncate)
 
-    fvrvxx_internal = INTERP_FVRVXX_internal() #Common blocks for interp_fvrvxx
     KH_Common = Kinetic_H_Common() #Common block for Kinetic_H
     KH2_Common = Kinetic_H2_Common() #Common blocks for Kinetic_H2
         
@@ -301,7 +299,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
             # interpolate fH data onto H2 mesh: fH -> fHM
             do_warn = 5e-3
-            fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, fvrvxx_internal, do_warn=do_warn, debug=interp_debug) 
+            fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug) 
             # print("fHM", fHM.shape)
 
             # Compute fH2 using Kinetic_H2
@@ -337,8 +335,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
             # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
             do_warn = 5.0E-3
-            fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, fvrvxx_internal, do_warn=do_warn, debug=interp_debug) 
-            fSHA = interp_fvrvxx(fSH, kh2_mesh, kh_mesh, fvrvxx_internal, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
+            fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) 
+            fSHA = interp_fvrvxx(fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
             # ii = np.nonzero(fH2A.reshape(fH2A.size, order='F'))
             # print("fH2Anz", ii)
             # print("fH2A", fH2A.reshape(fH2A.size, order='F')[ii])

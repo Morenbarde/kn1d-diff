@@ -9,10 +9,8 @@ from .utils import sval
 from .kinetic_mesh import kinetic_mesh
 
 from .common import constants as CONST
-from .common.INTERP_FVRVXX import INTERP_FVRVXX_internal
 
-def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : INTERP_FVRVXX_internal, 
-                  do_warn=None, debug=0, correct=1, debug_flag = 0): #NOTE Debug flag added to mark specific function calls, remove later
+def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None, debug=0, correct=1, debug_flag = 0): #NOTE Debug flag added to mark specific function calls, remove later
 
     # NOTE Passing full mesh may be unneccessary, works for this code, but would need to be refactored for other projects
     # NOTE If removing mesh passing, will need to change code, mesh variables have replaced several variables here
@@ -49,23 +47,6 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
     #		  a warning message is generated.
 
     prompt='INTERP_FVRVXX => '
-
-    #   Calls INTERP_FVRVXX_internal1 and INTERP_FVRVXX_internal2 common blocks
-    vra1 = internal.segment1.vra
-    vxa1 = internal.segment1.vxa
-    Tnorma1 = internal.segment1.Tnorma
-    vrb1 = internal.segment1.vrb
-    vxb1 = internal.segment1.vxb
-    Tnormb1 = internal.segment1.Tnormb
-    weight1 = internal.segment1.weight # fixed capitalization - GG
-    
-    vra2 = internal.segment2.vra
-    vxa2 = internal.segment2.vxa
-    Tnorma2 = internal.segment2.Tnorma
-    vrb2 = internal.segment2.vrb
-    vxb2 = internal.segment2.vxb
-    Tnormb2 = internal.segment2.Tnormb
-    weight2 = internal.segment2.weight
 
     nvra = mesh_a.vr.size
     nvxa = mesh_a.vx.size
@@ -141,85 +122,33 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
     jna = differentials_b.vx_fni
     jnb = differentials_b.vx_lni
 
-    #   Determine if Weight was already computed by checking vra_s,vxa_s,Tnorma_s,vrb_s,vxb_s,Tnormb_s for cases 1 and 2
 
-    w1_active = 0
-    w1_match = 0
+    # NOTE Removed saving weights temporarily, re-implement later
 
-    if (not vra1 is None) and (vra1.size == mesh_a.vr.size): #NOTE Might need a better fix for this, but works for now
-        w1_active = 1
-        test = 0
+    # --- Compute Weights ---
 
-        test += vra1[vra1 != mesh_a.vr].size
-        test += vxa1[vxa1 != mesh_a.vx].size
+    #   Determine Left and Right limits on 'cells' for Vra, Vxa, Vrb, Vxb
 
-        test += Tnorma1[Tnorma1 != mesh_a.Tnorm].size
-        test += Tnormb1[Tnormb1 != mesh_b.Tnorm].size
+    if debug:
+        print(prompt+'computing new weight')
 
-        test += vxb1[vxb1 != mesh_b.vx].size
-        test += vrb1[vrb1 != mesh_b.vr].size
+    #   Set area contributions to Weight array
 
-        if test == 0:
-            w1_match = 1
+    _weight = np.zeros((nvrb,nvxb,nvra,nvxa))
+    weight = np.zeros((nvrb*nvxb,nvra*nvxa))
 
-    w2_active = 0
-    w2_match = 0
+    for ib in range(nvrb):
+        for jb in range(nvxb):
+            for ia in range(nvra):
+                vraMin = max([fV*vrbL[ib], vraL[ia]])
+                vraMax = min([fV*vrbR[ib], vraR[ia]])
+                for ja in range(nvxa):
+                    vxaMin = max([fV*vxbL[jb], vxaL[ja]])
+                    vxaMax = min([fV*vxbR[jb], vxaR[ja]])
+                    if vraMax > vraMin and vxaMax > vxaMin:
+                        _weight[ib,jb,ia,ja] = 2*np.pi*(vraMax**2 - vraMin**2)*(vxaMax - vxaMin) / (Vr2pidVrb[ib]*dVxb[jb])
 
-    if (not vra2 is None) and (vra2.size == mesh_a.vr.size):
-        w2_active = 1
-        test = 0
-
-        test += vra2[vra2 != mesh_a.vr].size
-        test += vxa2[vxa2 != mesh_a.vx].size
-
-        test += Tnorma2[Tnorma1 != mesh_a.Tnorm].size
-        test += Tnormb2[Tnormb1 != mesh_b.Tnorm].size
-
-        test += vxb2[vxb2 != mesh_b.vx].size
-        test += vrb2[vrb2 != mesh_b.vr].size
-
-        if test == 0:
-            w2_match = 1
-
-    w_new = 0
-
-    if w1_match or w2_match:
-        if w1_match:
-            weight = weight1
-            if debug:
-                print(prompt+'using weight1')
-        if w2_match:
-            weight = weight2
-            if debug:
-                print(prompt+'using weight2')
-
-    #   If not then compute Weight for this combination of Vr and Vx
-
-    else:
-
-        #   Determine Left and Right limits on 'cells' for Vra, Vxa, Vrb, Vxb
-
-        if debug:
-            print(prompt+'computing new weight')
-        w_new = 1
-
-        #   Set area contributions to Weight array
-
-        _weight = np.zeros((nvrb,nvxb,nvra,nvxa))
-        weight = np.zeros((nvrb*nvxb,nvra*nvxa))
-
-        for ib in range(nvrb):
-            for jb in range(nvxb):
-                for ia in range(nvra):
-                    vraMin = max([fV*vrbL[ib], vraL[ia]])
-                    vraMax = min([fV*vrbR[ib], vraR[ia]])
-                    for ja in range(nvxa):
-                        vxaMin = max([fV*vxbL[jb], vxaL[ja]])
-                        vxaMax = min([fV*vxbR[jb], vxaR[ja]])
-                        if vraMax > vraMin and vxaMax > vxaMin:
-                            _weight[ib,jb,ia,ja] = 2*np.pi*(vraMax**2 - vraMin**2)*(vxaMax - vxaMin) / (Vr2pidVrb[ib]*dVxb[jb])
-
-        weight = np.reshape(_weight, weight.shape, order = 'F') # previous version caused error
+    weight = np.reshape(_weight, weight.shape, order = 'F') # previous version caused error
 
     # print("weight", weight.T[np.nonzero(weight.T)].size)
     # input()
@@ -536,31 +465,5 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, internal : I
 
         #   Plotting stuff was here in the original code
         #   May be added later, but has been left out for now
-    #   update INTERP_FVRVXX_internal1 and INTERP_FVRVXX_internal2 common blocks
-
-    if w_new:
-        if w1_active:
-            if debug:
-                print(prompt+'Storing Weight in Weight2')
-            internal.segment2.vra = mesh_a.vr
-            internal.segment2.vxa = mesh_a.vx
-            internal.segment2.Tnorma = mesh_a.Tnorm
-            internal.segment2.vrb = mesh_b.vr
-            internal.segment2.vxb = mesh_b.vx
-            internal.segment2.Tnormb = mesh_b.Tnorm
-            internal.segment2.weight = weight
-        else:
-            if debug:
-                print(prompt+'Storing Weight in Weight1')
-            internal.segment1.vra = mesh_a.vr
-            internal.segment1.vxa = mesh_a.vx
-            internal.segment1.Tnorma = mesh_a.Tnorm
-            internal.segment1.vrb = mesh_b.vr
-            internal.segment1.vxb = mesh_b.vx
-            internal.segment1.Tnormb = mesh_b.Tnorm
-            internal.segment1.weight = weight
-
-    # print("fb", fb)
-    # input()
 
     return fb
