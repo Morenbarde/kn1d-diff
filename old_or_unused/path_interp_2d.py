@@ -1,4 +1,4 @@
-from scipy import interpolate
+from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 from .utils import interp_1d
 
@@ -30,7 +30,11 @@ def path_interp_2d(p, px, py, x, y):
     iy = interp_1d(py, ipy, y)
 
     # interpfunc=interpolate.RectBivariateSpline(np.arange(p.shape[0]), np.arange(p.shape[1]), p, kx=min(p.shape[0]-1,3), ky=min(p.shape[1]-1,3))
-    interpfunc = interpolate.RectBivariateSpline(np.arange(p.shape[0]), np.arange(p.shape[1]), p, kx=1, ky=1) #NOTE Better mimics IDL, but not necessarily a better calculation
-    out_array = interpfunc(ix,iy)
+    # interpfunc = interpolate.RectBivariateSpline(np.arange(p.shape[0]), np.arange(p.shape[1]), p, kx=1, ky=1) #NOTE Better mimics IDL, but not necessarily a better calculation
+    # out_array = interpfunc(ix,iy)
     
-    return np.diagonal(out_array)
+    # return np.diagonal(out_array)
+
+    interp = RegularGridInterpolator((px, py), p, method='linear')
+    points = np.column_stack([x, y])
+    return interp(points)
