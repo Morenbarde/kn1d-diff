@@ -8,7 +8,6 @@ from .kinetic_mesh import kinetic_mesh
 
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
 from .sigma.sigmav_h1s_h1s_hh import sigmav_h1s_h1s_hh
-from .path_interp_2d import path_interp_2d
 from .sigma.sigmav_h1s_h2s_hh import sigmav_h1s_h2s_hh
 from .sigma.sigmav_p_h1s_hh import sigmav_p_h1s_hh
 from .sigma.sigmav_h2p_h2s_hh import sigmav_h2p_h2s_hh
@@ -23,7 +22,7 @@ from .sigma.sigma_el_p_hh import sigma_el_p_hh
 from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .utils import sval, get_config
+from .utils import sval, get_config, path_interp_2d
 
 from .common.Kinetic_H2 import Kinetic_H2_Common
 from .common import constants as CONST

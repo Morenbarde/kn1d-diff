@@ -5,7 +5,7 @@ from typing import Any
 
 from numpy.typing import NDArray
 import numpy as np
-from scipy import interpolate
+from scipy.interpolate import interp1d, RegularGridInterpolator
 from scipy.io import readsav
 import netCDF4 as nc
 
@@ -39,8 +39,13 @@ def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', ax
         copy: bool = True, bounds_error: Any | None = None, fill_value: float = np.nan, assume_sorted: bool = False):
 
     #Wrapper function for creating a scipy 1d interpolation function and run it on an array    
-    interpfunc = interpolate.interp1d(funx, funy, kind=kind, axis=axis, copy=copy, bounds_error=bounds_error, fill_value=fill_value, assume_sorted=assume_sorted)
+    interpfunc = interp1d(funx, funy, kind=kind, axis=axis, copy=copy, bounds_error=bounds_error, fill_value=fill_value, assume_sorted=assume_sorted)
     return interpfunc(x)
+
+def path_interp_2d(p, px, py, x, y):
+    interp = RegularGridInterpolator((px, py), p, method='linear')
+    points = np.column_stack([x, y])
+    return interp(points)
 
 
 # --- Reverse Function from reverse.pro ---
