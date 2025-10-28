@@ -10,8 +10,7 @@ from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import create_kinetic_h_mesh, create_kinetic_h2_mesh
 from .kinetic_h import kinetic_h 
-from .kinetic_h2 import kinetic_h2 
-from .interp_scalarx import interp_scalarx 
+from .kinetic_h2 import kinetic_h2
 from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
 
@@ -348,8 +347,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # print("fSHA", fSHA.reshape(fSHA.size, order='F')[ii])
             # input()
 
-            nHPA = interp_scalarx(nHP, kh2_mesh.x, kh_mesh.x, do_warn=do_warn, debug=interp_debug) 
-            THPA = interp_scalarx(THP, kh2_mesh.x, kh_mesh.x, do_warn=do_warn, debug=interp_debug) 
+            nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
+            THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
             # print("nHPA", nHPA)
             # print("THPA", THPA)
             # input()    
@@ -383,7 +382,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
 
             # Interpolate SideWallH data onto H2 mesh: SideWallH -> SideWallHM
-            SideWallHM = interp_scalarx(SideWallH, kh_mesh.x, kh2_mesh.x, do_warn=do_warn, debug=interp_debug)
+            SideWallHM = np.interp(kh2_mesh.x, kh_mesh.x, SideWallH, left=0, right=0)
             # print("SideWallHM", SideWallHM)
             # input()
 
@@ -446,7 +445,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # print("RxH2_H", KH_Common.Output.RxH2_H)
             # input()
             if compute_errors:
-                _RxH_H2 = interp_scalarx(KH2_Common.Output.RxH_H2, kh2_mesh.x, kh_mesh.x, do_warn=do_warn, debug=interp_debug)
+                _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, KH2_Common.Output.RxH_H2, left=0, right=0)
                 DRx = _RxH_H2 + KH_Common.Output.RxH2_H
                 nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, KH_Common.Output.RxH2_H])))
                 if debrief:

@@ -24,7 +24,6 @@ from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
 from .utils import sval, get_config
-from .locate import locate
 
 from .common.Kinetic_H2 import Kinetic_H2_Common
 from .common import constants as CONST

@@ -41,4 +41,4 @@ def interp_scalarx(fa,xa,xb,do_warn=0,debug=0):
             if k1 < (nxb-1) and abs(fb[k1]) > (do_warn*big):
                 warn('Non-zero value of fb detected at max(Xa) boundary')
 
-    return fb
+    return np.interp(xb, xa, fa, left=0, right=0)
