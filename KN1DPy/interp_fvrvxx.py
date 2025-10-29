@@ -53,6 +53,7 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
 
 
     # --- Get interpolation Bounds ---
+
     ii = np.where((min(mesh_a.vr) <= v_scale*mesh_b.vr) & (v_scale*mesh_b.vr <= max(mesh_a.vr)))[0]
     if len(ii) < 1:
         raise Exception('No values of Vrb are within range of Vra')
@@ -105,64 +106,47 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
     # Convert to 2D
     weight = np.reshape(weight, (mesh_b.vr.size*mesh_b.vx.size, mesh_a.vr.size*mesh_a.vx.size), order = 'F')
 
-    # Determine fb distribution on mesh_a.x grid from weight array
-    fa_reshaped = np.reshape(fa, (mesh_a.vr.size*mesh_a.vx.size, mesh_a.x.size), order = 'F')
-    fb_on_xa = weight @ fa_reshaped
 
-
-    #   Compute _Wxa and _Ea - these are the desired moments of fb, but on the xa grid
-
-    na = np.zeros(mesh_a.x.size)
-    _Wxa = np.zeros(mesh_a.x.size)
-    _Ea = np.zeros(mesh_a.x.size)
-
-    for k in range(mesh_a.x.size):
-        na[k] = np.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ vdiff_a.dvx))
-        if na[k] > 0:
-            _Wxa[k] = np.sqrt(mesh_a.Tnorm)*np.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ (mesh_a.vx*vdiff_a.dvx)))/na[k]
-            if debug_flag:
-                print("_wxa", _Wxa[k])
-                print("a", fa[:,:,k].T)
-                print("b", (mesh_a.vx*vdiff_a.dvx))
-                print("c", (fa[:,:,k] @ (mesh_a.vx*vdiff_a.dvx)))
-                input()
-            _Ea[k] = mesh_a.Tnorm*np.sum(vdiff_a.dvr_vol*((vdiff_a.vmag_squared*fa[:,:,k]) @ vdiff_a.dvx))/na[k]
-    # print("na", na)
-    # input()
-
-    wxa = np.zeros(mesh_b.x.size)
-    Ea = np.zeros(mesh_b.x.size)
-
-    for k in range(x_start, x_end+1):
-        kL = np.maximum(locate(mesh_a.x, mesh_b.x[k]), 0)
-        kR = np.minimum(kL+1, mesh_a.x.size-1)
-        kL = np.minimum(kL, kR-1)
-
-        f = (mesh_b.x[k] - mesh_a.x[kL]) / (mesh_a.x[kR] - mesh_a.x[kL])
-        fb[:,:,k] = np.reshape((fb_on_xa[:,kL] + (fb_on_xa[:,kR] - fb_on_xa[:,kL])*f), fb[:,:,k].shape, order='F')
-        wxa[k] = _Wxa[kL] + (_Wxa[kR] - _Wxa[kL])*f
-        if debug_flag:
-            print("klkr", kL, kR)
-            print("wxa1", wxa[k])
-            print("wxa2", _Wxa[kL])
-            print("wxa3", _Wxa[kR])
-            input()
-        Ea[k]=_Ea[kL] + (_Ea[kR] - _Ea[kL])*f
-    # print("fb", fb)
-    # print("wxa", wxa)
-    # print("Ea", Ea)
-    # input()
-
-    #   Correct fb so that it has the same Wx and E moments as fa
+    # --- Correct fb so that it has the same Wx and E moments as fa ---
 
     if correct:
+
+        # --- Compute Desired Moments ---
+
+        # Determine fb distribution on mesh_a.x grid from weight array
+        fa_reshaped = np.reshape(fa, (mesh_a.vr.size*mesh_a.vx.size, mesh_a.x.size), order = 'F')
+        fb_on_xa = np.matmul(weight, fa_reshaped)
+
+        #   Compute desired vx_moment and energy_moments of fb, but on the xa grid
+        vx_moment_on_xa = np.zeros(mesh_a.x.size)
+        energy_moment_on_xa = np.zeros(mesh_a.x.size)
+
+        for k in range(mesh_a.x.size):
+            density_a = np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], vdiff_a.dvx)))
+            if density_a > 0:
+                vx_moment_on_xa[k] = np.sqrt(mesh_a.Tnorm)*np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], (mesh_a.vx*vdiff_a.dvx)))) / density_a
+                energy_moment_on_xa[k] = mesh_a.Tnorm*np.sum(vdiff_a.dvr_vol*(np.matmul((vdiff_a.vmag_squared*fa[:,:,k]), vdiff_a.dvx))) / density_a
+
+        # Compute desired moments on xb grid
+        target_vx = np.zeros(mesh_b.x.size)
+        target_energy = np.zeros(mesh_b.x.size)
+
+        for k in range(x_start, x_end+1):
+            position = np.maximum(locate(mesh_a.x, mesh_b.x[k]), 0)
+            kR = np.minimum(position+1, mesh_a.x.size-1)
+            kL = np.minimum(position, kR-1)
+
+            interp_fraction = (mesh_b.x[k] - mesh_a.x[kL]) / (mesh_a.x[kR] - mesh_a.x[kL])
+            fb[:,:,k] = np.reshape((fb_on_xa[:,kL] + interp_fraction*(fb_on_xa[:,kR] - fb_on_xa[:,kL])), fb[:,:,k].shape, order='F')
+            target_vx[k] = vx_moment_on_xa[kL] + interp_fraction*(vx_moment_on_xa[kR] - vx_moment_on_xa[kL])
+            target_energy[k]= energy_moment_on_xa[kL] + interp_fraction*(energy_moment_on_xa[kR] - energy_moment_on_xa[kL])
 
         #   Process each spatial location
 
         AN = np.zeros((mesh_b.vr.size, mesh_b.vx.size, 2))
         BN = np.zeros((mesh_b.vr.size, mesh_b.vx.size, 2))
 
-        sgn = np.array([1, -1])
+        sign = [1,-1]
 
         for k in range(mesh_b.x.size):
             allow_neg = 0
@@ -170,19 +154,14 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
             #   Compute nb, Wxb, and Eb - these are the current moments of fb
 
             nb = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
-            # print("nb", nb)
-            # input()
             if nb > 0:
-                
-                #   Entry point for iteration - 'correct' tag in original code
-                #   Since Python doesn't have goto, a while loop was used
 
                 goto_correct = True
                 while goto_correct:
                     goto_correct = False
                     nb = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
-                    Wxb = np.sqrt(mesh_b.Tnorm)*np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ (mesh_b.vx*vdiff_b.dvx))) / nb
-                    Eb = mesh_b.Tnorm*np.sum(vdiff_b.dvr_vol*((vdiff_b.vmag_squared*fb[:,:,k]) @ vdiff_b.dvx)) / nb
+                    vx_moment = np.sqrt(mesh_b.Tnorm)*np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ (mesh_b.vx*vdiff_b.dvx))) / nb
+                    energy_moment = mesh_b.Tnorm*np.sum(vdiff_b.dvr_vol*((vdiff_b.vmag_squared*fb[:,:,k]) @ vdiff_b.dvx)) / nb
                     # print("nb", nb)
                     # print("Wxb", Wxb)
                     # print("Eb", Eb)
@@ -283,10 +262,10 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
                             alpha = 0
 
                             if (denom != 0) and (TA1 != 0):
-                                beta = (TA2*(wxa[k] - Wxb) - TA1*(Ea[k] - Eb))/denom # fixed capitalization
-                                alpha = (wxa[k] - Wxb - TB1[ib]*beta)/TA1
+                                beta = (TA2*(target_vx[k] - vx_moment) - TA1*(target_energy[k] - energy_moment))/denom # fixed capitalization
+                                alpha = (target_vx[k] - vx_moment - TB1[ib]*beta)/TA1
 
-                            do_break = ((alpha*sgn[ia]) > 0) and ((beta*sgn[ib]) > 0)
+                            do_break = ((alpha*sign[ia]) > 0) and ((beta*sign[ib]) > 0)
                             # print("break", do_break)
                             # print(Wxb)
                             if do_break:

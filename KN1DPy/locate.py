@@ -23,7 +23,6 @@ def locate(table, value):
     
     # Use np.searchsorted to find the indices
     indices = np.searchsorted(table, value, side='right' if asc else 'left') - 1
-    # print(f"indices: {indices}")
     
     # Adjust indices for descending tables
     if not asc:

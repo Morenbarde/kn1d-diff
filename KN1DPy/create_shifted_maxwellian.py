@@ -79,8 +79,8 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
         # NOTE get these names checked by a physicist
-        vx_moment = vth*np.nansum(vdiff.dvr_vol*np.dot(maxwell[:, :, k], (vx*vdiff.dvx)))
-        energy_moment = vth_squared*np.nansum(vdiff.dvr_vol*np.dot((vdiff.vmag_squared*maxwell[:, :, k]), vdiff.dvx))
+        vx_moment = vth*np.nansum(vdiff.dvr_vol*np.matmul(maxwell[:, :, k], (vx*vdiff.dvx)))
+        energy_moment = vth_squared*np.nansum(vdiff.dvr_vol*np.matmul((vdiff.vmag_squared*maxwell[:, :, k]), vdiff.dvx))
 
         # Compute Nij from Maxwell, padded with zeros
         weighted_maxwell = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
@@ -141,7 +141,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
                 # Compute TB1, TB2
                 if TB1[ib] == 0:
-                    TB1[ib] = vth*np.sum(np.dot(vrvx_diffs[:,:,ib], vx))
+                    TB1[ib] = vth*np.sum(np.matmul(vrvx_diffs[:,:,ib], vx))
 
                 if TB2[ib] == 0:
                     TB2[ib] = vth_squared*np.sum(vdiff.vmag_squared*vrvx_diffs[:,:,ib])
