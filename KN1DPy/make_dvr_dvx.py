@@ -24,9 +24,9 @@ class VSpace_Differentials:
             Differential volume element for radial velocities.
         dvr_vol_h_order : np.ndarray
             Differential volume element for radial velocities (higher order).
-        dVx : np.ndarray
+        dvx : np.ndarray
             Differential for axial velocities.
-        dVr : np.ndarray
+        dvr : np.ndarray
             Differential for radial velocities.
         vr_left_bound, vr_right_bound : np.ndarray
             Left and right boundaries for radial velocities.
@@ -83,12 +83,12 @@ class VSpace_Differentials:
 
         # --- Get positive and negaitve indices from vx
         pos_vx_indices = np.where(vx>0)[0]
-        self.vx_fpi = int(pos_vx_indices[0])  # First Positive Index
-        self.vx_lpi = int(pos_vx_indices[-1]) # Last Positive Index
+        self.vx_pos_start = int(pos_vx_indices[0])  # First Positive Index
+        self.vx_pos_end = int(pos_vx_indices[-1]) # Last Positive Index
  
         neg_vx_indices = np.where(vx<0)[0]
-        self.vx_fni = int(neg_vx_indices[0])  # First Negative Index
-        self.vx_lni = int(neg_vx_indices[-1]) # Last Negative Index
+        self.vx_neg_start = int(neg_vx_indices[0])  # First Negative Index
+        self.vx_neg_end = int(neg_vx_indices[-1]) # Last Negative Index
 
     
     #Setup string conversion for printing
