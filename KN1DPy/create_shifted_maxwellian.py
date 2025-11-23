@@ -2,57 +2,200 @@ import numpy as np
 
 from .make_dvr_dvx import VSpace_Differentials
 from .common import constants as CONST
-from .utils import sval
 
-def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
+def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energy, nb = 1, assume_pos = True):
+    '''
+    Custom Compensation scheme to give a distribution desired moments
 
-    # NOTE Look at PlasmaPy, specifically plasmapy.formulary.distribution.Maxwellian_velocity_2D
+    Parameters
+    ----------
+        f_slice : np.ndarray
+            Slice of distribution fucntion
+        vdiff : VSpace_Differentials
+            Velocity space differentials for distribution function
+        vr : np.ndarray
+            Radial Velocities
+        vx : np.ndarray
+            Axial Velocities
+        vth : np.ndarray
+            Thermal Velocities
+        target_vx : np.ndarray
+            Target vx moment for distribution slice
+        target_energy : np.ndarray
+            Target energy moment for distribution slice
+        nb : np.ndarray
+            Density factor (Used in interp_fvrvxx)
+        assume_pos : bool
+            Sets whether the function assumes the distribution is positive
+            Defaults to (True)
 
-    #   Input:
-	#       Vx_shift  - dblarr(nx), (m s^-1)
-    #       Tmaxwell  - dblarr(nx), (eV)
-    #       Shifted_Maxwellian_Debug - if set, then print debugging information
-    #       mol       - 1=atom, 2=diatomic molecule
- 
-    #   Output:
-	#       Maxwell   - dblarr(nvr,nvx,nx) a shifted Maxwellian distribution function
-	#	        having numerically evaluated vx moment close to Vx_shift and
-	#	        temperature close to Tmaxwell
+    Returns
+    -------
+        f_slice : np.ndarray
+            Adjusted distribution function
+        s : float
+            Correction scalar (Used in interp_fvrvxx)
 
-    #   Notes on Algorithm:
+    '''
+    #NOTE Get nb name checked
 
-    #   One might think that Maxwell could be simply computed by a direct evaluation of the EXP function:
-
-    #       for i=0,nvr-1 do begin
-    #           arg=-(vr(i)^2+(vx-Vx_shift/vth)^2) * mol*Tnorm/Tmaxwell
-    #           Maxwell(i,*,k)=exp(arg > (-80))
-    #       endfor
-
-    #   But owing to the discrete velocity space bins, this method does not necessarily lead to a digital representation 
-    #   of a shifted Maxwellian (Maxwell) that when integrated numerically has the desired vx moment of Vx_shift
-    #   and temperature, Tmaxwell.
-
-    #   In order to insure that Maxwell has the desired vx and T moments when evaluated numerically, a compensation
-    #   scheme is employed - similar to that used in Interp_fVrVxX
-
-    shifted_maxwellian_debug = 0 #NOTE Move from here in future
-
-    maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
-    vr2vx2_ran2 = np.zeros((vr.size, vx.size), float)
-    vth = np.sqrt(2*CONST.Q*Tnorm / (mu*CONST.H_MASS)) #Thermal Velocity
-    vth_squared = vth**2
-
-    #Generate Velocity Differentials
-    vdiff = VSpace_Differentials(vr, vx)
-    
-
-    #NOTE get these names checked by a physicist
     vth_diffs = np.zeros((vr.size, vx.size, 2), float)
     vrvx_diffs = np.zeros((vr.size, vx.size, 2), float)
     sign = [1,-1]
+
+    # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
+    vx_moment = vth*np.sum(vdiff.dvr_vol*np.matmul(f_slice, (vx*vdiff.dvx))) / nb
+    energy_moment = (vth**2)*np.sum(vdiff.dvr_vol*np.matmul((vdiff.vmag_squared*f_slice), vdiff.dvx)) / nb
+
+    # Compute weighted function from distribution, padded with zeros
+    weighted_dist = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
+
+    #Shorthand slices for center of padded distribution
+    vr_center = slice(1, vr.size+1)
+    vx_center = slice(1, vx.size+1)
+
+    weighted_dist[vr_center, vx_center] = f_slice*vdiff.volume / nb
+
+    # Used for interp_fvrvxx
+    # Run additional correction if the distribution is not assumed to be positive
+    allow_neg = False
+    if not assume_pos:
+        cutoff = 1.0e-6*np.max(weighted_dist)
+        ii = np.where((abs(weighted_dist) < cutoff) & (abs(weighted_dist) > 0))
+        if ii[0].size > 0:
+            weighted_dist[ii] = 0.0
+
+        if max(weighted_dist[2,:]) <= 0:
+            allow_neg = True
+
+    vx_dist = weighted_dist*vdiff.vx_dvx
+    vr_dist = weighted_dist*vdiff.vr_dvr
+    vth_dist = weighted_dist*vdiff.vth_dvx
+
+    # Compute Ap, Am, Bp, and Bm (0=p 1=m)
+
+    diff_padded = np.roll(vth_dist, shift=1, axis=1) - vth_dist
+    vth_diffs[:,:,0]   = np.copy(diff_padded[vr_center, vx_center])
+    
+    diff_padded = -np.roll(vth_dist, shift=-1, axis=1) + vth_dist
+    vth_diffs[:,:,1]   = np.copy(diff_padded[vr_center, vx_center])
+
+    # Indices for pos/neg vx values
+    pos_start = vdiff.vx_pos_start  # First positive vx index
+    pos_end   = vdiff.vx_pos_end    # Last positive vx index
+    neg_start = vdiff.vx_neg_start  # First negative vx index
+    neg_end   = vdiff.vx_neg_end    # Last negative vx index
+
+    vrvx_diffs[:, pos_start+1:pos_end+1, 0] =  vx_dist[vr_center, pos_start+1:pos_end+1] - vx_dist[vr_center, pos_start+2:pos_end+2]
+    vrvx_diffs[:, pos_start, 0]             = -vx_dist[vr_center, pos_start+1]
+    vrvx_diffs[:, neg_end, 0]               =  vx_dist[vr_center, neg_end+1]
+    vrvx_diffs[:, neg_start:neg_end, 0]     = -vx_dist[vr_center, neg_start+2:neg_end+2] + vx_dist[vr_center, neg_start+1:neg_end+1]
+    vrvx_diffs[:,:,0]                      +=  vr_dist[0:vr.size, vx_center]             - vr_dist[vr_center, vx_center     ]
+
+    vrvx_diffs[:, pos_start+1:pos_end+1, 1] = -vx_dist[vr_center, pos_start+3:pos_end+3] + vx_dist[vr_center, pos_start+2:pos_end+2]
+    vrvx_diffs[:, pos_start, 1]             = -vx_dist[vr_center, pos_start+2]
+    vrvx_diffs[:, neg_end, 1]               =  vx_dist[vr_center, neg_end]
+    vrvx_diffs[:, neg_start:neg_end, 1]     =  vx_dist[vr_center, neg_start:neg_end]     - vx_dist[vr_center, neg_start+1:neg_end+1]
+    vrvx_diffs[1:vr.size, :, 1]            +=  vr_dist[2:vr.size+1, vx_center]           - vr_dist[3:vr.size+2, vx_center]
+    vrvx_diffs[0,:,1]                      -=  vr_dist[2, vx_center]
+
+    #   If negative values for weighted distribution must be allowed, then add postive particles to i=0 and negative particles to i=1 (beta is negative here)
+    if allow_neg:
+        vrvx_diffs[0,:,1] = vrvx_diffs[0,:,1] - vr_dist[1,vx_center]
+        vrvx_diffs[1,:,1] = vrvx_diffs[1,:,1] + vr_dist[1,vx_center]
+
+    # Remove padded zeros in weighted distribution
+    weighted_dist = weighted_dist[vr_center,vx_center]
+
+    # Cycle through 4 possibilies of sign(a_Max),sign(b_Max)
+    TB1 = np.zeros(2, float)
+    TB2 = np.zeros(2, float)
+    
+    for ia in range(2):
+
+        # Compute TA1, TA2
+        TA1 = vth*np.sum(np.matmul(vth_diffs[:,:,ia], vx))
+        TA2 = (vth**2)*np.sum(vdiff.vmag_squared*vth_diffs[:,:,ia])
+
+        for ib in range(2):
+
+            # Compute TB1, TB2
+            if TB1[ib] == 0:
+                TB1[ib] = vth*np.sum(np.matmul(vrvx_diffs[:,:,ib], vx))
+
+            if TB2[ib] == 0:
+                TB2[ib] = (vth**2)*np.sum(vdiff.vmag_squared*vrvx_diffs[:,:,ib])
+
+            denom = TA2*TB1[ib] - TA1*TB2[ib]
+
+            vrvx_scalar = 0
+            vth_scalar = 0
+            if (denom != 0) and (TA1 != 0):
+                vrvx_scalar = (TA2*(target_vx - vx_moment) - TA1*(target_energy - energy_moment)) / denom
+                vth_scalar = (target_vx - vx_moment - TB1[ib]*vrvx_scalar) / TA1
+                
+            do_break = (vth_scalar*sign[ia] > 0) and (vrvx_scalar*sign[ib] > 0)
+                #End While Loops
+            if do_break:
+                break
+        if do_break:
+            break
+
+    correction = vth_diffs[:,:,ia]*vth_scalar + vrvx_diffs[:,:,ib]*vrvx_scalar
+
+    # Additional stuff for interp_fvrvxx
+    s = 1
+    if (not assume_pos) and (not allow_neg):
+        ii = np.nonzero(weighted_dist)
+        if np.size(ii) > 0:
+            s = min(1/np.max(-correction[ii]/weighted_dist[ii]),1)
+
+    f_slice = nb*(weighted_dist + s*correction) / vdiff.volume
+
+    return f_slice, s
+
+
+# NOTE Look at PlasmaPy, specifically plasmapy.formulary.distribution.Maxwellian_velocity_2D
+def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
+    '''
+    Input:
+        Vx_shift  - dblarr(nx), (m s^-1)
+        Tmaxwell  - dblarr(nx), (eV)
+        Shifted_Maxwellian_Debug - if set, then print debugging information
+        mol       - 1=atom, 2=diatomic molecule
+
+    Output:
+        Maxwell   - dblarr(nvr,nvx,nx) a shifted Maxwellian distribution function
+            having numerically evaluated vx moment close to Vx_shift and
+            temperature close to Tmaxwell
+
+    Notes on Algorithm:
+
+    One might think that Maxwell could be simply computed by a direct evaluation of the EXP function:
+
+        for i=0,nvr-1 do begin
+            arg=-(vr(i)^2+(vx-Vx_shift/vth)^2) * mol*Tnorm/Tmaxwell
+            Maxwell(i,*,k)=exp(arg > (-80))
+        endfor
+
+    But owing to the discrete velocity space bins, this method does not necessarily lead to a digital representation 
+    of a shifted Maxwellian (Maxwell) that when integrated numerically has the desired vx moment of Vx_shift
+    and temperature, Tmaxwell.
+
+    In order to insure that Maxwell has the desired vx and T moments when evaluated numerically, a compensation
+    scheme is employed - similar to that used in Interp_fVrVxX
+    '''
+
+    maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
+    vth = np.sqrt(2*CONST.Q*Tnorm / (mu*CONST.H_MASS)) #Thermal Velocity
+
+    #--- Generate Velocity Differentials ---
+    vdiff = VSpace_Differentials(vr, vx)
+
+    target_energy = np.zeros((vx_shift.size))
     for k in range(vx_shift.size):
         if Tmaxwell[k] <= 0:
-            break
+            continue
 
         arg = -((vr[:, np.newaxis]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm / Tmaxwell[k])
         arg = np.where(np.logical_and((-80 < arg), (arg < 0.0)), arg, -80)
@@ -60,120 +203,11 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         variable = np.matmul(maxwell[:,:,k], vdiff.dvx)
         maxwell[:,:,k] = maxwell[:,:,k] / np.nansum(vdiff.dvr_vol*variable)
-        
-        # NOTE Debug Code, solve later
-        # if shifted_maxwellian_debug:
-        #     vx_out1 = vth*np.sum(vdiff.dvr_vol*np.matmul((vx*vdiff.dvx), maxwell[k,:,:]))
-        #     for i in range(vr.size):
-        #         vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out1/vth))**2
-        #     T_out1 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(vdiff.dvr_vol*(np.matmul(vdiff.dvx, vr2vx2_ran2*maxwell[k, :, :]))) / (3*CONST.Q)
-        #     vth_local = 0.1*np.sqrt(2*Tmaxwell[k]*CONST.Q / (mol*mu*CONST.H_MASS))
-        #     Terror = abs(Tmaxwell[k] - T_out1) / Tmaxwell[k]
-        #     Verror = abs(vx_out1 - vx_shift[k]) / vth_local
 
-        # Compute desired moments
-
-        # NOTE get this name checked by a physicist
         # Target energy density
         target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
-
-        # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
-        # NOTE get these names checked by a physicist
-        vx_moment = vth*np.nansum(vdiff.dvr_vol*np.matmul(maxwell[:, :, k], (vx*vdiff.dvx)))
-        energy_moment = vth_squared*np.nansum(vdiff.dvr_vol*np.matmul((vdiff.vmag_squared*maxwell[:, :, k]), vdiff.dvx))
-
-        # Compute Nij from Maxwell, padded with zeros
-        weighted_maxwell = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
-
-        #Shorthand slices for center of padded maxwell
-        vr_center = slice(1, vr.size+1)
-        vx_center = slice(1, vx.size+1)
-
-        weighted_maxwell[vr_center, vx_center] = maxwell[:,:,k]*vdiff.volume
-        vx_maxwell = weighted_maxwell*vdiff.vx_dvx
-        vr_maxwell = weighted_maxwell*vdiff.vr_dvr
-        vth_maxwell = weighted_maxwell*vdiff.vth_dvx
-
-        # Compute Ap, Am, Bp, and Bm (0=p 1=m)
-
-        diff_padded = np.roll(vth_maxwell, shift=1, axis=1) - vth_maxwell
-        vth_diffs[:,:,0]   = np.copy(diff_padded[vr_center, vx_center])
-        
-        diff_padded = -np.roll(vth_maxwell, shift=-1, axis=1) + vth_maxwell
-        vth_diffs[:,:,1]   = np.copy(diff_padded[vr_center, vx_center])
-
-        # Indices for pos/neg vx values
-        pos_start = vdiff.vx_pos_start  # First positive vx index
-        pos_end   = vdiff.vx_pos_end    # Last positive vx index
-        neg_start = vdiff.vx_neg_start  # First negative vx index
-        neg_end   = vdiff.vx_neg_end    # Last negative vx index
-
-        vrvx_diffs[:, pos_start+1:pos_end+1, 0] =  vx_maxwell[vr_center, pos_start+1:pos_end+1] - vx_maxwell[vr_center, pos_start+2:pos_end+2]
-        vrvx_diffs[:, pos_start, 0]             = -vx_maxwell[vr_center, pos_start+1]
-        vrvx_diffs[:, neg_end, 0]               =  vx_maxwell[vr_center, neg_end+1]
-        vrvx_diffs[:, neg_start:neg_end, 0]     = -vx_maxwell[vr_center, neg_start+2:neg_end+2] + vx_maxwell[vr_center, neg_start+1:neg_end+1]
-        vrvx_diffs[:,:,0]                      +=  vr_maxwell[0:vr.size, vx_center]             - vr_maxwell[vr_center, vx_center     ]
-
-        vrvx_diffs[:, pos_start+1:pos_end+1, 1] = -vx_maxwell[vr_center, pos_start+3:pos_end+3] + vx_maxwell[vr_center, pos_start+2:pos_end+2]
-        vrvx_diffs[:, pos_start, 1]             = -vx_maxwell[vr_center, pos_start+2]
-        vrvx_diffs[:, neg_end, 1]               =  vx_maxwell[vr_center, neg_end]
-        vrvx_diffs[:, neg_start:neg_end, 1]     =  vx_maxwell[vr_center, neg_start:neg_end]     - vx_maxwell[vr_center, neg_start+1:neg_end+1]
-        vrvx_diffs[1:vr.size, :, 1]            +=  vr_maxwell[2:vr.size+1, vx_center]           - vr_maxwell[3:vr.size+2, vx_center]
-        vrvx_diffs[0,:,1]                      -=  vr_maxwell[2, vx_center]
-
-        # Remove padded zeros in Nij
-        weighted_maxwell = weighted_maxwell[vr_center,vx_center]
-
-        # Cycle through 4 possibilies of sign(a_Max),sign(b_Max)
-        # NOTE Make better names, discuss with physicist
-        TB1 = np.zeros(2, float)
-        TB2 = np.zeros(2, float)
-        
-        ia = 0
-        while (ia < 2):
-
-            # Compute TA1, TA2
-            TA1 = vth*np.sum(np.matmul(vth_diffs[:,:,ia], vx))
-            TA2 = vth_squared*np.sum(vdiff.vmag_squared*vth_diffs[:,:,ia])
-
-            ib = 0
-            while (ib < 2):
-
-                # Compute TB1, TB2
-                if TB1[ib] == 0:
-                    TB1[ib] = vth*np.sum(np.matmul(vrvx_diffs[:,:,ib], vx))
-
-                if TB2[ib] == 0:
-                    TB2[ib] = vth_squared*np.sum(vdiff.vmag_squared*vrvx_diffs[:,:,ib])
-
-                denom = TA2*TB1[ib] - TA1*TB2[ib]
-
-                # NOTE Check these names with physicists
-                vrvx_scalar = 0
-                vth_scalar = 0
-                if (denom != 0) and (TA1 != 0):
-                    vrvx_scalar = (TA2*(vx_shift[k] - vx_moment) - TA1*(target_energy - energy_moment)) / denom
-                    vth_scalar = (vx_shift[k] - vx_moment - TB1[ib]*vrvx_scalar) / TA1
-                    
-                    # NOTE Some of these values are still off, but maxwell seems to be working for now
-                if (vth_scalar*sign[ia] > 0) and (vrvx_scalar*sign[ib] > 0):
-                    maxwell[:,:,k] = (weighted_maxwell + vth_diffs[:,:,ia]*vth_scalar + vrvx_diffs[:,:,ib]*vrvx_scalar) / vdiff.volume
-                    #End While Loops
-                    ia = 2
-                    ib = 2
-                ib += 1
-            ia += 1
-
-        maxwell[:,:,k] /= np.sum(vdiff.dvr_vol*(np.matmul(maxwell[:, :, k], vdiff.dvx)))
-
-        # NOTE Debug code, solve later
-        # if shifted_maxwellian_debug:
-        #     vx_out2 = vth*np.sum(vdiff.dvr_vol*np.matmul((vx*vdiff.dvx), maxwell[k,:,:]))
-        #     for i in range(vr.size):
-        #         vr2vx2_ran2[:,i] = vr[i]**2 + (vx - (vx_out2/vth))**2
-        #     T_out2 = (mol*mu*CONST.H_MASS)*vth_squared*np.sum(vdiff.dvr_vol*np.matmul(vdiff.dvx, vr2vx2_ran2*maxwell[k,:,:])) / (3*CONST.Q)
-        #     Terror2 = abs(Tmaxwell[k] - T_out2) / Tmaxwell[k]
-        #     Verror2 = abs(vx_shift[k] - vx_out2) / vth_local
-        #     print('CREATE_SHIFTED_MAXWELLIAN=> Terror:' + sval(Terror) + '->' + sval(Terror2) + '  Verror:' + sval(Verror)+'->' + sval(Verror2))
+    
+        maxwell[:,:,k], _ = compensate_distribution(maxwell[:,:,k], vdiff, vr, vx, vth, vx_shift[k], target_energy)
+        maxwell[:,:,k] /= np.sum(vdiff.dvr_vol*(np.matmul(maxwell[:,:,k], vdiff.dvx)))
 
     return maxwell

@@ -1,9 +1,9 @@
 import numpy as np
-import copy
 from warnings import warn
 from scipy import interpolate
 
 from .make_dvr_dvx import VSpace_Differentials
+from .create_shifted_maxwellian import compensate_distribution
 from .locate import locate
 from .utils import sval
 from .kinetic_mesh import kinetic_mesh
@@ -133,163 +133,37 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
 
         for k in range(x_start, x_end+1):
             position = np.maximum(locate(mesh_a.x, mesh_b.x[k]), 0)
-            kR = np.minimum(position+1, mesh_a.x.size-1)
-            kL = np.minimum(position, kR-1)
+            kr = np.minimum(position+1, mesh_a.x.size-1)
+            kl = np.minimum(position, kr-1)
 
-            interp_fraction = (mesh_b.x[k] - mesh_a.x[kL]) / (mesh_a.x[kR] - mesh_a.x[kL])
-            fb[:,:,k] = np.reshape((fb_on_xa[:,kL] + interp_fraction*(fb_on_xa[:,kR] - fb_on_xa[:,kL])), fb[:,:,k].shape, order='F')
-            target_vx[k] = vx_moment_on_xa[kL] + interp_fraction*(vx_moment_on_xa[kR] - vx_moment_on_xa[kL])
-            target_energy[k]= energy_moment_on_xa[kL] + interp_fraction*(energy_moment_on_xa[kR] - energy_moment_on_xa[kL])
+            interp_fraction = (mesh_b.x[k] - mesh_a.x[kl]) / (mesh_a.x[kr] - mesh_a.x[kl])
+            fb[:,:,k] = np.reshape((fb_on_xa[:,kl] + interp_fraction*(fb_on_xa[:,kr] - fb_on_xa[:,kl])), fb[:,:,k].shape, order='F')
+            target_vx[k] = vx_moment_on_xa[kl] + interp_fraction*(vx_moment_on_xa[kr] - vx_moment_on_xa[kl])
+            target_energy[k] = energy_moment_on_xa[kl] + interp_fraction*(energy_moment_on_xa[kr] - energy_moment_on_xa[kl])
 
         #   Process each spatial location
-
-        AN = np.zeros((mesh_b.vr.size, mesh_b.vx.size, 2))
-        BN = np.zeros((mesh_b.vr.size, mesh_b.vx.size, 2))
-
-        sign = [1,-1]
-
         for k in range(mesh_b.x.size):
+            if target_energy[k] is None:
+                continue
+
             allow_neg = 0
 
             #   Compute nb, Wxb, and Eb - these are the current moments of fb
 
             nb = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
-            if nb > 0:
+            if nb <= 0:
+                continue
 
-                goto_correct = True
-                while goto_correct:
-                    goto_correct = False
-                    nb = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
-                    vx_moment = np.sqrt(mesh_b.Tnorm)*np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ (mesh_b.vx*vdiff_b.dvx))) / nb
-                    energy_moment = mesh_b.Tnorm*np.sum(vdiff_b.dvr_vol*((vdiff_b.vmag_squared*fb[:,:,k]) @ vdiff_b.dvx)) / nb
-                    # print("nb", nb)
-                    # print("Wxb", Wxb)
-                    # print("Eb", Eb)
-                    # input()
+            goto_correct = True
+            while goto_correct:
+                
+                # --- Adjust fb for desired weights ---
 
-                    #   Compute Nij from fb, padded with zeros
+                fb[:,:,k], s = compensate_distribution(fb[:,:,k], vdiff_b, mesh_b.vr, mesh_b.vx, np.sqrt(mesh_b.Tnorm), target_vx[k], target_energy[k], nb=nb, assume_pos=False)
+                
+                # print("goto", goto_correct)
+                goto_correct = (s < 1)
 
-                    Nij = np.zeros((mesh_b.vr.size+2,mesh_b.vx.size+2))
-                    Nij[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1] = fb[:,:,k]*vdiff_b.volume / nb
-
-                    #   Set Cutoff and remove Nij very close to zero
-
-                    cutoff = 1.0e-6*np.max(Nij)
-                    ii = np.where((abs(Nij) < cutoff) & (abs(Nij) > 0))
-                    if ii[0].size > 0:
-                        Nij[ii] = 0.0
-
-                    if max(Nij[2,:]) <= 0:
-                        allow_neg = 1
-
-                    Nijp1_vx_Dvx = np.roll(Nij*vdiff_b.vx_dvx, shift=-1, axis=1)
-                    Nij_vx_Dvx = Nij*vdiff_b.vx_dvx
-                    Nijm1_vx_Dvx = np.roll(Nij*vdiff_b.vx_dvx, shift=1, axis=1)
-                    Nip1j_vr_Dvr = np.roll(Nij*vdiff_b.vr_dvr, shift=-1, axis=0)
-                    Nij_vr_Dvr = Nij*vdiff_b.vr_dvr
-                    Nim1j_vr_Dvr = np.roll(Nij*vdiff_b.vr_dvr, shift=1, axis=0)
-
-                    #   Compute Ap, Am, Bp, and Bm (0=p 1=m)
-                    jpa = vdiff_b.vx_pos_start
-                    jpb = vdiff_b.vx_pos_end
-                    jna = vdiff_b.vx_neg_start
-                    jnb = vdiff_b.vx_neg_end
-
-                    _AN                 = np.roll(Nij*vdiff_b.vth_dvx, shift=1, axis=1) - Nij*vdiff_b.vth_dvx
-                    AN[:,:,0]           = copy.copy(_AN[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1])
-                    
-                    _AN                 = -np.roll(Nij*vdiff_b.vth_dvx, shift=-1, axis=1) + Nij*vdiff_b.vth_dvx
-                    AN[:,:,1]           = copy.copy(_AN[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1])
-
-                    BN[:,jpa+1:jpb+1,0] =  Nijm1_vx_Dvx[1:mesh_b.vr.size+1,jpa+2:jpb+2] - Nij_vx_Dvx[1:mesh_b.vr.size+1,jpa+2:jpb+2]
-                    BN[:,jpa,0]         = -Nij_vx_Dvx[1:mesh_b.vr.size+1,jpa+1]
-                    BN[:,jnb,0]         =  Nij_vx_Dvx[1:mesh_b.vr.size+1,jnb+1]
-                    BN[:,jna:jnb,0]     = -Nijp1_vx_Dvx[1:mesh_b.vr.size+1,jna+1:jnb+1] + Nij_vx_Dvx[1:mesh_b.vr.size+1,jna+1:jnb+1]
-                    BN[:,:,0]           =  BN[:,:,0] + Nim1j_vr_Dvr[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1] - Nij_vr_Dvr[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1]
-
-                    BN[:,jpa+1:jpb+1,1] = -Nijp1_vx_Dvx[1:mesh_b.vr.size+1,jpa+2:jpb+2] + Nij_vx_Dvx[1:mesh_b.vr.size+1,jpa+2:jpb+2]
-                    BN[:,jpa,1]         = -Nijp1_vx_Dvx[1:mesh_b.vr.size+1,jpa+1]
-                    BN[:,jnb,1]         =  Nijm1_vx_Dvx[1:mesh_b.vr.size+1,jnb+1]
-                    BN[:,jna:jnb,1]     =  Nijm1_vx_Dvx[1:mesh_b.vr.size+1,jna+1:jnb+1] - Nij_vx_Dvx[1:mesh_b.vr.size+1,jna+1:jnb+1]
-                    BN[1:mesh_b.vr.size,:,1]      =  BN[1:mesh_b.vr.size,:,1] - Nip1j_vr_Dvr[2:mesh_b.vr.size+1,1:mesh_b.vx.size+1] + Nij_vr_Dvr[2:mesh_b.vr.size+1,1:mesh_b.vx.size+1]
-                    BN[0,:,1]           =  BN[0,:,1] - Nip1j_vr_Dvr[1,1:mesh_b.vx.size+1]
-
-                    # print("AN", AN.T)
-                    # print("BN", BN.T)
-                    # input()
-
-                    #   If negative values for Nij must be allowed, then add postive particles to i=0 and negative particles to i=1 (beta is negative here)
-
-                    if allow_neg:
-                        BN[0,:,1] = BN[0,:,1] - Nij_vr_Dvr[1,1:mesh_b.vx.size+1]
-                        BN[1,:,1] = BN[1,:,1] + Nij_vr_Dvr[1,1:mesh_b.vx.size+1]
-
-                    #   Remove padded zeros in Nij
-
-                    Nij = Nij[1:mesh_b.vr.size+1,1:mesh_b.vx.size+1]
-                    
-
-                    #   Cycle through 4 possibilies of sign(alpha),sign(beta)
-
-                    TB1 = np.zeros(2, float)
-                    TB2 = np.zeros(2, float)
-
-                    for ia in range(2):
-                        # print("a")
-                        #   Compute TA1, TA2
-
-                        TA1 = np.sqrt(mesh_b.Tnorm)*np.sum((AN[:,:,ia] @ mesh_b.vx))
-                        TA2 = mesh_b.Tnorm*np.sum(vdiff_b.vmag_squared*AN[:,:,ia])
-                        for ib in range(2):
-                            # print("b")
-
-                            #   Compute TB1, TB2
-
-                            if TB1[ib] == 0:
-                                TB1[ib] = np.sqrt(mesh_b.Tnorm)*np.sum((BN[:,:,ib] @ mesh_b.vx))
-                            if TB2[ib] == 0:
-                                TB2[ib] = mesh_b.Tnorm*np.sum(vdiff_b.vmag_squared*BN[:,:,ib])
-
-                            denom = TA2*TB1[ib] - TA1*TB2[ib]
-                            if debug_flag:
-                                print("denom", denom)
-                                # print(TA2*TB1[ib])
-                                # print(TA1*TB2[ib])
-                                # print(TB2[ib])
-                                # print(BN[:,:,ib].T)
-                                input()
-                            beta = 0
-                            alpha = 0
-
-                            if (denom != 0) and (TA1 != 0):
-                                beta = (TA2*(target_vx[k] - vx_moment) - TA1*(target_energy[k] - energy_moment))/denom # fixed capitalization
-                                alpha = (target_vx[k] - vx_moment - TB1[ib]*beta)/TA1
-
-                            do_break = ((alpha*sign[ia]) > 0) and ((beta*sign[ib]) > 0)
-                            # print("break", do_break)
-                            # print(Wxb)
-                            if do_break:
-                                break
-                        if do_break:
-                            break
-
-                    #   Entry point for 'alpha_beta' tag from original code
-
-                    RHS = AN[:,:,ia]*alpha + BN[:,:,ib]*beta
-
-                    #   Are there locations where Nij = 0.0 and RHS is negative?
-                    #   ii=where(Nij eq 0.0 and RHS lt 0.0,count) was in the original code, I don't think it does anything
-
-                    s = 1
-                    if not allow_neg:
-                        ii = np.nonzero(Nij)
-                        if np.size(ii) > 0:
-                            s = min(1/np.max(-RHS[ii]/Nij[ii]),1)
-                    
-                    fb[:,:,k] = nb*(Nij + s*RHS)/vdiff_b.volume # fixed capitalization
-
-                    # print("goto", goto_correct)
-                    goto_correct = (s < 1)
     if(debug_flag != 0):
         ii = np.nonzero(fb.reshape(fb.size, order='F'))
         print("fSHAnz", ii)
