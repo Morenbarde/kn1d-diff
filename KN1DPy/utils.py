@@ -33,6 +33,31 @@ def sval(s,length=None):
   return str(s).strip()[:length]
 
 
+# --- Bounding  ---
+
+class Bound:
+    '''
+    Defines boundaries of some array, stores first and last index of bounding
+
+    Attributes
+    ----------
+        start: int
+            first index
+        end: int
+            last index
+    '''
+    def __init__(self, first : int, last : int):
+        self.start = first
+        self.end = last
+
+    def range(self):
+        '''Return inclusive range of values between start and end of bound'''
+        return range(self.start, self.end+1)
+    
+    def slice(self, start_offset=0, end_offset=0):
+        '''Returns slice object for bounds, with offset'''
+        return slice(self.start+start_offset, self.end+end_offset)
+
 # --- Interpolation ---
 
 def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', axis: int = -1,
@@ -46,6 +71,46 @@ def path_interp_2d(p, px, py, x, y):
     interp = RegularGridInterpolator((px, py), p, method='linear')
     points = np.column_stack([x, y])
     return interp(points)
+
+
+# --- Table Searching ---
+
+def locate(table, value):
+    """
+    Finds the index of a value (or values) in a sorted table using np.searchsorted.
+    Parameters:
+        table (list or np.ndarray): A sorted list or array of numbers (ascending or descending).
+        value (float, int, list, np.ndarray): Value(s) to search for in the table.        
+    Returns:
+        np.ndarray: An array of indices (integers) corresponding to the positions
+                    where the values meet the conditions.
+    """
+    # Convert inputs to NumPy arrays if they are scalars or lists
+    table = np.asarray(table)
+    value = np.atleast_1d(value)  # Ensure `value` is an array
+    
+    # Determine if the table is in ascending or descending order
+    asc = table[0] <= table[-1]
+    
+    if not asc:
+        # If the table is in descending order, temporarily reverse it
+        table = table[::-1]
+    
+    # Use np.searchsorted to find the indices
+    indices = np.searchsorted(table, value, side='right' if asc else 'left') - 1
+    
+    # Adjust indices for descending tables
+    if not asc:
+        indices = len(table) - indices - 1
+    
+    # Handle special cases: out-of-range values
+    indices[value < table[0]] = -1  # Values less than the first element
+    indices[value >= table[-1]] = len(table) - 1  # Values greater than or equal to the last element
+
+    if(len(indices) == 1): #Convert to scalar if only one value
+        indices = indices[0]
+  
+    return indices
 
 
 # --- Reverse Function from reverse.pro ---

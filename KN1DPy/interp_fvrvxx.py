@@ -4,44 +4,122 @@ from scipy import interpolate
 
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import compensate_distribution
-from .locate import locate
-from .utils import sval
+from .utils import sval, locate, Bound, interp_1d
 from .kinetic_mesh import kinetic_mesh
 
 from .common import constants as CONST
 
-def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None, debug=0, correct=1, debug_flag = 0): #NOTE Debug flag added to mark specific function calls, remove later
+def _get_interpolation_bounds(a, b, a_name="a", b_name="b"):
+    '''
+    Internal method for usage in interp_fvrvxx
+    Generates bounds for where b is within the range of a
+
+    Parameters
+    ----------
+        a : ndarray
+            array that determines bounds of b
+        b : ndarray
+            array being bounded
+        a_name, b_name : str (optional)
+            variable names for exception message
+
+    Returns
+    -------
+        tuple : (int, int)
+            start, end of the interpolation range
     
-    #  Input:
-    #     Input Distribution function 'a'
-    #	fa	- dblarr(nVra,nVxa,nXa) distribution function
-    #	Vra	- fltarr(nVra) - radial velocity
-    #	Vxa	- fltarr(nVxa) - axial velocity
-    #       Xa	- fltarr(nXa)  - spatial coordinate
-    #       Tnorma	- float,  Normalization temperature for Vra & Vxa
-    #
-    #    Desired phase space coordinates of Output Distribution function 'b'
-    #	Vrb	- fltarr(nVrb) - radial velocity
-    #	Vxb	- fltarr(nVxb) - axial velocity
-    #       Xb	- fltarr(nXb)  - spatial coordinate
-    #       Tnormb	- float,  Normalization temperature for Vrb & Vxb
-    #
-    #  Output:
-    #     Interpolated Distribution function 'b'
-    #	fb	- dblarr(nVrb,nVxb,nXb) distribution function
-    #	          fb is scaled if necessary to make its
-    #	          digital integral over all velocity space
-    #		  equal to that of fa.
-    #
-    #  Keywords:
-    #     Input:
-    #	do_warn	- float, acceptable truncation level.
-    #		  For interpolations outside the phase space set by
-    #		  (Vra, Vxa, Xa), the values of fb are set to zero.
-    #		  This may not be acceptable. A test is performed on
-    #		  fb at the boundaries. If fb at the boundaries is greater
-    #		  than do_warn times the maximum value of fb,
-    #		  a warning message is generated.
+    Raises
+    -------
+        Exception if interpolation range is 0
+    '''
+
+    ii = np.where((min(a) <= b) & (b <= max(a)))[0]
+    if len(ii) < 1:
+        raise Exception(f"No values of {b_name} are within range of {a_name}")
+    return Bound(ii[0], ii[-1])
+
+
+def _test_bounds(fb, mesh_b, test_bound : Bound, test_axis, iter_bound1 : Bound, iter_bound2 : Bound, do_warn, var_name="a"):
+    '''
+    Internal method for usage in interp_fvrvxx
+    Tests boundaries for vr, vx, x
+
+    Parameters
+    ----------
+        fb : ndarray
+            3D array, distribution function
+        mesh_b : kinetic_mesh
+            Mesh information for distribution function
+        test_bound : Bound
+            boundary being tested
+        test_axis : int
+            Determines axis for slicing fb, 0, 1, or 2
+        iter_bound1, iter_bound2 : Bound
+            Boundaries being tested over
+        do_warn : float
+            Acceptable truncation level
+        var_name : str (optional)
+            variable name for warning message
+    
+    Issues
+    -------
+        Warning if 0 found at boundary edge
+    '''
+
+    big = np.max(fb)
+    start_error = 0
+    end_error = 0
+    if (test_bound.start > 0) or (test_bound.end < mesh_b.vr.size-1):
+        iter_slice1 = iter_bound1.slice(0,1)
+        iter_slice2 = iter_bound2.slice(0,1)
+        if test_axis == 0:
+            min_slice = fb[test_bound.start, iter_slice1, iter_slice2]
+            max_slice = fb[test_bound.end, iter_slice1, iter_slice2]
+        elif test_axis == 1:
+            min_slice = fb[iter_slice1, test_bound.start, iter_slice2]
+            max_slice = fb[iter_slice1, test_bound.end, iter_slice2]
+        elif test_axis == 2:
+            min_slice = fb[iter_slice1, iter_slice2, test_bound.start]
+            max_slice = fb[iter_slice1, iter_slice2, test_bound.end]
+        else:
+            raise Exception("Invalid test axis")
+        
+        if (start_error == 0) and (test_bound.start > 0) and np.any(min_slice > do_warn*big):
+            warn(f"Non-zero value of fb detected at min({var_name}) boundary")
+        if (end_error == 0) and (test_bound.end < mesh_b.vr.size-1) and np.any(max_slice > do_warn*big):
+            warn(f"Non-zero value of fb detected at max({var_name}) boundary")
+
+
+def interp_fvrvxx(fa: np.ndarray, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None, debug=False, correct=1):
+    '''
+    Interpolates distribution functions used by kinetic neutral procedures
+
+    Parameters
+    ----------
+        fa : ndarray
+            Input distribution function, 3D array of shape (vra, vxa, xa)
+        mesh_a : kinetic_mesh
+            Mesh information for input distribution
+        mesh_b : kinetic_mesh
+            Mesh information for desired output distribution
+        do_warn : float or None (optional)
+            Accebtable truncation level. If None, warnings are not generated
+                For interpolations outside the phase space set by
+                (Vra, Vxa, Xa), the values of fb are set to zero.
+                This may not be acceptable. A test is performed on
+                fb at the boundaries. If fb at the boundaries is greater
+                than do_warn times the maximum value of fb,
+                a warning message is generated.
+        debug : bool
+            If True, generate debug statements
+            
+    Returns
+    -------
+        fb : ndarray
+            Interpolated distribution function, scaled if necessary to make its 
+            digital integral over all velocity space equal to that of fa
+            3D array of of shape (vrb, vxb, xb)
+    '''
 
     prompt = 'INTERP_FVRVXX => '
 
@@ -54,20 +132,11 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
 
     # --- Get interpolation Bounds ---
 
-    ii = np.where((min(mesh_a.vr) <= v_scale*mesh_b.vr) & (v_scale*mesh_b.vr <= max(mesh_a.vr)))[0]
-    if len(ii) < 1:
-        raise Exception('No values of Vrb are within range of Vra')
-    vr_start, vr_end = ii[0], ii[-1]
+    get_range = lambda a, b : np.where((min(a) <= b) & (b <= max(a)))[0]
 
-    ii = np.where((min(mesh_a.vx) <= v_scale*mesh_b.vx) & (v_scale*mesh_b.vx <= max(mesh_a.vx)))[0]
-    if ii.size < 1:
-        raise Exception('No values of Vxb are within range of Vxa')
-    vx_start, vx_end = ii[0], ii[-1]
-
-    ii = np.where((min(mesh_a.x) <= mesh_b.x) & (mesh_b.x <= max(mesh_a.x)))[0]
-    if ii.size < 1:
-        raise Exception('No values of Xb are within range of Xa')
-    x_start, x_end = ii[0], ii[-1]
+    vr_bound = _get_interpolation_bounds(mesh_a.vr, v_scale*mesh_b.vr, "Vra", "Vrb")
+    vx_bound = _get_interpolation_bounds(mesh_a.vx, v_scale*mesh_b.vx, "Vxa", "Vxb")
+    x_bound = _get_interpolation_bounds(mesh_a.x, mesh_b.x, "Xa", "Xb")
 
     fb = np.zeros((mesh_b.vr.size, mesh_b.vx.size, mesh_b.x.size))
 
@@ -131,7 +200,7 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
         target_vx = np.zeros(mesh_b.x.size)
         target_energy = np.zeros(mesh_b.x.size)
 
-        for k in range(x_start, x_end+1):
+        for k in range(x_bound.start, x_bound.end+1):
             position = np.maximum(locate(mesh_a.x, mesh_b.x[k]), 0)
             kr = np.minimum(position+1, mesh_a.x.size-1)
             kl = np.minimum(position, kr-1)
@@ -146,130 +215,53 @@ def interp_fvrvxx(fa, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None
             if target_energy[k] is None:
                 continue
 
-            allow_neg = 0
-
             #   Compute nb, Wxb, and Eb - these are the current moments of fb
 
-            nb = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
+            nb = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx)))
             if nb <= 0:
                 continue
 
-            goto_correct = True
-            while goto_correct:
+            while True:
                 
                 # --- Adjust fb for desired weights ---
 
                 fb[:,:,k], s = compensate_distribution(fb[:,:,k], vdiff_b, mesh_b.vr, mesh_b.vx, np.sqrt(mesh_b.Tnorm), target_vx[k], target_energy[k], nb=nb, assume_pos=False)
-                
-                # print("goto", goto_correct)
-                goto_correct = (s < 1)
+                if s >= 1:
+                    break
 
-    if(debug_flag != 0):
-        ii = np.nonzero(fb.reshape(fb.size, order='F'))
-        print("fSHAnz", ii)
-        input()
+
+    # --- Test Boundaries ---
 
     if do_warn != None:
+        # vr_bound
+        _test_bounds(fb, mesh_b, vr_bound, 0, vx_bound, x_bound, do_warn, var_name="Vra")
+        # vx_bound
+        _test_bounds(fb, mesh_b, vx_bound, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
+        # x_bound
+        _test_bounds(fb, mesh_b, vx_bound, 2, vr_bound, vx_bound, do_warn, var_name="Xa")
 
-        #   Test Boundaries:
 
-        #   vr_start & vr_end 
-
-        big = np.max(fb)
-
-        vr_start_error = 0
-        vr_end_error = 0
-        if (vr_start > 0) or (vr_end < mesh_b.vr.size-1):
-            for k in range(x_start, x_end+1):
-                for j in range(vx_start, vx_end+1):
-                    if (vr_start_error == 0) and (vr_start > 0) and (fb[vr_start,j,k] > do_warn*big):
-                        warn('Non-zero value of fb detected at min(Vra) boundary')
-                        vr_start_error = 1
-                    if (vr_end_error == 0) and (vr_end < mesh_b.vr.size-1) and (fb[vr_end,j,k] > do_warn*big): # fixed capitalization
-                        warn('Non-zero value of fb detected at max(Vra) boundary')
-                        vr_end_error = 1
-
-        #   vx_start & vx_end
-
-        vx_start_error = 0
-        vx_end_error = 0
-        if (vx_start > 0) or (vx_end < mesh_b.vx.size-1):
-            for k in range(x_start, x_end+1):
-                for i in range(vr_start, vr_end+1):
-                    if (vx_start_error == 0) and (vx_start > 0) and (fb[i,vx_start,k] > do_warn*big):
-                        warn('Non-zero value of fb detected at min(Vxa) boundary')
-                        vx_start_error=1
-                    if (vx_end_error == 0) and (vx_end < mesh_b.vx.size-1) and (fb[i,vx_end,k] > do_warn*big): # fixed capitalization
-                        warn('Non-zero value of fb detected at max(Vxa) boundary')
-                        vx_end_error=1
-
-        #   x_start & x_end
-
-        x_start_error = 0
-        x_end_error = 0
-        if (x_start > 0) or (x_end < mesh_b.x.size-1):
-            for i in range(vr_start, vr_end+1):
-                for j in range(vx_start, vx_end+1):
-                    if (x_start_error == 0) and (x_start > 0) and (fb[i,j,x_start] > do_warn*big):
-                        warn('Non-zero value of fb detected at min(Xa) boundary')
-                        x_start_error = 1
-                    if (x_end_error == 0) and (x_end < mesh_b.x.size-1) and (fb[i,j,x_end] > do_warn*big):
-                        warn('Non-zero value of fb detected at max(Xa) boundary')
-                        x_end_error = 1
-
-    #   Rescale
+    # --- Rescale ---
 
     tot_a = np.zeros(mesh_a.x.size)
     for k in range(mesh_a.x.size):
-        tot_a[k] = np.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ vdiff_a.dvx))
+        tot_a[k] = np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], vdiff_a.dvx)))
+        
     tot_b = np.zeros(mesh_b.x.size)
-    tot_b[x_start:x_end+1] = interpolate.interp1d(mesh_a.x,tot_a,fill_value="extrapolate")(mesh_b.x[x_start:x_end+1])
-    ii = np.where(fb>0)
-    if ii[0].size > 0: # replaced fb with ii
-        min_tot = np.min(np.array(fb[ii])) #(np.array([fb[tuple(i)] for i in ii]))
-        for k in range(x_start, x_end+1):
-            tot = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
+    tot_b[x_bound.slice(0,1)] = interp_1d(mesh_a.x, tot_a, mesh_b.x[x_bound.slice(0,1)], fill_value="extrapolate")
+
+    ii = np.where(fb > 0)
+    if ii[0].size > 0:
+        min_tot = np.min(np.array(fb[ii]))
+        for k in x_bound.range():
+            tot = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx)))
             if tot > min_tot:
                 if debug:
-                    print(prompt+'Density renormalization factor ='+sval(tot_b[k]/tot))
+                    print(prompt + 'Density renormalization factor =' + sval(tot_b[k] / tot))
                 fb[:,:,k] = fb[:,:,k]*tot_b[k]/tot
 
-    if debug:
 
-        #   Compute Vtha, Vtha2, Vthb and Vthb2
-        mass = 1*CONST.H_MASS # mu*hydrogen mass
-        vth1 = np.sqrt((2*CONST.Q*mesh_a.Tnorm) / mass)
-        vth2 = np.sqrt((2*CONST.Q*mesh_b.Tnorm) / mass)
-
-        #   na, Uxa, Ta
-        na = np.zeros(mesh_a.x.size)
-        Uxa = np.zeros(mesh_a.x.size)
-        Ta = np.zeros(mesh_a.x.size)
-        vr2vx2_ran2 = np.zeros((mesh_a.vr.size,mesh_a.vx.size)) # fixed np.zeros() call
-
-        for k in range(mesh_a.x.size):
-            na[k] = np.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ vdiff_a.dvx)) # fixed capitalization
-            if na[k] > 0:
-                Uxa[k] = vth1*np.sum(vdiff_a.dvr_vol*(fa[k,:,:] @ (mesh_a.vx*vdiff_a.dvx)))/na[k]
-                for i in range(mesh_a.vr.size):
-                    vr2vx2_ran2[i,:] = mesh_a.vr[i]**2 + (mesh_a.vx - Uxa[k]/vth1)**2 # fixed capitalization
-                Ta[k] = mass*(vth1**2)*np.sum(vdiff_a.dvr_vol*((vr2vx2_ran2*fa[:,:,k]) @ vdiff_a.dvx))/(3*CONST.Q*na[k])
-
-        #   nb, Uxb, Tb
-        nb = np.zeros(mesh_b.x.size)
-        Uxb = np.zeros(mesh_b.x.size)
-        Tb = np.zeros(mesh_b.x.size)
-        vr2vx2_ran2 = np.zeros((mesh_b.vr.size,mesh_b.vx.size)) # fixed np.zeros() call
-
-        for k in range(mesh_b.x.size):
-            nb[k] = np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ vdiff_b.dvx))
-            if nb[k] > 0:
-                Uxb[k] = vth2*np.sum(vdiff_b.dvr_vol*(fb[:,:,k] @ (mesh_b.vx*vdiff_b.dvx)))/nb[k] # fixed typo
-                for i in range(mesh_b.vr.size):
-                    vr2vx2_ran2[i,:] = mesh_b.vr[i]**2 + (mesh_b.vx - Uxb[k]/vth2)**2 # fixed capitalization
-                Tb[k] = mass*(vth2**2)*np.sum(vdiff_b.dvr_vol*((vr2vx2_ran2*fb[:,:,k]) @ vdiff_b.dvx))/(3*CONST.Q*nb[k])
-
-        #   Plotting stuff was here in the original code
-        #   May be added later, but has been left out for now
+    # NOTE Plotting/Debugging was here in the original code
+    # May be added later, but has been left out for now
 
     return fb

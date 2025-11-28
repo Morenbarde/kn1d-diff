@@ -5,7 +5,7 @@ from .common import constants as CONST
 
 def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energy, nb = 1, assume_pos = True):
     '''
-    Custom Compensation scheme to give a distribution desired moments
+    Custom Compensation scheme to give a distribution desired moments. Performs on one slice of the distribution.
 
     Parameters
     ----------
@@ -35,8 +35,8 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
             Adjusted distribution function
         s : float
             Correction scalar (Used in interp_fvrvxx)
-
     '''
+    
     #NOTE Get nb name checked
 
     vth_diffs = np.zeros((vr.size, vx.size, 2), float)
@@ -156,34 +156,50 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
 
 # NOTE Look at PlasmaPy, specifically plasmapy.formulary.distribution.Maxwellian_velocity_2D
+# NOTE Adjust Docstring for accuracy
 def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
     '''
-    Input:
-        Vx_shift  - dblarr(nx), (m s^-1)
-        Tmaxwell  - dblarr(nx), (eV)
-        Shifted_Maxwellian_Debug - if set, then print debugging information
-        mol       - 1=atom, 2=diatomic molecule
+    Creates a shifted maxwellian distrubution with a desired temperature and vx moment
 
-    Output:
-        Maxwell   - dblarr(nvr,nvx,nx) a shifted Maxwellian distribution function
-            having numerically evaluated vx moment close to Vx_shift and
-            temperature close to Tmaxwell
+    Parameters
+    ----------
+        vr : np.ndarray
+            radial velocities
+        vx : np.ndarray
+            axial velocities
+        Tmaxwell : np.ndarray
+            Desired temperature moments, (eV)
+        vx_shift : np.ndarray
+            Desired vx moments, (m s^-1)
+        mu : int
+            1=hydrogen, 2=deuterium
+        mol : int
+            1=atom, 2=diatomic molecule
+        Tnorm : np.ndarray
+            Average Temperatures
+            
+    Returns
+    -------
+        Maxwell : np.ndarray
+           3D array of shape (len(vr), len(vx), len(vx_shift)) 
+           Shifted Maxwellian distribution function having numerically 
+           evaluated vx moment close to Vx_shift and temperature close to Tmaxwell
 
-    Notes on Algorithm:
+    Notes
+    -------
+        One might think that Maxwell could be simply computed by a direct evaluation of the EXP function:
 
-    One might think that Maxwell could be simply computed by a direct evaluation of the EXP function:
+            for i=0,nvr-1 do begin
+                arg=-(vr(i)^2+(vx-Vx_shift/vth)^2) * mol*Tnorm/Tmaxwell
+                Maxwell(i,*,k)=exp(arg > (-80))
+            endfor
 
-        for i=0,nvr-1 do begin
-            arg=-(vr(i)^2+(vx-Vx_shift/vth)^2) * mol*Tnorm/Tmaxwell
-            Maxwell(i,*,k)=exp(arg > (-80))
-        endfor
+        But owing to the discrete velocity space bins, this method does not necessarily lead to a digital representation 
+        of a shifted Maxwellian (Maxwell) that when integrated numerically has the desired vx moment of Vx_shift
+        and temperature, Tmaxwell.
 
-    But owing to the discrete velocity space bins, this method does not necessarily lead to a digital representation 
-    of a shifted Maxwellian (Maxwell) that when integrated numerically has the desired vx moment of Vx_shift
-    and temperature, Tmaxwell.
-
-    In order to insure that Maxwell has the desired vx and T moments when evaluated numerically, a compensation
-    scheme is employed - similar to that used in Interp_fVrVxX
+        In order to insure that Maxwell has the desired vx and T moments when evaluated numerically, a compensation
+        scheme is employed - similar to that used in Interp_fVrVxX. See compensate_distribution()
     '''
 
     maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
@@ -197,7 +213,7 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         if Tmaxwell[k] <= 0:
             continue
 
-        arg = -((vr[:, np.newaxis]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm / Tmaxwell[k])
+        arg = -((vr[:, np.newaxis]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
         arg = np.where(np.logical_and((-80 < arg), (arg < 0.0)), arg, -80)
         maxwell[:,:,k] = np.exp(arg)
 

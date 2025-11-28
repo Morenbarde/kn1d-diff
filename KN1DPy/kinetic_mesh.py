@@ -16,6 +16,32 @@ from .common.JH_Coef import JH_Coef
 
 
 class kinetic_mesh:
+    '''
+    Mesh data for kinetic_neutrals procedure
+
+    Attributes
+    ----------
+        mesh_type : str
+            Type of mesh data
+            - 'h' for atomic
+            - 'h2' for molecular
+        x : ndarray
+            x dimension mesh
+        Ti : np.ndarray
+            ion temperature profile interpolated over x
+        Te : np.ndarray
+            electron temperature profile interpolated over x
+        ne : np.ndarray
+            density profile interpolated over x  
+        PipeDia : np.ndarray
+            effective pipe diameter interpolated over x
+        vx : np.ndarray
+            axial velocities
+        vr : np.ndarray
+            radial velocities
+        Tnorm : float
+            Average ion temperature
+    '''
 
     def __init__( #NOTE Simplify this later, consider using class inheritance
             self, 
@@ -154,14 +180,30 @@ class kinetic_mesh:
 
 
     def create_vr_vx_mesh(self, nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :
-        # sets up optimum Vr and Vx velocity space mesh for Kinetic_Neutrals procedure 
-        # Input: 
-        #   nv - Integer, number of elements desired in vr mesh
-        #   Ti - arrray, Ti profile
-        #   E0 - array, energy where a velocity is desired ( optional )
-        #   Tmax - float, ignore Ti above this value
-        #
         # Gwendolyn Galleher 
+        '''
+        Sets up optimum Vr and Vx velocity space mesh for Kinetic_Neutrals procedure 
+
+        Parameters
+        ----------
+            nv : int
+                number of elements desired in vr mesh
+            Ti : np.ndarray
+                ion temperature profile
+            E0 : np.ndarray
+                energy where a velocity is desired (optional)
+            Tmax : float
+                maximum temperature, ignore Ti above this value
+                
+        Returns
+        -------
+            vr: ndarray
+                radial velocities
+            vx: ndarray
+                axial velocities
+            Tnorm
+                average of Ti
+        '''
 
         Ti = np.array(Ti) 
         Ti = np.concatenate([Ti, E0[E0>0]])
@@ -209,34 +251,3 @@ class kinetic_mesh:
         string += "    vr: " + str(self.vr) + "\n"
         string += "    Tnorm: " + str(self.Tnorm) + "\n"
         return string
-
-
-        
-def create_kinetic_h_mesh(
-        mu         : int, 
-        x          : NDArray,
-        Ti         : NDArray,
-        Te         : NDArray, 
-        n          : NDArray, 
-        PipeDia    : NDArray,
-        jh_coeffs  : JH_Coef = None,
-        E0         : NDArray = np.array([0.0]),
-        fctr       : float   = 1.0
-    ) -> kinetic_mesh:
-    
-    mesh = kinetic_mesh('h', mu, x, Ti, Te, n, PipeDia, jh_coeffs = jh_coeffs, E0=E0, fctr=fctr)
-    return mesh
-
-def create_kinetic_h2_mesh(
-        mu         : int, 
-        x          : NDArray,
-        Ti         : NDArray,
-        Te         : NDArray, 
-        n          : NDArray, 
-        PipeDia    : NDArray,
-        E0         : NDArray = np.array([0.0]),
-        fctr       : float   = 1.0
-    ) -> kinetic_mesh:
-    
-    mesh = kinetic_mesh('h2', mu, x, Ti, Te, n, PipeDia, E0=E0, fctr=fctr)
-    return mesh
