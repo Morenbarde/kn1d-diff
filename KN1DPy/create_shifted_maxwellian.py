@@ -9,21 +9,21 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
     Parameters
     ----------
-        f_slice : np.ndarray
+        f_slice : ndarray
             Slice of distribution fucntion
         vdiff : VSpace_Differentials
             Velocity space differentials for distribution function
-        vr : np.ndarray
+        vr : ndarray
             Radial Velocities
-        vx : np.ndarray
+        vx : ndarray
             Axial Velocities
-        vth : np.ndarray
+        vth : ndarray
             Thermal Velocities
-        target_vx : np.ndarray
+        target_vx : ndarray
             Target vx moment for distribution slice
-        target_energy : np.ndarray
+        target_energy : ndarray
             Target energy moment for distribution slice
-        nb : np.ndarray
+        nb : ndarray
             Density factor (Used in interp_fvrvxx)
         assume_pos : bool
             Sets whether the function assumes the distribution is positive
@@ -31,7 +31,7 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
     Returns
     -------
-        f_slice : np.ndarray
+        f_slice : ndarray
             Adjusted distribution function
         s : float
             Correction scalar (Used in interp_fvrvxx)
@@ -163,24 +163,24 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
     Parameters
     ----------
-        vr : np.ndarray
+        vr : ndarray
             radial velocities
-        vx : np.ndarray
+        vx : ndarray
             axial velocities
-        Tmaxwell : np.ndarray
+        Tmaxwell : ndarray
             Desired temperature moments, (eV)
-        vx_shift : np.ndarray
+        vx_shift : ndarray
             Desired vx moments, (m s^-1)
         mu : int
             1=hydrogen, 2=deuterium
         mol : int
             1=atom, 2=diatomic molecule
-        Tnorm : np.ndarray
+        Tnorm : ndarray
             Average Temperatures
             
     Returns
     -------
-        Maxwell : np.ndarray
+        Maxwell : ndarray
            3D array of shape (len(vr), len(vx), len(vx_shift)) 
            Shifted Maxwellian distribution function having numerically 
            evaluated vx moment close to Vx_shift and temperature close to Tmaxwell

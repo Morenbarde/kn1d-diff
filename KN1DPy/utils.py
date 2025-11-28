@@ -13,11 +13,13 @@ import netCDF4 as nc
 
 def get_json(file_path:str) -> dict[str, Any]:
     ''' Load json file '''
+
     with open(file_path, 'r') as config:
         return json.load(config)
     
 def get_config() -> dict[str, Any]:
     ''' Lazy function to load config file '''
+    
     return get_json('config.json')
 
 
@@ -25,11 +27,13 @@ def get_config() -> dict[str, Any]:
 
 def debrief(statement: str, condition: bool):
     ''' Print statement if condition is true '''
+
     if condition:
         print(statement)
 
 def sval(s,length=None):
   ''' removes leading / trailing spaces and truncates string to a specified length '''
+
   return str(s).strip()[:length]
 
 
@@ -46,6 +50,7 @@ class Bound:
         end: int
             last index
     '''
+
     def __init__(self, first : int, last : int):
         self.start = first
         self.end = last
@@ -157,6 +162,7 @@ def reverse(a, subscript=1):
         reverses the order of a list at the given dimension (subscript)
         initially assume at least 1 dimension
     '''
+
     ndims = 1
     b = a
 
@@ -175,6 +181,7 @@ def reverse(a, subscript=1):
     
 def rev_rec(a, subscript, dim_tracker):
     ''' Recursive function that iterates over everything in a, and reverses everything in the specified dim '''
+
     i = 0
     while i < len(a):
         if dim_tracker == subscript-1:

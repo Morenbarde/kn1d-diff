@@ -29,7 +29,7 @@ class kinetic_mesh:
             x dimension mesh
         Ti : ndarray
             ion temperature profile interpolated over x
-        Te : np.ndarray
+        Te : ndarray
             electron temperature profile interpolated over x
         ne : ndarray
             density profile interpolated over x  

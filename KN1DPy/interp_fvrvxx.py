@@ -39,7 +39,7 @@ def _get_interpolation_bounds(a, b, a_name="a", b_name="b"):
     return Bound(ii[0], ii[-1])
 
 
-def _test_bounds(fb, mesh_b, test_bound : Bound, test_axis, iter_bound1 : Bound, iter_bound2 : Bound, do_warn, var_name="a"):
+def _test_bounds(fb, test_bound : Bound, var_len, test_axis, iter_bound1 : Bound, iter_bound2 : Bound, do_warn, var_name="a"):
     '''
     Internal method for usage in interp_fvrvxx
     Tests boundaries for vr, vx, x
@@ -48,10 +48,10 @@ def _test_bounds(fb, mesh_b, test_bound : Bound, test_axis, iter_bound1 : Bound,
     ----------
         fb : ndarray
             3D array, distribution function
-        mesh_b : kinetic_mesh
-            Mesh information for distribution function
         test_bound : Bound
             boundary being tested
+        var_len : int
+            Length of the variable distribution whose bound is being tested
         test_axis : int
             Determines axis for slicing fb, 0, 1, or 2
         iter_bound1, iter_bound2 : Bound
@@ -69,7 +69,7 @@ def _test_bounds(fb, mesh_b, test_bound : Bound, test_axis, iter_bound1 : Bound,
     big = np.max(fb)
     start_error = 0
     end_error = 0
-    if (test_bound.start > 0) or (test_bound.end < mesh_b.vr.size-1):
+    if (test_bound.start > 0) or (test_bound.end < var_len-1):
         iter_slice1 = iter_bound1.slice(0,1)
         iter_slice2 = iter_bound2.slice(0,1)
         if test_axis == 0:
@@ -86,7 +86,7 @@ def _test_bounds(fb, mesh_b, test_bound : Bound, test_axis, iter_bound1 : Bound,
         
         if (start_error == 0) and (test_bound.start > 0) and np.any(min_slice > do_warn*big):
             warn(f"Non-zero value of fb detected at min({var_name}) boundary")
-        if (end_error == 0) and (test_bound.end < mesh_b.vr.size-1) and np.any(max_slice > do_warn*big):
+        if (end_error == 0) and (test_bound.end < var_len-1) and np.any(max_slice > do_warn*big):
             warn(f"Non-zero value of fb detected at max({var_name}) boundary")
 
 
@@ -234,11 +234,11 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, 
 
     if do_warn != None:
         # vr_bound
-        _test_bounds(fb, mesh_b, vr_bound, 0, vx_bound, x_bound, do_warn, var_name="Vra")
+        _test_bounds(fb, vr_bound, mesh_b.vr.size, 0, vx_bound, x_bound, do_warn, var_name="Vra")
         # vx_bound
-        _test_bounds(fb, mesh_b, vx_bound, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
+        _test_bounds(fb, vx_bound, mesh_b.vx.size, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
         # x_bound
-        _test_bounds(fb, mesh_b, vx_bound, 2, vr_bound, vx_bound, do_warn, var_name="Xa")
+        _test_bounds(fb, x_bound, mesh_b.x.size, 2, vr_bound, vx_bound, do_warn, var_name="Xa")
 
 
     # --- Rescale ---

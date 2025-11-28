@@ -8,39 +8,39 @@ Date: August 17th, 2024
 # Restructured into class - Nicholas Brown, Oct 7, 2025
 
 class VSpace_Differentials:
-    """
+    '''
         Constructs velocity space differentials for distribution functions.
 
         Parameters:
         -----------
-        vr : np.ndarray
+        vr : ndarray
             Array of radial velocities.
-        vx : np.ndarray
+        vx : ndarray
             Array of axial velocities.
 
         Attributes:
         --------
-        dvr_vol: np.ndarray
+        dvr_vol: ndarray
             Differential volume element for radial velocities.
-        dvr_vol_h_order : np.ndarray
+        dvr_vol_h_order : ndarray
             Differential volume element for radial velocities (higher order).
-        dvx : np.ndarray
+        dvx : ndarray
             Differential for axial velocities.
-        dvr : np.ndarray
+        dvr : ndarray
             Differential for radial velocities.
-        vr_left_bound, vr_right_bound : np.ndarray
+        vr_left_bound, vr_right_bound : ndarray
             Left and right boundaries for radial velocities.
-        vx_left_bound, vx_right_bound : np.ndarray
+        vx_left_bound, vx_right_bound : ndarray
             Left and right boundaries for axial velocities.
-        volume : np.ndarray
+        volume : ndarray
             Volume elements in velocity space.
-        vth_dvx, vx_dvx, vr_dvr : np.ndarray
+        vth_dvx, vx_dvx, vr_dvr : ndarray
             Auxiliary quantities for kinetic equations.
-        vmag_squared : np.ndarray
+        vmag_squared : ndarray
             Squared magnitude of the velocity.
         vx_fpi, vx_lpi, vx_fni, vx_lni : int
             Indices for positive and negative axial velocities.
-    """
+    '''
     
     def __init__(self, vr : NDArray, vx : NDArray):
 
