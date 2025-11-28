@@ -1,6 +1,6 @@
 import numpy as np
 
-from .poly import poly 
+from ..utils import poly 
 #   Returns momentum transfer cross section for elastic collisions of H+ onto H2
 # for specified energy of H+.
 # Data are taken from 

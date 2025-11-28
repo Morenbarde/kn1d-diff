@@ -1,6 +1,6 @@
 import numpy as np
 
-from .poly import poly
+from ..utils import poly
 
 #Returns charge exchange cross-section for atomic hydrogen.
 

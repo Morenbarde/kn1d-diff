@@ -27,17 +27,17 @@ class kinetic_mesh:
             - 'h2' for molecular
         x : ndarray
             x dimension mesh
-        Ti : np.ndarray
+        Ti : ndarray
             ion temperature profile interpolated over x
         Te : np.ndarray
             electron temperature profile interpolated over x
-        ne : np.ndarray
+        ne : ndarray
             density profile interpolated over x  
-        PipeDia : np.ndarray
+        PipeDia : ndarray
             effective pipe diameter interpolated over x
-        vx : np.ndarray
+        vx : ndarray
             axial velocities
-        vr : np.ndarray
+        vr : ndarray
             radial velocities
         Tnorm : float
             Average ion temperature
@@ -188,9 +188,9 @@ class kinetic_mesh:
         ----------
             nv : int
                 number of elements desired in vr mesh
-            Ti : np.ndarray
+            Ti : ndarray
                 ion temperature profile
-            E0 : np.ndarray
+            E0 : ndarray
                 energy where a velocity is desired (optional)
             Tmax : float
                 maximum temperature, ignore Ti above this value

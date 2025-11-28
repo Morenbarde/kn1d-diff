@@ -1,6 +1,6 @@
 import numpy as np
 
-from .poly import poly
+from ..utils import poly
 
 # Returns maxwellian averaged <sigma V) for electron impact
 # ionization of molecular hydrogen. Coefficients are taken 

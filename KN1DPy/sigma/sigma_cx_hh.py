@@ -1,6 +1,6 @@
 import numpy as np
 
-from .poly import poly
+from ..utils import poly
 
 def sigma_cx_hh(E):
     #E	- fltarr(*) or float, energy of molecule corresponding to the

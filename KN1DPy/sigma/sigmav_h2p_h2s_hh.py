@@ -1,6 +1,6 @@
 import numpy as np
 
-from .poly import poly
+from ..utils import poly
 
 def sigmav_h2p_h2s_hh(Te):
     #   Te - Scalar, list, or np.array. Gives electron temperature (eV)

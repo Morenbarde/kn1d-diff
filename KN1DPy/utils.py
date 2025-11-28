@@ -58,6 +58,36 @@ class Bound:
         '''Returns slice object for bounds, with offset'''
         return slice(self.start+start_offset, self.end+end_offset)
 
+
+# --- Polynomials ---
+
+def poly(x, c):
+    '''
+    Evaluate a polynomial at one or more points
+
+    Parameters
+    ----------
+        x : float or ndarray
+            Variable/s to evaluate the polynomial at
+        c : ndarray
+            array of polynomial coefficients
+            
+    Returns
+    -------
+        y : float or ndarray
+            Value of the polynomial evaluated at x, array of values if x is an array
+    '''
+
+    # NOTE Clean/Remove Type Checking, currently messing with test script
+    if type(x) == list:
+        x = np.array(x)
+    n = len(c)-1
+    y = c[n]
+    for i in range(n-1, -1, -1):
+        y = y*x + c[i]
+    return y
+
+
 # --- Interpolation ---
 
 def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', axis: int = -1,
@@ -76,15 +106,22 @@ def path_interp_2d(p, px, py, x, y):
 # --- Table Searching ---
 
 def locate(table, value):
-    """
+    '''
     Finds the index of a value (or values) in a sorted table using np.searchsorted.
-    Parameters:
-        table (list or np.ndarray): A sorted list or array of numbers (ascending or descending).
-        value (float, int, list, np.ndarray): Value(s) to search for in the table.        
-    Returns:
-        np.ndarray: An array of indices (integers) corresponding to the positions
-                    where the values meet the conditions.
-    """
+
+    Parameters
+    ----------
+        table : ndarray
+            Sorted list or array of numbers (ascending or descending).
+        value : float, ndarray
+            Value(s) to search for
+            
+    Returns
+    -------
+        ndarray
+            Array of indices (integers) corresponding to the positions where the values meet the conditions.
+    '''
+
     # Convert inputs to NumPy arrays if they are scalars or lists
     table = np.asarray(table)
     value = np.atleast_1d(value)  # Ensure `value` is an array
@@ -154,12 +191,17 @@ def sav_read(sav_path, nc_path):
     '''
     Used to read and save .sav files
 
-    
-    Parameters:
-        sav_path - the path to the .sav input file
-        nc_path  - the path to the .nc file you are creating 
-    Ouputs:
-        input_dict - a dictionary of all inputs from the input file
+    Parameters
+    ----------
+        sav_path : str
+            Path to the .sav input file
+        nc_path : str
+            Path to the .nc file being created
+            
+    Returns
+    -------
+        input_dict : dict
+            Dictionary of all inputs from the input file
     '''
 
     sav_data = readsav(sav_path)
@@ -174,10 +216,15 @@ def nc_read(nc_path):
     '''
     Used to read and save .nc files (netCDF)
 
-    Parameters:
-        nc_path  - the path to the .nc file you are creating 
-    Returns:
-        input_dict - a dictionary of all inputs from the input file
+    Parameters
+    ----------
+        nc_path : str
+            Path to the .nc file being created
+            
+    Returns
+    -------
+        input_dict : dict
+            Dictionary of all inputs from the input file
     '''
     
     fn = nc_path
