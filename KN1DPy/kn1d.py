@@ -8,7 +8,7 @@ from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
-from .kinetic_mesh import kinetic_mesh
+from .kinetic_mesh import KineticMesh
 from .kinetic_h import kinetic_h 
 from .kinetic_h2 import kinetic_h2
 from .jh_related.lyman_alpha import lyman_alpha
@@ -123,14 +123,14 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     if GaugeH2 > 15.0:
         fctr = fctr*15 / GaugeH2
 
-    kh2_mesh = kinetic_mesh('h2', mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
+    kh2_mesh = KineticMesh('h2', mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
     
     # determine optimized vr, vx grid for kinetic_h (atoms, A)
     fctr = 0.3
     if GaugeH2 > 30.0 :
         fctr = fctr * 30 / GaugeH2
 
-    kh_mesh = kinetic_mesh('h', mu, x, Ti, Te, n, PipeDia, jh_coeffs = jh_coefficients, fctr=fctr)
+    kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh_coeffs = jh_coefficients, fctr=fctr)
 
 
     #   Set up molecular flux BC from inputted neutral pressure

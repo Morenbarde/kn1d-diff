@@ -1,13 +1,10 @@
 import numpy as np
 from warnings import warn
-from scipy import interpolate
 
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import compensate_distribution
 from .utils import sval, locate, Bound, interp_1d
-from .kinetic_mesh import kinetic_mesh
-
-from .common import constants as CONST
+from .kinetic_mesh import KineticMesh
 
 def _get_interpolation_bounds(a, b, a_name="a", b_name="b"):
     '''
@@ -90,7 +87,7 @@ def _test_bounds(fb, test_bound : Bound, var_len, test_axis, iter_bound1 : Bound
             warn(f"Non-zero value of fb detected at max({var_name}) boundary")
 
 
-def interp_fvrvxx(fa: np.ndarray, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, do_warn=None, debug=False, correct=1):
+def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do_warn=None, debug=False, correct=1):
     '''
     Interpolates distribution functions used by kinetic neutral procedures
 
@@ -98,9 +95,9 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : kinetic_mesh, mesh_b : kinetic_mesh, 
     ----------
         fa : ndarray
             Input distribution function, 3D array of shape (vra, vxa, xa)
-        mesh_a : kinetic_mesh
+        mesh_a : KineticMesh
             Mesh information for input distribution
-        mesh_b : kinetic_mesh
+        mesh_b : KineticMesh
             Mesh information for desired output distribution
         do_warn : float or None (optional)
             Accebtable truncation level. If None, warnings are not generated

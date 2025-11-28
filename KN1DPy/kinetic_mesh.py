@@ -15,7 +15,7 @@ from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
 
 
-class kinetic_mesh:
+class KineticMesh:
     '''
     Mesh data for kinetic_neutrals procedure
 

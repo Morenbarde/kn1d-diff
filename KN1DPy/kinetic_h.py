@@ -4,7 +4,7 @@ import copy
 from .utils import sval, get_config
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
-from .kinetic_mesh import kinetic_mesh
+from .kinetic_mesh import KineticMesh
 
 from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
 from .jh_related.jhs_coef import jhs_coef
@@ -53,7 +53,7 @@ from .common.Kinetic_H import Kinetic_H_Common
 # Note: Variable names contain characters to help designate species -
 #	atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P) 
 
-def kinetic_h(mesh : kinetic_mesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, jh_coeffs : JH_Coef, KH : Kinetic_H_Common, fH = None,
+def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, jh_coeffs : JH_Coef, KH : Kinetic_H_Common, fH = None,
               truncate = 1e-4, Compute_Errors = 0, plot = 0, debug = 0, pause = 0, debrief = 0,
               Max_Gen = 50, No_Johnson_Hinnov = 0, Use_Collrad_Ionization = 0,
               No_Recomb = 0, ni_correct = 0):

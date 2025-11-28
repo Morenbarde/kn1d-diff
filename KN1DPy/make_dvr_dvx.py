@@ -9,18 +9,11 @@ Date: August 17th, 2024
 
 class VSpace_Differentials:
     '''
-        Constructs velocity space differentials for distribution functions.
+    Constructs velocity space differentials for distribution functions
 
-        Parameters:
-        -----------
-        vr : ndarray
-            Array of radial velocities.
-        vx : ndarray
-            Array of axial velocities.
-
-        Attributes:
-        --------
-        dvr_vol: ndarray
+    Attributes
+    ----------
+        dvr_vol : ndarray
             Differential volume element for radial velocities.
         dvr_vol_h_order : ndarray
             Differential volume element for radial velocities (higher order).
@@ -43,6 +36,15 @@ class VSpace_Differentials:
     '''
     
     def __init__(self, vr : NDArray, vx : NDArray):
+
+        '''
+        Parameters
+        -----------
+            vr : ndarray
+                Array of radial velocities.
+            vx : ndarray
+                Array of axial velocities.
+        '''
 
         # --- Calculations for r-dimension ---
         vr_extend    = np.append(vr, 2*vr[-1] - vr[-2])

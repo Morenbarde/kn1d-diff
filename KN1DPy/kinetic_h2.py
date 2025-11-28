@@ -4,7 +4,7 @@ import copy
 
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
-from .kinetic_mesh import kinetic_mesh
+from .kinetic_mesh import KineticMesh
 
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
 from .sigma.sigmav_h1s_h1s_hh import sigmav_h1s_h1s_hh
@@ -59,7 +59,7 @@ from .common import constants as CONST
 # Note: Variable names contain characters to help designate species -
 #       atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
 
-def kinetic_h2(mesh : kinetic_mesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2, fH2, nHP, THP, KH2 : Kinetic_H2_Common, 
+def kinetic_h2(mesh : KineticMesh, mu, vxi, fH2BC, GammaxH2BC, NuLoss, fH, SH2, fH2, nHP, THP, KH2 : Kinetic_H2_Common, 
                truncate = 1.0e-4, Max_Gen = 50,  Compute_H_Source = 0, No_Sawada = 0,
                ni_correct = 0, ESH = 0, Eaxis = 0, Compute_Errors = 0,  plot = 0, debug = 0,
                debrief = 0, pause = 0):
