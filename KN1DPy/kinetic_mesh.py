@@ -26,7 +26,11 @@ class KineticMesh:
             - 'h' for atomic
             - 'h2' for molecular
         x : ndarray
-            x dimension mesh
+            spatial coordinates
+        vx : ndarray
+            axial velocity coordinates
+        vr : ndarray
+            radial velocity coordinates
         Ti : ndarray
             ion temperature profile interpolated over x
         Te : ndarray
@@ -35,10 +39,6 @@ class KineticMesh:
             density profile interpolated over x  
         PipeDia : ndarray
             effective pipe diameter interpolated over x
-        vx : ndarray
-            axial velocities
-        vr : ndarray
-            radial velocities
         Tnorm : float
             Average ion temperature
     '''

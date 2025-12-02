@@ -302,8 +302,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # print("fHM", fHM.shape)
 
             # Compute fH2 using Kinetic_H2
-            ni_correct = 1
-            Compute_H_Source = 1
             H2compute_errors = compute_errors and H2debrief # is this accurate, how can it be equal to both? - GG 2/15
             
             # print("fH2", fH2)
@@ -311,9 +309,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # input()
             kh2_results = kinetic_h2(
                     kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, fHM, SH2, fH2, nHP, THP, KH2_Common,\
-                    truncate=truncate, Max_Gen=max_gen, Compute_H_Source=Compute_H_Source,\
-                    ni_correct=ni_correct,\
-                    Compute_Errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
+                    truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,\
+                    compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
             
             fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
                 QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis, error = kh2_results
@@ -358,10 +355,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             Hcompute_errors = compute_errors and Hdebrief
 
             kh_results = kinetic_h(
-                    kh_mesh, mu, vxiA, fHBC, GammaxHBC, fH2A, fSHA, nHPA, THPA, jh_coefficients, KH_Common, fH=fH,\
-                    truncate=truncate, Max_Gen=max_gen, \
-                    ni_correct=ni_correct, \
-                    Compute_Errors=Hcompute_errors, plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause) # Not sure where some of the keywords are defined
+                    kh_mesh, mu, vxiA, fHBC, GammaxHBC, fH2A, fSHA, fH, nHPA, THPA, jh_coefficients, KH_Common,
+                    truncate=truncate, max_gen=max_gen, ni_correct=ni_correct, compute_errors=Hcompute_errors,
+                    plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause) # Not sure where some of the keywords are defined
             
             fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH,error = kh_results
 

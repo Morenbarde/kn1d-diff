@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 import copy
 
 from .utils import sval, get_config
@@ -21,42 +22,143 @@ from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
 from .common.Kinetic_H import Kinetic_H_Common
 
-# This subroutine is part of the "KN1D" atomic and molecular neutral transport code.
+def kinetic_h(mesh: KineticMesh, mu: int, vxi: NDArray, fHBC: NDArray, GammaxHBC: float, fH2: NDArray = None, fSH: NDArray = None, 
+              fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, jh_coeffs : JH_Coef = None, KH : Kinetic_H_Common = None, 
+              truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, no_recomb = 0, plot = 0, debug = 0, debrief = 0, pause = 0):
+    '''
+    Solves a 1-D spatial, 2-D velocity kinetic neutral transport 
+    problem for atomic hydrogen or deuterium (H)
 
-#   This subroutine solves a 1-D spatial, 2-D velocity kinetic neutral transport 
-# problem for atomic hydrogen (H) or deuterium by computing successive generations of 
-# charge exchange and elastic scattered neutrals. The routine handles electron-impact 
-# ionization, proton-atom charge exchange, radiative recombination, and elastic
-# collisions with hydrogenic ions, neutral atoms, and molecules.
+    Parameters
+    ----------
+        mesh : KineticMesh
+            Mesh data for h kinetic procedure, must be of type 'h'
+            Includes coordinate data and temperature/density profiles
+        mu : int
+            1=hydrogen, 2=deuterium
+        vxi : ndarray
+            flow speed profile (m/s)
+        fHBC : ndarray
+            2D array, input boundary condition. Specifies shape of atom velocity distribution (fH) at x=0
+        GammaxHBC : float
+            Desired neutral atom flux density at x=0 (m^-2 s^-1)
+        fH2 : ndarray, default=None
+            3D array, molecular distribution function. If None, H-H2 collisions are not computed
+        fSH : ndarray, defualt=None
+            Source velocity distribution function. If None, zero array is used
+        fH : ndarray, default=None
+            3D array, atomic distribution function. If None, zero array is used
+        nHP : ndarray, defualt=None
+            Molecular ion density profile (m^-3). If None, zero array is used
+        THP : ndarray, defualt=None
+            Molecular ion temperature profile (m^-3). If None, array of 3.0 used
+        jh_coeffs : JH_Coef, defualt=None
+            Common blocks used to pass data for JH methods
+            NOTE Consider changing this, program will currently fail if not set
+        KH : Kinetic_H_Common, default=None
+            Common blocks used to pass data.
+            NOTE Consider changing this, program will currently fail if not set
+        truncate : float, default=1.0e-4
+            Convergence threshold for generations
+        max_gen : int, default=50
+            Max number of generations
+        ni_correct : bool, default=False
+            If true, Corrects hydrogen ion density according to quasineutrality: ni=ne-nHp
+        compute_errors : bool, default=False
+            If true, compute error estimates
+        no_recomb : bool, default=false
+            If true, does not include recombination as a source of atomic neutrals in the algorithm
+        plot : int, default=0
+            - 0=no plots
+            - 1=summary plots
+            - 2=detail plots
+            - 3=very detailed plots
+        debug : int, default=0
+            - 0=do not execute debug code
+            - 1=summary debug
+            - 2=detail debug
+            - 3=very detailed debug
+        debrief : int, default=0
+            - 0=do not print
+            - 1=print summary information
+            - 2=print detailed information
+        pause : bool, default=false
+            If true, pause between plots
 
-#   The positive vx half of the atomic neutral distribution function is inputted at x(0) 
-# (with arbitrary normalization) and the desired flux of hydrogen atoms entering the slab,
-# at x(0) is specified. Background profiles of plasma ions, (e.g., Ti(x), Te(x), n(x), vxi(x),...)
-# molecular ions, (nHP(x), THP(x)), and molecular distribution function (fH) are inputted.
+    Returns
+    -------
+    fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH,error
 
-# Optionally, the hydrogen source velocity distribution function is also inputted.
-# (The H source and fH2 distribution functions can be computed using procedure 
-# "Kinetic_H2.pro".) The code returns the atomic hydrogen distribution function, fH(vr,vx,x) 
-# for all vx, vr, and x of the specified vr,vx,x grid.
+        fH : ndarray
+            3D array, atomic distribution function.
+        nH : ndarray, defualt=None
+            Neutral atom density profile (m^-3).
+        GammaxH : ndarray
+            Neutral flux profile (m^-2 s^-1)
+        VxH : ndarray
+            Neutral velocity profile (m s^-1)
+        pH : ndarray
+            Neutral pressure (eV m^-2)
+        TH : ndarray
+            Neutral temperature profile (eV)
+        qxH : ndarray
+            Neutral random heat flux profile (watts m^-2)
+        qxH_total : ndarray
+            Total neutral heat flux profile (watts m^-2)
+        NetHSource : ndarray
+            Net H0 source (m^-3 s^-1)
+        Sion : ndarray
+            H ionization rate (m^-3 s^-1)
+        QH : ndarray
+            Rate of net thermal energy transfer into neutral atoms (watts m^-3)
+        RxH : ndarray
+            Rate of x momentum transfer to neutral atoms (N m^-2)
+        QH_total : ndarray
+            Net rate of total energy transfer into neutral atoms (watts m^-3)
+        AlbedoH : float
+            Ratio of atomic particle flux with Vx < 0 divided by particle flux with Vx > 0 at x=0
+        WallH : ndarray
+            Atomic sink rate from interation with 'side walls' (m^-3 s^-1)
+        error : int
+            Error status
+            - 0=no error, solution returned
+            - 1=error, no solution returned
+            NOTE Change to bool, or replace with raises
 
-#   Since the problem involves only the x spatial dimension, all distribution functions
-# are assumed to have rotational symmetry about the vx axis. Consequently, the distributions
-# only depend on x, vx and vr where vr =sqrt(vy^2+vz^2)
+    Notes
+    -------
+        This subroutine is part of the "KN1D" atomic and molecular neutral transport code.
 
-#  History:
+        This subroutine solves a 1-D spatial, 2-D velocity kinetic neutral transport 
+        problem for atomic hydrogen (H) or deuterium by computing successive generations of 
+        charge exchange and elastic scattered neutrals. The routine handles electron-impact 
+        ionization, proton-atom charge exchange, radiative recombination, and elastic
+        collisions with hydrogenic ions, neutral atoms, and molecules.
 
-#    B. LaBombard   First coding based on Kinetic_Neutrals.pro 		22-Dec-2000
+        The positive vx half of the atomic neutral distribution function is inputted at x(0) 
+        (with arbitrary normalization) and the desired flux of hydrogen atoms entering the slab,
+        at x(0) is specified. Background profiles of plasma ions, (e.g., Ti(x), Te(x), n(x), vxi(x),...)
+        molecular ions, (nHP(x), THP(x)), and molecular distribution function (fH) are inputted.
 
-#    For more information, see write-up: "A 1-D Space, 2-D Velocity, Kinetic 
-#    Neutral Transport Algorithm for Hydrogen Atoms in an Ionizing Plasma", B. LaBombard
+        Optionally, the hydrogen source velocity distribution function is also inputted.
+        (The H source and fH2 distribution functions can be computed using procedure 
+        "Kinetic_H2.pro".) The code returns the atomic hydrogen distribution function, fH(vr,vx,x) 
+        for all vx, vr, and x of the specified vr,vx,x grid.
 
-# Note: Variable names contain characters to help designate species -
-#	atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P) 
+        Since the problem involves only the x spatial dimension, all distribution functions
+        are assumed to have rotational symmetry about the vx axis. Consequently, the distributions
+        only depend on x, vx and vr where vr =sqrt(vy^2+vz^2)
 
-def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, jh_coeffs : JH_Coef, KH : Kinetic_H_Common, fH = None,
-              truncate = 1e-4, Compute_Errors = 0, plot = 0, debug = 0, pause = 0, debrief = 0,
-              Max_Gen = 50, No_Johnson_Hinnov = 0, Use_Collrad_Ionization = 0,
-              No_Recomb = 0, ni_correct = 0):
+        History:
+
+            B. LaBombard   First coding based on Kinetic_Neutrals.pro 		22-Dec-2000
+
+            For more information, see write-up: "A 1-D Space, 2-D Velocity, Kinetic 
+            Neutral Transport Algorithm for Hydrogen Atoms in an Ionizing Plasma", B. LaBombard
+
+        Variable names contain characters to help designate species -
+	    atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
+    '''
 
     #NOTE Temporarily store in old variable, replace later
     vx = mesh.vx
@@ -75,226 +177,17 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     H_P_CX = COLLISIONS['H_P_CX']
     Simple_CX = COLLISIONS['SIMPLE_CX']
 
+    ion_rate_option = get_config()['kinetic_h']['ion_rate']
+    if ion_rate_option == 'collrad':
+        No_Johnson_Hinnov = False
+        Use_Collrad_Ionization = True
+    elif ion_rate_option == 'jh':
+        No_Johnson_Hinnov = False
+        Use_Collrad_Ionization = False
+    else:
+        No_Johnson_Hinnov = True
+        Use_Collrad_Ionization = False
 
-    #	Input:
-    #		vx(*)	- fltarr(nvx), normalized x velocity coordinate 
-    #			[negative values, positive values],
-    #			monotonically increasing. Note: a nonuniform mesh can be used.
-    #			Dimensional velocity (note: Vth is based on ATOM mass)
-    #			is v = Vth * vx where Vth=sqrt(2 k Tnorm/(mH*mu))
-    #			Note: nvx must be even and vx(*) symmetric about 
-    #			zero but not contain a zero element
-    #		vr(*)	- fltarr(nvr), normalized radial velocity coordinate 
-    #			[positive values], monotonically increasing. Note: a non-uniform mesh can be used.
-    #			Dimensional velocity is v = Vth * vr where Vth=sqrt(2 k Tnorm/(mH*mu)) 
-    #			Note: vr must not contain a zero element
-    #		x(*)	- fltarr(nx), spatial coordinate (meters), 
-    #			positive, monontonically increasing. Note: a non-uniform mesh can be used.
-    #		Tnorm	- Float, temperature corresponding to the thermal speed (see vx and vr above) (eV)
-    #	    mu	- Float, 1=hydrogen, 2=deuterium
-    #	    Ti	- fltarr(nx), Ion temperature profile (eV)
-    #	    Te	- fltarr(nx), electron temperature profile (eV)
-    #	    n	- fltarr(nx), electron density profile (m^-3)
-    #	    vxi	- fltarr(nx), x-directed plasma ion and molecular ion flow profile (m s^-1)
-    #		fHBC	- fltarr(nvr,nvx), this is an input boundary condition
-    #			specifying the shape of the neutral atom velocity distribution 
-    #			function at location x(0). Normalization is arbitrary.
-    #	        Only values with positive vx, fHBC(*,nvx/2:*) are used
-    #	        by the code.
-    #		GammaxHBC	- float, desired neutral atom flux density in the +Vx
-    #			direction at location x(0) (m^-2 s^-1)
-    #			fHBC is scaled to yield this flux density.
-    #       PipeDia	- fltarr(nx), effective pipe diameter (meters)
-    #			This variable allows collisions with the 'side-walls' to be simulated.
-    #			If this variable is undefined, then PipeDia set set to zero. Zero values
-    #			of PipeDia are ignored (i.e., treated as an infinite diameter).
-    #       fH2	- fltarr(nvr,nvx,nx), neutral molecule velocity distribution
-    #           function. fH2 is normalized so that the molecular neutral density, nH2(k), is 
-    #			defined as the velocity space integration: nH2(k)=total(Vr2pidVr*(fH2(*,*,k)#dVx))
-    #           If this variable is undefined, then it is set equal to zero and
-    #           no molecule-atom collisions are included.
-    #			Note: dVx is velocity space differential for Vx axis and Vr2pidVr = Vr*!pi*dVr
-    #	        with dVr being velocity space differential for Vr axis.
-    #       fSH	- fltarr(nvr,nvx,nx), atomic hydrogen source velocity distribution.
-    #           fSH must be normalized so that the total atomic neutral
-    #           source, SourceH(k), is defined as the velocity space integration:
-    #           SourceH(k)=total(Vr2pidVr*(fSH(*,*,k)#dVx))
-    #		fSH can be computed from IDL procedure Kinetic_H2.pro
-    #           If this variable is undefined, then it is set equal to zero.
-    #       nHP	- fltarr(nx), molecular ion density profile (m^-3)
-    #           If this parameter is undefined, then it is set equal to zero.
-    #		nHP can be computed from IDL procedure Kinetic_H2.pro
-    #       THP	- fltarr(nx), molecular ion temperature profile (m^-3)
-    #			If this parameter is undefined, then it is set equal to 3 eV at each grid point.
-    #			THP can be computed from IDL procedure Kinetic_H2.pro
-
-    #	Input & Output:
-    #		fH	- fltarr(nvr,nvx,nx), neutral atom velocity distribution
-    #			function. 'Seed' values for this may be specified on input. 
-    #	        If this parameter is undefined on input, then a zero 'seed' value will be used. 
-    #			The algorithm outputs a self-consistent fH.
-    #			fH is normalized so that the neutral density, nH(k), is defined as 
-    #			the velocity space integration: nH(k)=total(Vr2pidVr*(fH(*,*,k)#dVx))
-
-    #   Output:
-    #       nH	- fltarr(nx), neutral atom density profile (m^-3)
-    #       GammaxH	- fltarr(nx), neutral atom flux profile (# m^-2 s^-1)
-    #           computed from GammaxH(k)=Vth*total(Vr2pidVr*(fH(*,*,k)#(Vx*dVx)))
-    #       VxH	- fltarr(nx), neutral atom velocity profile (m s^-1)
-    #           computed from GammaxH/nH
-    #           To aid in computing the some of the quantities below, the procedure internally
-    #           defines the quantities:
-    #           vr2vx2_ran(i,j,k)=vr(i)^2+(vx(j)-VxH(k))^2
-    #           which is the magnitude of 'random v^2' at each mesh point
-    #           vr2vx2(i,j,k)=vr(i)^2+vx(j)^2
-    #           which is the magnitude of 'total v^2' at each mesh point
-    #           q=1.602177D-19, mH=1.6726231D-27
-    #           C(*,*,*) is the right hand side of the Boltzmann equation, evaluated
-    #           using the computed neutral distribution function
-    #       pH	- fltarr(nx), neutral atom pressure (eV m^-2) computed from:
-    #           pH(k)~vth2*total(Vr2pidVr*(vr2vx2_ran(*,*,k)*fH(*,*,k))#dVx))*(mu*mH)/(3*q)
-    #       TH	- fltarr(nx), neutral atom temperature profile (eV) computed from: TH=pH/nH
-    #       qxH	- fltarr(nx), neutral atom random heat flux profile (watts m^-2) computed from:
-    #           qxH(k)~vth3*total(Vr2pidVr*((vr2vx2_ran(*,*,k)*fH(*,*,k))#(dVx*(vx-VxH(k)))))*0.5*(mu*mH)
-    #       qxH_total	- fltarr(nx), total neutral atom heat flux profile (watts m^-2)
-    #           This is the total heat flux transported by the neutrals:
-    #           qxH_total=(0.5*nH*(mu*mH)*VxH*VxH + 2.5*pH*q)*VxH + piH_xx*VxH + qxH
-    #       NetHSource	- fltarr(nx), net H0 source [H0 source - ionization sink - wall sink] (m^-3 s^-1) computed from
-    #			NetHSource(k)=total(Vr2pidVr*(C(*,*,k)#dVx))
-    #	    Sion	- fltarr(nx), H ionization rate (m^-3 s^-1) 
-    #       QH	- fltarr(nx), rate of net thermal energy transfer into neutral atoms (watts m^-3) computed from
-    #           QH(k)~vth2*total(Vr2pidVr*((vr2vx2_ran(*,*,k)*C(*,*,k))#dVx))*0.5*(mu*mH)
-    #       RxH	- fltarr(nx), rate of x momentum transfer to neutral atoms (=force, N m^-2).
-    #           RxH(k)~Vth*total(Vr2pidVr*(C(*,*,k)#(dVx*(vx-VxH(k)))))*(mu*mH)
-    #       QH_total	- fltarr(nx), net rate of total energy transfer into neutral atoms
-    #           = QH + RxH*VxH - 0.5*(mu*mH)*(Sloss-SourceH)*VxH*VxH (watts m^-3)
-    #       AlbedoH	- float, Ratio of atomic neutral particle flux with Vx < 0 divided by particle flux
-    #           with Vx > 0  at x=x(0)
-    #           (Note: For fSH non-zero, the flux with Vx < 0 will include
-    #           contributions from molecular hydrogen sources within the 'slab'.
-    #           In this case, this parameter does not return the true 'Albedo'.)
-    #       WallH	- fltarr(nx), atomic neutral sink rate arising from hitting the 'side walls' (m^-3 s^-1)
-    #		    Unlike the molecules in Kinetic_H2, wall collisions result in the destruction of atoms.
-    #		    This parameter can be used to specify a resulting source of molecular
-    #		    neutrals in Kinetic_H2. (molecular source = 2 times WallH)
-
-    #   KEYWORDS:
-    #       Output:
-    #           error	- Returns error status: 
-    #               0=no error, solution returned
-    #			    1=error, no solution returned
-
-    #   COMMON BLOCK Kinetic_H_OUTPUT
-    #       Output:
-    #           piH_xx	- fltarr(nx), xx element of stress tensor (eV m^-2) computed from:
-    #               piH_xx(k)~vth2*total(Vr2pidVr*(fH(*,*,k)#(dVx*(vx-VxH(k))^2)))*(mu*mH)/q - pH
-    #           piH_yy	- fltarr(nx), yy element of stress tensor (eV m^-2) computed from:
-    #               piH_yy(k)~vth2*total((Vr2pidVr*Vr^2)*(fH(*,*,k)#dVx))*(mu*mH)/q - pH
-    #           piH_zz	- fltarr(nx), zz element of stress tensor (eV m^-2) = piH_yy
-    #		        Note: cylindrical system relates r^2 = y^2 + z^2. All other stress tensor elements are zero.
-
-    #       The following momentum and energy transfer rates are computed from charge-exchange collsions between species:
-    #           RxHCX	- fltarr(nx), rate of x momentum transfer from hydrogren ions to atoms (=force/vol, N m^-3).
-    #           EHCX	- fltarr(nx), rate of energy transfer from hydrogren ions to atoms (watts m^-3).
-               
-    #       The following momentum and energy transfer rates are computed from elastic collsions between species:
-    #           RxH2_H	- fltarr(nx), rate of x momentum transfer from neutral molecules to atoms (=force/vol, N m^-3).
-    #           RxP_H	- fltarr(nx), rate of x momentum transfer from hydrogen ions to neutral atoms (=force/vol, N m^-3).
-    #           EH2_H	- fltarr(nx), rate of energy transfer from neutral molecules to atoms (watts m^-3).
-    #           EP_H	- fltarr(nx), rate of energy transfer from hydrogen ions to neutral atoms (watts m^-3).
-
-    #       The following momentum and energy transfer rates are computed from collisions with the 'side-walls'
-    #           RxW_H	- fltarr(nx), rate of x momentum transfer from wall to neutral atoms (=force/vol, N m^-3).
-    #           EW_H	- fltarr(nx), rate of energy transfer from wall to neutral atoms (watts m^-3).
-
-    #       The following is the rate of parallel to perpendicular energy transfer computed from elastic collisions
-    #           Epara_PerpH_H	- fltarr(nx), rate of parallel to perp energy transfer within atomic hydrogen species (watts m^-3).
-
-    #       Source/Sink info:
-    #           SourceH	- fltarr(nx), source rate of neutral atoms from H2 dissociation (from integral of inputted fSH) (m^-3 s^-1).
-    #           SRecom	- fltarr(nx), source rate of neutral atoms from recombination (m^-3 s^-1).
-
-    #   KEYWORDS:
-    #       Input:
-    #           truncate	- float, stop computation when the maximum 
-    #		        increment of neutral density normalized to 
-    #		        inputed neutral density is less than this 
-    #    		    value in a subsequent generation. Default value is 1.0e-4
-    #           Simple_CX	- if set, then use CX source option (B): Neutrals are born
-    #               in velocity with a distribution proportional to the local
-    #               ion distribution function. Simple_CX=1 is default.
-    #               if not set, then use CX source option (A): The CX source
-    #               neutral atom distribution function is computed by evaluating the
-    #               the CX cross section for each combination of (vr,vx,vr',vx')
-    #               and convolving it with the neutral atom distribution function.
-    #               This option requires more CPU time and memory.
-    #  	  	    Max_gen	- integer, maximum number of collision generations to try including before giving up.
-    #               Default is 50.
-    #           No_Johnson_Hinnov	- if set, then compute ionization and recombination rates
-    #		        directly from reaction rates published by Janev* for
-    #		        ground state hydrogen
-    #		        Ionization:    e + H(1s) -> p + e 
-    #		        Recombination: e + p -> H(1s) + hv
-    #		        *Janev, R.K., et al, "Elementary processes in hydrogen-helium plasmas",
-    #		        (Springer-Verlag, Berlin ; New York, 1987)
-    #		        Otherwise, compute ionization and recombination rates using
-    #	            results from the collisional-radiative model published by Johnson
-    #		        and Hinnov [L.C.Johnson and E. Hinnov, J. Quant. Spectrosc. Radiat.
-     #		        Transfer. vol. 13 pp.333-358]. This is the default.
-    #		        Note: charge exchange is always computed using the ground state reaction
-    #	            rates published by Janev:
-    #		        Charge Exchange: p + H(1s) -> H(1s) + p
-    #           Use_Collrad_Ionization - FS - if set, this overrides
-    #               No_Johnson_Hinnov and uses rates from the
-    #               COLLRAD code *for ionization only*
-    #           No_Recomb	- if set, then DO NOT include recombination as a source of atomic neutrals
-    #	            in the algorithm
-    # 	        H_H_EL	- if set, then include H -> H elastic self collisions
-    #		        Note: if H_H_EL is set, then algorithm iterates fH until
-    #               self consistent fH is achieved.
-    # 	        H_P_CX	- if set, then include H -> H(+) charge exchange collisions 
-    #           H_P_EL	- if set, then include H -> H(+) elastic collisions 
-    #           H_H2_EL	- if set, then include H -> H2 elastic collisions 
-    #           ni_correct	- if set, then algorithm corrects hydrogen ion density
-    #		        according to quasineutrality: ni=ne-nHP. Otherwise, nHP is assumed to be small.
-    #           Compute_Errors	- if set, then return error estimates in common block Kinetic_H_ERRORS below
-    #	        plot	- 0= no plots, 1=summary plots, 2=detail plots, 3=very detailed plots
-    #	        debug	- 0= do not execute debug code, 1=summary debug, 2=detail debug, 3=very detailed debug
-    #           debrief	- 0= do not print, 1=print summary information, 2=print detailed information
-    #           pause	- if set, then pause between plots
-
-    #	COMMON BLOCK Kinetic_H_ERRORS
-
-    #		if COMPUTE_ERRORS keyword is set then the following is returned in common block Kinetic_H_ERRORS
-
-    #			Max_dx	- float(nx), Max_dx(k) for k=0:nx-2 returns maximum 
-    #				allowed x(k+1)-x(k) that avoids unphysical negative 
-    #				contributions to fH
-    #			Vbar_error	- float(nx), returns numerical error in computing
-    #				the speed of ions averged over maxwellian distribution.
-    #				The average speed should be:
-    #				vbar_exact=2*Vth*sqrt(Ti(*)/Tnorm)/sqrt(!pi)
-    #				Vbar_error returns: abs(vbar-vbar_exact)/vbar_exact
-    #				where vbar is the numerically computed value.
-    #			mesh_error	- fltarr(nvr,nvx,nx), normalized error of solution
-    #				based on substitution into Boltzmann equation.
-    #			moment_error	- fltarr(nx,m), normalized error of solution
-    #				based on substitution into velocity space
-    #				moments (v^m) of Boltzmann equation, m=[0,1,2,3,4]
-    #  	        C_error	- fltarr(nx), normalized error in charge exchange and elastic scattering collision 
-    #			    operator. This is a measure of how well the charge exchange and
-    #			    elastic scattering portions of the collision operator
-    #			    conserve particles.
-    #  			CX_error	- fltarr(nx), normalized particle conservation error in charge exchange collision operator.
-    #			H_H_error	-  fltarr(nx,[0,1,2]) return normalized errors associated with 
-    #				particle [0], x-momentum [1], and total energy [2] convervation of the elastic self-collision operator
-
-    #			qxH_total_error	- fltarr(nx), normalized error estimate in computation of qxH_total
-    #			QH_total_error	- fltarr(nx), normalized error estimate in computation of QH_total
-
-    #	History:
-    #		22-Dec-2000 - B. LaBombard - first coding.
-    #		11-Feb-2001 - B. LaBombard - added elastic collisions 
 
     prompt = 'Kinetic_H => '
 
@@ -309,13 +202,13 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     n_s = KH.Input.n_s
     vxi_s = KH.Input.vxi_s
     fHBC_s = KH.Input.fHBC_s
-    GammaxHBC_s = KH.Input.GammaxHBC_s # Fixed typo - changed to GammaxHBC_s
+    GammaxHBC_s = KH.Input.GammaxHBC_s
     PipeDia_s = KH.Input.PipeDia_s
     fH2_s = KH.Input.fH2_s
     fSH_s = KH.Input.fSH_s
     nHP_s = KH.Input.nHP_s
-    THP_s = KH.Input.THP_s # Fixed typo - changed to THP_s
-    fH_s = KH.Input.fH_s # Fixed typo - changed to fH_s
+    THP_s = KH.Input.THP_s
+    fH_s = KH.Input.fH_s
     Simple_CX_s = KH.Input.Simple_CX_s
     JH_s = KH.Input.JH_s
     Collrad_s = KH.Input.Collrad_s
@@ -324,10 +217,8 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     H_P_EL_s = KH.Input.H_P_EL_s
     H_H2_EL_s = KH.Input.H_H2_EL_s
     H_P_CX_s = KH.Input.H_P_CX_s
-    #	FS: added collrad_s
 
     #	Kinetic_H_internal common block
-
     vr2vx2 = KH.Internal.vr2vx2
     vr2vx_vxi2 = KH.Internal.vr2vx_vxi2
     fi_hat = KH.Internal.fi_hat
@@ -341,7 +232,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     vr2_vx2 = KH.Internal.vr2_vx2
     vx_vx = KH.Internal.vx_vx
     Vr2pidVrdVx = KH.Internal.Vr2pidVrdVx
-    SIG_CX = KH.Internal.SIG_CX # Fixed typo - changed to SIG_CX
+    SIG_CX = KH.Internal.SIG_CX
     SIG_H_H = KH.Internal.SIG_H_H
     SIG_H_H2 = KH.Internal.SIG_H_H2
     SIG_H_P = KH.Internal.SIG_H_P
@@ -357,7 +248,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     
     nH2 = KH.Moments.nH2
     vxH2 = KH.Moments.VxH2
-    TH2 = KH.Moments.TH2 # changed to fit current global_vars structure
+    TH2 = KH.Moments.TH2
 
     #	Internal Debug switches
 
@@ -380,7 +271,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     if No_Johnson_Hinnov:
         JH = 0
     Recomb = 1
-    if No_Recomb:
+    if no_recomb:
         Recomb = 0
     error = 0
 
@@ -393,121 +284,88 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     notpos = np.argwhere(dx <= 0)
     if notpos.size > 0:
         raise Exception(prompt+'x[*] must be increasing with index!')
-        # error = 1
     if nvx % 2 != 0:
         raise Exception(prompt+'Number of elements in vx must be even!') 
-        # error = 1
     if Ti.size != nx:
         raise Exception(prompt+'Number of elements in Ti and x do not agree!')
-        # error = 1
     if vxi is None:
         vxi = np.zeros(nx)
     if vxi.size != nx:
         raise Exception(prompt+'Number of elements in vxi and x do not agree!')
-        # error = 1
     if Te.size != nx:
         raise Exception(prompt+'Number of elements in Te and x do not agree!')
-        # error = 1
     if n.size != nx:
         raise Exception('Number of elements in n and x do not agree!')
-        # error = 1
     if GammaxHBC is None:
         raise Exception(prompt+'GammaxHBC is not defined!')
     if PipeDia is None:
         PipeDia = np.zeros(nx)
     if PipeDia.size != nx:
-        raise Exception('Number of elements in PipeDia and x do not agree!') # Fixed error message- previously copied from n.size!=nx
-        # error = 1
+        raise Exception('Number of elements in PipeDia and x do not agree!')
     if len(fHBC[:,0]) != nvr:
         raise Exception(prompt+'Number of elements in fHBC[:,0] and vr do not agree!')
-        # error = 1
     if len(fHBC[0,:]) != nvx:
         raise Exception(prompt+'Number of elements in fHBC[0,:] and vx do not agree!')
-        # error = 1
     if fH2 is None:
         fH2 = np.zeros((nvr, nvx, nx))
     if fH2[:,0,0].size != nvr:
         raise Exception(prompt+'Number of elements in fH2[:,0,0] and vr do not agree!')
-        # error = 1
     if fH2[0,:,0].size != nvx:
         raise Exception(prompt+'Number of elements in fH2[0,:,0] and vx do not agree!')
-        # error = 1
     if fH2[0,0,:].size != nx:
         raise Exception(prompt+'Number of elements in fH2[0,0,:] and x do not agree!')
-        # error = 1
     if fSH is None:
         fSH = np.zeros((nvr, nvx, nx))
     if fSH[:,0,0].size != nvr:
         raise Exception(prompt+'Number of elements in fSH[:,0,0] and vr do not agree!')
-        # error = 1
     if fSH[0,:,0].size != nvx:
         raise Exception(prompt+'Number of elements in fSH[0,:,0] and vx do not agree!')
-        # error = 1
     if fSH[0,0,:].size != nx:
         raise Exception(prompt+'Number of elements in fSH[0,0,:] and x do not agree!')
-        # error = 1
     if nHP is None:
         nHP = np.zeros(nx)
     if nHP.size != nx:
         raise Exception(prompt+'Number of elements in nHP and x do not agree!')
-        # error = 1
     if THP is None:
         THP = np.full(nx, 1.0)
     if THP.size != nx:
         raise Exception(prompt+'Number of elements in nHP and x do not agree!')
-        # error = 1
     if fH is None:
         fH = np.zeros((nvr,nvx,nx))
     if fH[:,0,0].size != nvr:
         raise Exception(prompt+'Number of elements in fH[:,0,0] and vr do not agree!')
-        # error = 1
     if fH[0,:,0].size != nvx:
         raise Exception(prompt+'Number of elements in fH[0,:,0] and vx do not agree!')
-        # error = 1
     if fH[0,0,:].size != nx:
         raise Exception(prompt+'Number of elements in fH[0,0,:] and x do not agree!')
-        # error = 1
     if np.sum(abs(vr)) <= 0:
         raise Exception(prompt+'vr is all 0!')
-        # error = 1
     ii = np.argwhere(vr <= 0)
     if ii.size > 0:
         raise Exception(prompt+'vr contains zero or negative element(s)!')
-        # error = 1
     if np.sum(abs(vx)) <= 0:
         raise Exception(prompt+'vx is all 0!')
-        # error = 1
     if np.sum(x) <= 0:
         raise Exception(prompt+'Total(x) is less than or equal to 0!')
-        # error = 1
     if mu is None:
         raise Exception(prompt+'mu is not defined!')
     if mu not in [1,2]:
         raise Exception(prompt+'mu must be 1 or 2!')
-        # error = 1
 
     #NOTE Removed Plotting formatting, bring back once the program actually works
 
     i_n = np.argwhere(vx < 0)
     if np.size(i_n) < 1:
         print(prompt+'vx contains no negative elements!')
-        # error = 1
     i_p = np.argwhere(vx > 0)
     if np.size(i_p) < 1:
         print(prompt+'vx contains no positive elements!')
-        # error = 1
     i_z = np.argwhere(vx == 0)
     if np.size(i_z) > 0:
         print(prompt+'vx contains one or more zero elements!')
-        # error = 1
     diff = np.argwhere(vx[i_p] != -np.flipud(vx[i_n]))
     if diff.size > 0:
         raise Exception(prompt + " vx array elements are not symmetric about zero!")
-        # error = 1
-    # print("i_p", i_p)
-    # print("i_n", i_n)
-    # print("i_z", i_z)
-    # input()
 
 
     fHBC_input = np.zeros(fHBC.shape)
@@ -515,7 +373,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     test = np.sum(fHBC_input)
     if test <= 0.0 and abs(GammaxHBC) > 0:
         raise Exception(prompt+'Values for fHBC[:,:] with vx > 0 are all zero!')
-        # error = 1
 
     #	Output variables
 
@@ -552,7 +409,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
     Work = np.zeros((nvr*nvx))
     fHG = np.zeros((nvr,nvx,nx))
-    NHG = np.zeros((nx,Max_Gen+1))
+    NHG = np.zeros((nx,max_gen+1))
     Vth = np.sqrt((2*CONST.Q*Tnorm) / (mu*CONST.H_MASS))
     Vth2 = Vth*Vth
     Vth3 = Vth2*Vth
@@ -582,25 +439,11 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     differential = VSpace_Differentials(vr, vx)
     Vr2pidVr = differential.dvr_vol
     dVx = differential.dvx
-    # print("Vr2pidVr", Vr2pidVr)
-    # print("VrVr4pidVr", VrVr4pidVr)
-    # print("dVx", dVx)
-    # print("vol", vol.T)
-    # print("Vth_DeltaVx", Vth_DeltaVx.T)
-    # print("Vx_DeltaVx", Vx_DeltaVx.T)
-    # print("Vr_DeltaVr", Vr_DeltaVr.T)
-    # print("jpa", jpa)
-    # print("jpb", jpb)
-    # print("jna", jna)
-    # print("jnb", jnb)
-    # input()
 
     #	Vr^2-2*Vx^2
 
     for i in range(nvr):
         vr2_2vx2_2D[i,:] = (vr[i]**2) - 2*(vx**2)
-    # print("vr2_2vx2_2D", vr2_2vx2_2D.T)
-    # input()
 
     #	Theta-prime coordinate
 
@@ -608,10 +451,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     ntheta = 5 # use 5 theta mesh points for theta integration
     dTheta = np.ones(ntheta)/ntheta
     theta = np.pi*(np.arange(ntheta)/ntheta + 0.5/ntheta)
-    # print("theta", theta)
     cos_theta = np.cos(theta)
-    # print("cos", cos_theta)
-    # input()
 
     #	Scale input molecular distribution function to agree with desired flux
     gamma_input = 1.0
@@ -622,9 +462,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     if abs(ratio - 1) > 0.01*truncate:
         fHBC = fHBC_input
     fH[:,i_p,0] = fHBC_input[:,i_p]
-    # print("fH", fH[:,i_p,0].T)
-    # print("shape", fH.shape)
-    # input()
 
     #	if fH2 is zero, then turn off elastic H2 <-> H collisions
     H_H2_EL = _H_H2_EL
@@ -750,9 +587,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 for i in range(nvr):
                     vr2vx2_ran2[i,:] = vr[i]**2 + (vx - vxH2[k]/Vth)**2
                 TH2[k] = (2*mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fH2[:,:,k]) @ dVx)) / (3*CONST.Q*nH2[k])
-        # print("TH2", TH2)
-        # print("vxH2", vxH2)
-        # input()
 
     if New_Grid:
         if debrief > 1:
@@ -775,11 +609,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         ErelH_P = np.maximum(ErelH_P, 0.1) # sigmav_cx does not handle neutral energies below 0.1 eV
         ErelH_P = np.minimum(ErelH_P, 2e4) # sigmav_cx does not handle neutral energies above 20 keV
 
-        # print("ErelH_P", ErelH_P[:,10,10].T)
-        # print("vr2vx2", vr2vx2[:,10,10].T)
-        # print("vr2vx_vxi2", vr2vx_vxi2[:,10,10].T)
-        # input()
-
     if New_Protons:
         if debrief>1:
             print(prompt+'Computing Ti/mu at each mesh point')
@@ -797,12 +626,8 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         mol = 1
         Maxwell = create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm)
         fi_hat = np.copy(Maxwell)
-        
-        # print("ti_mu", Ti_mu[:,10,10].T)
-        # print("fi_hat", fi_hat[:,10,10].T)
-        # input()
 
-    if Compute_Errors:
+    if compute_errors:
         if debrief>1:
             print(prompt+'Computing Vbar_Error')
 
@@ -827,7 +652,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             vbar_error[k] = abs(vbar-vbar_exact) / vbar_exact
         if debrief > 0:
             print(prompt+'Maximum Vbar error = ', sval(max(vbar_error)))
-            # input()
 
     if Do_ni:
         if debrief>1:
@@ -836,8 +660,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         if ni_correct:
             ni = n-nHP
         ni = np.maximum(ni, 0.01*n)
-        # print("ni", ni)
-        # input()
 
     if Do_sigv:
         if debrief>1:
@@ -873,11 +695,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         #	Recombination rate (normalized by vth) = reaction 2
         Rec = (n*sigv[:,2]) / Vth
 
-        # print("sigv", sigv.T)
-        # print("alpha_ion", alpha_ion)
-        # print("Rec", Rec)
-        # input()
-
     #	Compute Total Atomic Hydrogen Source
     Sn = np.zeros((nvr,nvx,nx))
 
@@ -886,8 +703,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         Sn[:,:,k] = fSH[:,:,k]/Vth
         if Recomb:
             Sn[:,:,k] = Sn[:,:,k] + fi_hat[:,:,k]*ni[k]*Rec[k]
-    # print("Sn", Sn.T)
-    # input()
 
     #	Set up arrays for charge exchange and elastic collision computations, if needed
 
@@ -911,17 +726,12 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
         #	v_v=|v-v_prime| at each double velocity space mesh point, including theta angle
         v_v = np.sqrt(v_v2)
-        # print("V_V", v_v.T[0,0,0])
-        # print("v_v shape", v_v.shape)
-        # input()
 
         #	vx_vx=(vx-vx_prime) at each double velocity space mesh point
         vx_vx = np.zeros((nvr,nvx,nvr,nvx))
         for j in range(nvx):
             for l in range(nvx):
                 vx_vx[:,j,:,l] = vx[j]-vx[l]
-        # print("vx_vx", vx_vx.T)
-        # input()
 
         #	Set Vr'2pidVr'*dVx' for each double velocity space mesh point
 
@@ -930,8 +740,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             Vr2pidVrdVx[:,:,k,:] = Vr2pidVr[k]
         for l in range(nvx):
             Vr2pidVrdVx[:,:,:,l] = Vr2pidVrdVx[:,:,:,l]*dVx[l]
-        # print("Vr2pidVrdVx", Vr2pidVrdVx.T)
-        # input()
 
     if Simple_CX == 0 and Do_SIG_CX == 1: #NOTE Not Tested Yet
         if debrief>1:
@@ -961,16 +769,12 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         #	Compute sigma_H_H * vr2_vx2 * v_v at all possible relative velocities
         _Sig = np.zeros((nvr*nvx*nvr*nvx,ntheta))
         _Sig[:] = (vr2_vx2*v_v*sigma_el_h_h(v_v2*(0.5*CONST.H_MASS*mu*Vth2/CONST.Q), vis=True) / 8).reshape(_Sig.shape, order='F')
-        # print("_SIG", _Sig[239,4].T)
-        # input()
 
         #	Note: For viscosity, the cross section for D -> D is the same function of center of mass energy as H -> H.
 
         #	Set SIG_H_H = vr' x Integral{vr2_vx2*v_v*sigma_H_H} over theta=0,2pi times differential velocity space element Vr'2pidVr'*dVx'
         SIG_H_H = np.zeros((nvr*nvx,nvr*nvx))
         SIG_H_H[:] = (Vr2pidVrdVx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_H.shape, order='F')
-        # print("SIG_H_H", SIG_H_H.T)
-        # input()
         #	SIG_H_H is now vr' * sigma_H_H(v_v) * vr2_vx2 * v_v (intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
     if Do_SIG_H_H2 == 1:
@@ -992,9 +796,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
         SIG_H_H2 = np.zeros((nvr*nvx,nvr*nvx))
         SIG_H_H2[:] = (Vr2pidVrdVx*vx_vx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_H2.shape, order='F')
-        # print("SIG_H_H2", SIG_H_H2.T)
-        # print(SIG_H_H2.shape)
-        # input()
 
         #	SIG_H_H2 is now vr' *vx_vx * sigma_H_H2(v_v) * v_v 
         #		(intergated over theta) for all possible ([vr,vx],[vr',vx'])
@@ -1015,9 +816,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
         SIG_H_P = np.zeros((nvr*nvx,nvr*nvx))
         SIG_H_P[:] = (Vr2pidVrdVx*vx_vx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_P.shape, order='F')
-        # print("SIG_H_P", SIG_H_P.T)
-        # print(SIG_H_P.shape)
-        # input()
 
         #	SIG_H_P is now vr' *vx_vx * sigma_H_P(v_v) * v_v (intergated over theta) 
         #		for all possible ([vr,vx],[vr',vx'])
@@ -1051,9 +849,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 for k in range(nx):
                     Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*ni[k]
                 print('Compare alpha_cx and alpha_cx_test')
-        # print("Alpha_CX", Alpha_CX.T)
-        # print(Alpha_CX.shape)
-        # input()
             
 
     #	Compute Alpha_H_H2 for inputted fH, if it is needed and has not
@@ -1066,9 +861,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         for k in range(nx):
             Work[:] = fH2[:,:,k].reshape(Work.shape, order='F')
             Alpha_H_H2[:,:,k] = (SIG_H_H2 @ Work).reshape(Alpha_H_H2[:,:,k].shape, order='F')
-        # print("Alpha_H_H2", Alpha_H_H2[:,:,10].T)
-        # print(Alpha_H_H2.shape)
-        # input()
 
     #	Compute Alpha_H_P for present Ti and ni 
     #		if it is needed and has not already been computed with the present parameters
@@ -1079,9 +871,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         for k in range(nx):
             Work[:] = (fi_hat[:,:,k]*ni[k]).reshape(Work.shape, order='F')
             Alpha_H_P[:,:,k] = (SIG_H_P @ Work).reshape(Alpha_H_P[:,:,k].shape, order='F')
-        # print("Alpha_H_P", Alpha_H_P.T)
-        # print(Alpha_H_P.shape)
-        # input()
 
     #	Compute nH
     for k in range(nx):
@@ -1097,9 +886,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         if PipeDia[k] > 0:
             for j in range(nvx):
                 gamma_wall[:,j,k] = 2*vr / PipeDia[k]
-    # print("nH", nH)
-    # print("gamma_wall", gamma_wall.T)
-    # input()
 
     do_fH_Iterate = True
 
@@ -1119,8 +905,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             if H_P_EL or H_H2_EL or H_H_EL:
                 for k in range(nx):
                     VxH[k] = Vth*np.sum(Vr2pidVr*(fH[:,:,k] @ (vx*dVx))) / nH[k]
-                # print("VxH", VxH)
-                # input()
 
             #	Compute Omega_H_P for present fH and Alpha_H_P if H_P elastic collisions are included
             if H_P_EL:
@@ -1132,8 +916,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                     DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                     Omega_H_P[k] = np.sum(Vr2pidVr*((Alpha_H_P[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
                 Omega_H_P = np.maximum(Omega_H_P, 0)
-                # print("Omega_H_P", Omega_H_P)
-                # input()
 
             #	Compute Omega_H_H2 for present fH and Alpha_H_H2 if H_H2 elastic collisions are included
 
@@ -1148,8 +930,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                     # input()
                     Omega_H_H2[k] = np.sum(Vr2pidVr*((Alpha_H_H2[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
                 Omega_H_H2 = np.maximum(Omega_H_H2, 0)
-                # print("Omega_H_H2", Omega_H_H2)
-                # input()
 
             #	Compute Omega_H_H for present fH if H_H elastic collisions are included
 
@@ -1173,14 +953,10 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                     Wpp = np.sign(Wpp)*MagWpp
                     Omega_H_H[k] = np.sum(Vr2pidVr*((Alpha_H_H*Work.reshape(Alpha_H_H.shape, order='F')) @ dVx)) / (nH[k]*Wpp)
                 Omega_H_H = np.maximum(Omega_H_H, 0)
-                # print("Omega_H_H", Omega_H_H)
-                # input()
 
         #	Total Elastic scattering frequency
 
         Omega_EL = Omega_H_P + Omega_H_H2 + Omega_H_H
-        # print("Omega_EL", Omega_EL.T)
-        # input()
 
         #	Total collision frequency
 
@@ -1191,8 +967,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
         else:
             for k in range(nx):
                 alpha_c[:,:,k] = alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
-        # print("alpha_c", alpha_c.T)
-        # input()
 
         #	Test x grid spacing based on Eq.(27) in notes
         if debrief>1:
@@ -1250,13 +1024,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 Ck[:,j,k] = (-2*vx[j] - (x[k] - x[k -1])*alpha_c[:,j,k]) / denom
                 Dk[:,j,k] = (x[k] - x[k-1]) / denom
                 Gk[:,j,k] = (x[k] - x[k-1])*(Sn[:,j,k]+Sn[:,j,k-1]) / denom
-        # print("Ak", Ak.T)
-        # print("Bk", Bk.T)
-        # print("Ck", Ck.T)
-        # print("Dk", Dk.T)
-        # print("Fk", Fk.T)
-        # print("Gk", Gk.T)
-        # input()
                         
         #	Compute first-flight (0th generation) neutral distribution function
         Beta_CX_sum = np.zeros((nvr,nvx,nx))
@@ -1271,18 +1038,12 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             fHG[:,i_p,k+1] = fHG[:,i_p,k]*Ak[:,i_p,k] + Fk[:,i_p,k]
         for k in range(nx-1,0,-1):
             fHG[:,i_n,k-1] = fHG[:,i_n,k]*Ck[:,i_n,k] + Gk[:,i_n,k]
-        # print("fHG", fHG.T)
-        # input()
                 
         #	Compute first-flight neutral density profile
         for k in range(nx):
             NHG[k,igen] = np.sum(Vr2pidVr*(fHG[:,:,k] @ dVx))
-        # print("NHG", NHG.T)
-        # input()
 
         # NOTE Add plotting once program is working
-        # if plot >1:
-        #     pass
 
         #	Set total atomic neutral distribution function to first flight generation
 
@@ -1291,10 +1052,9 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
 # next_generation #########################################################################################################################################################################
         while True:
-            #print('check next_generation')
-            if igen+1 > Max_Gen or fH_generations == 0:
+            if igen+1 > max_gen or fH_generations == 0:
                 if debrief > 0:
-                    print(prompt+'Completed '+sval(Max_Gen)+' generations. Returning present solution...')
+                    print(prompt+'Completed '+sval(max_gen)+' generations. Returning present solution...')
                 break
             igen += 1
             if debrief > 0:
@@ -1321,8 +1081,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 
                 #	Sum charge exchange source over all generations
                 Beta_CX_sum += Beta_CX
-            # print("Beta_CX_sum", Beta_CX_sum.T)
-            # input()
 
             #	Compute MH from previous generation
             MH_H = np.zeros((nvr,nvx,nx))
@@ -1336,16 +1094,7 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                     VxHG[k] = Vth*np.sum(Vr2pidVr*(fHG[:,:,k] @ (vx*dVx))) / NHG[k,igen-1]
                     for i in range(0, nvr):
                         vr2vx2_ran2[i,:] = vr[i]**2 + (vx - VxHG[k]/Vth)**2
-                    # if igen >= 2:
-                    #     print("vr2", vr2vx2_ran2)
-                    #     input()
-                    #     print("fHG", fHG[:,:,k].T)
-                    #     input()
-                    #     print("NHG", NHG[k,igen-1])
-                    #     input()
                     THG[k] = (mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fHG[:,:,k]) @ dVx)) / (3*CONST.Q*NHG[k,igen-1])
-                # print("THG", THG)
-                # input()
 
                 if H_H_EL:
                     if debrief > 1:
@@ -1360,9 +1109,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                         MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                         OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
                     MH_H_sum += MH_H
-                    # print("MH_H_sum", MH_H_sum.T)
-                    # print("OmegaM", OmegaM.T)
-                    # input()
 
                 if H_P_EL:
                     if debrief>1:
@@ -1377,9 +1123,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                         MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                         OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
                     MH_P_sum += MH_P
-                    # print("MH_P_sum", MH_P_sum.T)
-                    # print("OmegaM", OmegaM.T)
-                    # input()
 
                 if H_H2_EL:
                     if debrief>1:
@@ -1395,29 +1138,18 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                         MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                         OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
                     MH_H2_sum += MH_H2
-                    # print("MH_H2_sum", MH_H2_sum.T)
-                    # print("OmegaM", OmegaM.T)
-                    # input()
 
             #	Compute next generation atomic distribution
 
             fHG[:] = 0
-            # print("FHG", fHG)
             for k in range(0, nx-1):
                 fHG[:,i_p,k+1] = Ak[:,i_p,k]*fHG[:,i_p,k] + Bk[:,i_p,k]*(Beta_CX[:,i_p,k+1] + OmegaM[:,i_p,k+1] + Beta_CX[:,i_p,k] + OmegaM[:,i_p,k])
             for k in range(nx-1, 0, -1):
                 fHG[:,i_n,k-1] = Ck[:,i_n,k]*fHG[:,i_n,k] + Dk[:,i_n,k]*(Beta_CX[:,i_n,k-1] + OmegaM[:,i_n,k-1] + Beta_CX[:,i_n,k] + OmegaM[:,i_n,k])
-                # print("FHG1", fHG[:,i_n,k-1].T)
-                # input()
             for k in range(0, nx):
                 NHG[k,igen] = np.sum(Vr2pidVr*(fHG[:,:,k] @ dVx))
-            # print("fHG", fHG.T)
-            # print("NHG", NHG.T)
-            # input()
 
             # NOTE Add plotting once program is working
-            # if plot > 1:
-            #     pass
 
             #	Add result to total neutral distribution function
             fH += fHG
@@ -1426,8 +1158,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             #	Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
             #		and decide if another generation should be computed
             Delta_nHG = max(NHG[:,igen]/max(nH))
-            # print("Delta_nHG", Delta_nHG)
-            # input()
             if (Delta_nHG < truncate) or (fH_iterate and (Delta_nHG < 0.003*Delta_nHs)):
                 #	If fH 'seed' is being iterated, then do another generation until the 'generation error'
                 #		is less than 0.003 times the 'seed error' or is less than TRUNCATE
@@ -1436,22 +1166,16 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
 # fH2_done #########################################################################################################################################################################
         
         # NOTE Add plotting once program is working
-        # if plot>0:
-        #     pass
 
         #	Compute H density profile
         for k in range(0, nx):
             nH[k] = np.sum(Vr2pidVr*(fH[:,:,k] @ dVx))
-        # print("nH", nH)
-        # input()
 
         if fH_iterate:
 
             #	Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
             #		If Delta_nHs is greater than 10*truncate then iterate fH
             Delta_nHs = np.max(np.abs(nHs - nH))/np.max(nH)
-            # print("Delta_nHs", Delta_nHs)
-            # input()
             if Delta_nHs > 10*truncate:
                 do_fH_Iterate = True 
 
@@ -1464,17 +1188,12 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             # ion distribution function
             for k in range(0, nx):
                 Beta_CX[:,:,k] = fi_hat[:,:,k]*np.sum(Vr2pidVr*(Alpha_CX[:,:,k]*fHG[:,:,k] @ dVx))
-                # print((Alpha_CX[:,:,k]*fH2G[:,:,k] @ dVx).T)
-                # input()
         else:
             # Option (A): Compute charge exchange source using fH2 and vr x sigma x v_v at each velocity mesh point
             for k in range(0, nx):
                 Work[:] = fHG[:,:,k]
                 Beta_CX[:,:,k] = ni[k]*fi_hat[:,:,k]*(SIG_CX @ Work)
         Beta_CX_sum = Beta_CX_sum + Beta_CX
-    # print("Beta_CX", Beta_CX.T)
-    # print("Beta_CX_sum", Beta_CX_sum.T)
-    # input()
             
     #	Update MH_*_sum using last generation
     MH_H2 = np.zeros((nvr,nvx,nx))
@@ -1488,8 +1207,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             for i in range(0, nvr):
                 vr2vx2_ran2[i,:] = vr[i]**2 + (vx - VxHG[k]/Vth)**2
             THG[k] = (mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fHG[:,:,k]) @ dVx)) / (3*CONST.Q*NHG[k,igen])
-        # print("THG", THG)
-        # input()
 
         if H_H_EL:
             if debrief > 1: 
@@ -1504,8 +1221,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                 OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
             MH_H_sum = MH_H_sum + MH_H
-            # print("MH_H_sum", MH_H_sum.T)
-            # input()
 
         if H_P_EL:
             if debrief > 1:
@@ -1520,8 +1235,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                 OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
             MH_P_sum = MH_P_sum + MH_P
-            # print("MH_P_sum", MH_P_sum.T)
-            # input()
 
             if H_H2_EL: #NOTE Not Tested Yet
                 if debrief > 1:
@@ -1535,8 +1248,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                     MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                     OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
                 MH_H2_sum = MH_H2_sum + MH_H2
-                # print("MH_H2_sum", MH_H2_sum.T)
-                # input()
 
     #	Compute remaining moments
 
@@ -1544,34 +1255,23 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     #	GammaxH - particle flux in x direction
     for k in range(0, nx):
             GammaxH[k] = Vth*np.sum(Vr2pidVr*(fH[:,:,k] @ (vx*dVx)))
-    # print("GammaxH", GammaxH)
-    # input()
 
     #	VxH - x velocity
     VxH = GammaxH / nH
-    _VxH = VxH / Vth 
-    # print("VxH", VxH)
-    # print("_VxH", _VxH)
-    # input()
+    _VxH = VxH / Vth
 
     #	magnitude of random velocity at each mesh point
     vr2vx2_ran = np.zeros((nvr,nvx,nx))
     for i in range(0, nvr):
         for k in range(0, nx):
             vr2vx2_ran[i,:,k] = vr[i]**2 + (vx - _VxH[k])**2
-    # print("vr2vx2_ran", vr2vx2_ran.T)
-    # input()
 
     #	pH - pressure 
     for k in range(nx):
         pH[k] = ((mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ dVx))) / (3*CONST.Q)
-    # print("pH", pH)
-    # input()
 
     #	TH - temperature
     TH = pH/nH
-    # print("TH", TH)
-    # input()
 
     #	piH_xx
     for k in range(nx):
@@ -1584,10 +1284,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     #	qxH
     for k in range(nx):
         qxH[k] = 0.5*(mu*CONST.H_MASS)*Vth3*np.sum(Vr2pidVr*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ (dVx*(vx - _VxH[k]))))
-    # print("piH2_xx", KH.Output.piH_xx)
-    # print("piH2_yy", KH.Output.piH_yy)
-    # print("qxH", qxH)
-    # input()
 
     #	C = RHS of Boltzman equation for total fH
 
@@ -1632,46 +1328,18 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             for i in range(0, nvr):
                 vr2_2vx_ran2[i,:] = vr[i]**2 - 2*((vx - _VxH[k])**2)
             KH.Output.Epara_PerpH_H[k] = -0.5*(mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2_2vx_ran2*CH_H) @ dVx))
-    # print("QH", QH)
-    # print("RxH", RxH)
-    # print("NetHSource", NetHSource)
-    # print("Sion", Sion)
-    # print("SourceH", KH.Output.SourceH)
-    # print("WallH", WallH)
-    # print("SRecomb", KH.Output.SRecomb)
-    # input()
-    # print("RxHCX", KH.Output.RxHCX)
-    # print("EHCX", KH.Output.EHCX)
-    # input()
-    # print("RxH2_H", KH.Output.RxH2_H)
-    # print("EH2_H", KH.Output.EH2_H)
-    # input()
-    # print("RxP_H", KH.Output.RxP_H)
-    # print("EP_H", KH.Output.EP_H)
-    # input()
-    # print("RxW_H", KH.Output.RxW_H)
-    # print("EW_H", KH.Output.EW_H)
-    # input()
-    # print("Epara_PerpH_H", KH.Output.Epara_PerpH_H)
-    # input()
 
     #	qxH_total
     qxH_total = (0.5*nH*(mu*CONST.H_MASS)*VxH*VxH + 2.5*pH*CONST.Q)*VxH + CONST.Q*KH.Output.piH_xx*VxH + qxH
-    # print("qxH_total", qxH_total)
-    # input()
 
     #	QH_total
     QH_total = QH + RxH*VxH + 0.5*(mu*CONST.H_MASS)*NetHSource*VxH*VxH
-    # print("QH_total", QH_total)
-    # input()
 
     #	Albedo
     gammax_plus = Vth*np.sum(Vr2pidVr*(fH[:,i_p[:,0],0] @ (vx[i_p[:,0]]*dVx[i_p[:,0]]))) #NOTE Had to reference i_p and i_n in a weird way, fix how they are called in the first place
     gammax_minus = Vth*np.sum(Vr2pidVr*(fH[:,i_n[:,0],0] @ (vx[i_n[:,0]]*dVx[i_n[:,0]]))) #This is awful and should not be allowed to remain
     if np.abs(gammax_plus) > 0:
         AlbedoH = -gammax_minus/gammax_plus
-    # print("AlbedoH", AlbedoH)
-    # input()
 
     #	Compute Mesh Errors
 
@@ -1690,14 +1358,12 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
     max_H_H2_error = np.zeros(3)
     max_H_P_error = np.zeros(3)
 
-    if Compute_Errors:
+    if compute_errors:
         if debrief > 1:
             print(prompt+'Computing Collision Operator, Mesh, and Moment Normalized Errors')
         NetHSource2 = KH.Output.SourceH + KH.Output.SRecomb - Sion - WallH
         for k in range(nx):
             C_error[k] = abs(NetHSource[k] - NetHSource2[k]) / max(abs(np.array([NetHSource[k], NetHSource2[k]])))
-        # print("C_error", C_error)
-        # input()
 
         #	Test conservation of particles for charge exchange operator
         if H_P_CX:
@@ -1705,8 +1371,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 CX_A = np.sum(Vr2pidVr*((Alpha_CX[:,:,k]*fH[:,:,k]) @ dVx))
                 CX_B = np.sum(Vr2pidVr*(Beta_CX_sum[:,:,k] @ dVx))
                 CX_error[k] = np.abs(CX_A - CX_B) / np.max(np.abs(np.array([CX_A, CX_B])))
-            # print("CX_error", CX_error)
-            # input()
 
         #	Test conservation of particles, x momentum, and total energy of elastic collision operators
         for m in range(0, 3):
@@ -1740,10 +1404,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
             max_H_H_error[m] = np.max(H_H_error[:,m])
             max_H_H2_error[m] = np.max(H_H2_error[:,m])
             max_H_P_error[m] = np.max(H_P_error[:,m])
-            # print("max_H_H_error", max_H_H_error)
-            # print("max_H_H2_error", max_H_H2_error)
-            # print("max_H_P_error", max_H_P_error)
-            # input()
 
         if CI_Test:
             #	Compute Momentum transfer rate via full collision integrals for charge exchange and 
@@ -1879,11 +1539,6 @@ def kinetic_h(mesh : KineticMesh, mu, vxi, fHBC, GammaxHBC, fH2, fSH, nHP, THP, 
                 input()
 
     # NOTE Add plotting once program is working
-    # if plot>1:	#	May add later
-    #     pass
-
-    #	lines 1665 - 1748 in original code are used for plotting
-    #		This may be added later, but has been left out for now
 
     #	Save input parameters in kinetic_H_input common block
 
