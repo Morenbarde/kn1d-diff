@@ -9,7 +9,7 @@ from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import KineticMesh
-from .kinetic_h import kinetic_h 
+from .kinetic_h import Kinetic_H
 from .kinetic_h2 import kinetic_h2
 from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
@@ -269,8 +269,11 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     print("Satisfaction condition: ", truncate)
 
+
     KH_Common = Kinetic_H_Common() #Common block for Kinetic_H
     KH2_Common = Kinetic_H2_Common() #Common blocks for Kinetic_H2
+
+    kinetic_h = Kinetic_H(kh_mesh, mu, vxiA)
         
     if oldrun:
         # checks if the previous run satisfies the required conditions 
@@ -333,31 +336,19 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             do_warn = 5.0E-3
             fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) 
             fSHA = interp_fvrvxx(fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
-            # ii = np.nonzero(fH2A.reshape(fH2A.size, order='F'))
-            # print("fH2Anz", ii)
-            # print("fH2A", fH2A.reshape(fH2A.size, order='F')[ii])
-            # ii = np.nonzero(fSHA.reshape(fSHA.size, order='F')) #NOTE Not Correct, Revisit
-            # print("fSHAnz", ii)
-            # print("fSHA", fSHA.reshape(fSHA.size, order='F')[ii])
-            # input()
 
             nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
             THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
-            # print("nHPA", nHPA)
-            # print("THPA", THPA)
-            # input()    
 
             # Compute fH using Kinetic_H
             GammaxHBC = 0
-            # fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size,kh_mesh.x.size))
             fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
-            ni_correct = 1
             Hcompute_errors = compute_errors and Hdebrief
 
-            kh_results = kinetic_h(
-                    kh_mesh, mu, vxiA, fHBC, GammaxHBC, fH2A, fSHA, fH, nHPA, THPA, jh_coefficients, KH_Common,
-                    truncate=truncate, max_gen=max_gen, ni_correct=ni_correct, compute_errors=Hcompute_errors,
-                    plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause) # Not sure where some of the keywords are defined
+            kh_results = kinetic_h.run_generation(
+                    fHBC, GammaxHBC, fH2A, fSHA, fH, nHPA, THPA, jh_coefficients, KH_Common,
+                    truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
+                    plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause)
             
             fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH,error = kh_results
 

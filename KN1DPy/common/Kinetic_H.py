@@ -93,8 +93,6 @@ class Kinetic_H_Input:
 
         self.fH_s = None
         self.Simple_CX_s = None
-        self.JH_s = None
-        self.Collrad_s = None
         self.Recomb_s = None
         self.H_H_EL_s = None
         self.H_P_EL_s = None
@@ -123,8 +121,6 @@ class Kinetic_H_Input:
 
         string += "    fH_s: " + str(self.fH_s) + "\n"
         string += "    Simple_CX_s: " + str(self.Simple_CX_s) + "\n"
-        string += "    JH_s: " + str(self.JH_s) + "\n"
-        string += "    Collrad_s: " + str(self.Collrad_s) + "\n"
         string += "    Recomb_s: " + str(self.Recomb_s) + "\n"
         string += "    H_H_EL_s: " + str(self.H_H_EL_s) + "\n"
         string += "    H_P_EL_s: " + str(self.H_P_EL_s) + "\n"
