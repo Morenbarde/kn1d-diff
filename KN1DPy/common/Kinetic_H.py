@@ -1,23 +1,25 @@
 # Contains Class definitions for shared variables primarily used in Kinetic_H
 
+import numpy as np
+
 #   From the Kinetic_H_Output common block
 class Kinetic_H_Output:
 
-    def __init__(self):
-        self.piH_xx = None
-        self.piH_yy = None
-        self.piH_zz = None
-        self.RxHCX = None
-        self.RxH2_H = None
-        self.RxP_H = None
-        self.RxW_H = None
-        self.EHCX = None
-        self.EH2_H = None
-        self.EP_H = None
-        self.EW_H = None
-        self.Epara_PerpH_H = None
-        self.SourceH = None
-        self.SRecomb = None
+    def __init__(self, nx):
+        self.piH_xx = np.zeros(nx)
+        self.piH_yy = np.zeros(nx)
+        self.piH_zz = np.zeros(nx)
+        self.RxHCX = np.zeros(nx)
+        self.RxH2_H = np.zeros(nx)
+        self.RxP_H = np.zeros(nx)
+        self.RxW_H = np.zeros(nx)
+        self.EHCX = np.zeros(nx)
+        self.EH2_H = np.zeros(nx)
+        self.EP_H = np.zeros(nx)
+        self.EW_H = np.zeros(nx)
+        self.Epara_PerpH_H = np.zeros(nx)
+        self.SourceH = np.zeros(nx)
+        self.SRecomb = np.zeros(nx)
 
     #Setup string conversion for printing
     def __str__(self):

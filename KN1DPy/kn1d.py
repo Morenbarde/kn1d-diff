@@ -267,13 +267,14 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     #   Starting back at line 429 from IDL code
 
-    print("Satisfaction condition: ", truncate)
+    print(prompt+"Satisfaction condition: ", truncate)
 
 
-    KH_Common = Kinetic_H_Common() #Common block for Kinetic_H
     KH2_Common = Kinetic_H2_Common() #Common blocks for Kinetic_H2
 
-    kinetic_h = Kinetic_H(kh_mesh, mu, vxiA)
+    GammaxHBC = 0
+    fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
+    kinetic_h = Kinetic_H(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients)
         
     if oldrun:
         # checks if the previous run satisfies the required conditions 
@@ -341,16 +342,14 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
 
             # Compute fH using Kinetic_H
-            GammaxHBC = 0
-            fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
             Hcompute_errors = compute_errors and Hdebrief
 
             kh_results = kinetic_h.run_generation(
-                    fHBC, GammaxHBC, fH2A, fSHA, fH, nHPA, THPA, jh_coefficients, KH_Common,
+                    fH2A, fSHA, fH, nHPA, THPA,
                     truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
                     plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause)
             
-            fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH,error = kh_results
+            fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH = kh_results
 
             # print("fH", fH.T)
             # input()
@@ -430,8 +429,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # input()
             if compute_errors:
                 _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, KH2_Common.Output.RxH_H2, left=0, right=0)
-                DRx = _RxH_H2 + KH_Common.Output.RxH2_H
-                nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, KH_Common.Output.RxH2_H])))
+                DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
+                nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
                 if debrief:
                     print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
             

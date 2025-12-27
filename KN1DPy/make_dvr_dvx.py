@@ -47,7 +47,7 @@ class VSpace_Differentials:
         '''
 
         # --- Calculations for r-dimension ---
-        vr_extend    = np.append(vr, 2*vr[-1] - vr[-2])
+        vr_extend = np.append(vr, 2*vr[-1] - vr[-2])
         vr_mid = np.concatenate(([0.0], 0.5*(vr_extend + np.roll(vr_extend, -1)))) #midpoints between each value in vr
 
         self.vr_right_bound = vr_mid[1:vr.size+1]

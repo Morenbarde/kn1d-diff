@@ -20,24 +20,74 @@ from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 
 from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
-from .common.Kinetic_H import Kinetic_H_Common
+from .common.Kinetic_H import *
 
 class Kinetic_H():
 
-    def __init__(self, mesh: KineticMesh, mu: int, vxi: NDArray):
+    #	Internal Debug switches
+    CI_Test = 1
+    Do_Alpha_CX_Test = 0
 
+    #	Internal Tolerances
+    DeltaVx_tol = .01
+    Wpp_tol = .001
+
+    # Theta-prime Coordinate
+    ntheta = 5 # use 5 theta mesh points for theta integration
+    dtheta = np.ones(ntheta)/ntheta
+    cos_theta = np.cos(np.pi*(np.arange(ntheta)/ntheta + 0.5/ntheta))
+
+    #   Internal Print Formatting
+    prompt = 'Kinetic_H => '
+
+
+    def __init__(self, mesh: KineticMesh, mu: int, vxi: NDArray, fHBC: NDArray, GammaxHBC: float, jh_coeffs: JH_Coef = None):
+
+        # Configuration Options
         self.COLLISIONS = get_config()['collisions']
         self.ion_rate_option = get_config()['kinetic_h']['ion_rate']
 
+        # Main attributes
         self.mesh = mesh
         self.mu = mu
         self.vxi = vxi
+        self.fHBC = fHBC
+        self.GammaxHBC = GammaxHBC
+
+        # Shorthand sizes for main mesh variables
+        self.nvr = mesh.vr.size
+        self.nvx = self.mesh.vx.size
+        self.nx = self.mesh.x.size
+
+        self.vx_neg = np.nonzero(self.mesh.vx < 0)[0]
+        self.vx_pos = np.nonzero(self.mesh.vx > 0)[0]
+        self.vx_zero = np.nonzero(self.mesh.vx == 0)[0]
+
+        # Variables for internal use
+        self.vth = np.sqrt((2*CONST.Q*self.mesh.Tnorm) / (self.mu*CONST.H_MASS))
+        self.fHBC_input = self._compute_fBHC_input()
+        #	Vr^2-2*Vx^2
+        self.vr2_2vx2_2D = np.asarray([(vr**2) - 2*(self.mesh.vx**2) for vr in self.mesh.vr])
+        #   Differential Values
+        differential = VSpace_Differentials(self.mesh.vr, self.mesh.vx)
+        self.dvr_volume = differential.dvr_vol
+        self.dvx = differential.dvx
+
+        # Common Blocks
+        self.Input = Kinetic_H_Input()
+        self.Internal = Kinetic_H_Internal()
+        self.Output = Kinetic_H_Output(self.nx)
+        self.H2_Moments = Kinetic_H_H2_Moments()
+        self.Errors = Kinetic_H_Errors()
+        self.JH_Coefficients = jh_coeffs
+
+        self._test_init_parameters()
 
         return
     
-    def run_generation(self, fHBC: NDArray, GammaxHBC: float, fH2: NDArray = None, fSH: NDArray = None, 
-              fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, jh_coeffs : JH_Coef = None, KH : Kinetic_H_Common = None, 
-              truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, no_recomb = 0, plot = 0, debug = 0, debrief = 0, pause = 0):
+    
+    def run_generation(self, fH2: NDArray = None, fSH: NDArray = None, fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, 
+              truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, recomb = True, plot = 0, debug = 0, debrief = 0, pause = 0):
         '''
         Solves a 1-D spatial, 2-D velocity kinetic neutral transport 
         problem for atomic hydrogen or deuterium (H)
@@ -79,8 +129,8 @@ class Kinetic_H():
                 If true, Corrects hydrogen ion density according to quasineutrality: ni=ne-nHp
             compute_errors : bool, default=False
                 If true, compute error estimates
-            no_recomb : bool, default=false
-                If true, does not include recombination as a source of atomic neutrals in the algorithm
+            recomb : bool, default=True
+                If true, includes recombination as a source of atomic neutrals in the algorithm
             plot : int, default=0
                 - 0=no plots
                 - 1=summary plots
@@ -95,12 +145,12 @@ class Kinetic_H():
                 - 0=do not print
                 - 1=print summary information
                 - 2=print detailed information
-            pause : bool, default=false
+            pause : bool, default=False
                 If true, pause between plots
 
         Returns
         -------
-        fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH,error
+        fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH
 
             fH : ndarray
                 3D array, atomic distribution function.
@@ -132,11 +182,6 @@ class Kinetic_H():
                 Ratio of atomic particle flux with Vx < 0 divided by particle flux with Vx > 0 at x=0
             WallH : ndarray
                 Atomic sink rate from interation with 'side walls' (m^-3 s^-1)
-            error : int
-                Error status
-                - 0=no error, solution returned
-                - 1=error, no solution returned
-                NOTE Change to bool, or replace with raises
 
         Notes
         -------
@@ -173,355 +218,109 @@ class Kinetic_H():
             atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
         '''
 
-
-        prompt = 'Kinetic_H => '
-
-        #	Set Kinetic_H_input common block variables 
-        vx_s = KH.Input.vx_s
-        vr_s = KH.Input.vr_s
-        x_s = KH.Input.x_s
-        Tnorm_s = KH.Input.Tnorm_s
-        mu_s = KH.Input.mu_s
-        Ti_s = KH.Input.Ti_s
-        Te_s = KH.Input.Te_s
-        n_s = KH.Input.n_s
-        vxi_s = KH.Input.vxi_s
-        fHBC_s = KH.Input.fHBC_s
-        GammaxHBC_s = KH.Input.GammaxHBC_s
-        PipeDia_s = KH.Input.PipeDia_s
-        fH2_s = KH.Input.fH2_s
-        fSH_s = KH.Input.fSH_s
-        nHP_s = KH.Input.nHP_s
-        THP_s = KH.Input.THP_s
-        fH_s = KH.Input.fH_s
-        Simple_CX_s = KH.Input.Simple_CX_s
-        Recomb_s = KH.Input.Recomb_s
-        H_H_EL_s = KH.Input.H_H_EL_s
-        H_P_EL_s = KH.Input.H_P_EL_s
-        H_H2_EL_s = KH.Input.H_H2_EL_s
-        H_P_CX_s = KH.Input.H_P_CX_s
-
-        #	Kinetic_H_internal common block
-        vr2vx2 = KH.Internal.vr2vx2
-        vr2vx_vxi2 = KH.Internal.vr2vx_vxi2
-        fi_hat = KH.Internal.fi_hat
-        ErelH_P = KH.Internal.ErelH_P
-        Ti_mu = KH.Internal.Ti_mu
-        ni = KH.Internal.ni
-        sigv = KH.Internal.sigv
-        alpha_ion = KH.Internal.alpha_ion
-        v_v2 = KH.Internal.v_v2
-        v_v = KH.Internal.v_v
-        vr2_vx2 = KH.Internal.vr2_vx2
-        vx_vx = KH.Internal.vx_vx
-        Vr2pidVrdVx = KH.Internal.Vr2pidVrdVx
-        SIG_CX = KH.Internal.SIG_CX
-        SIG_H_H = KH.Internal.SIG_H_H
-        SIG_H_H2 = KH.Internal.SIG_H_H2
-        SIG_H_P = KH.Internal.SIG_H_P
-        Alpha_CX = KH.Internal.Alpha_CX
-        Alpha_H_H2 = KH.Internal.Alpha_H_H2
-        Alpha_H_P = KH.Internal.Alpha_H_P
-        MH_H_sum = KH.Internal.MH_H_sum
-        Delta_nHs = KH.Internal.Delta_nHs
-        Sn = KH.Internal.Sn
-        Rec = KH.Internal.Rec
-
-        #	Kinetic_H_Moments
-        
-        nH2 = KH.Moments.nH2
-        vxH2 = KH.Moments.VxH2
-        TH2 = KH.Moments.TH2
-
-        #	Internal Debug switches
-
-        Shifted_Maxwellian_Debug = 0
-        CI_Test = 1
-        Do_Alpha_CX_Test = 0
-
-        #	Internal Tolerances
-
-        DeltaVx_tol = .01
-        Wpp_tol = .001
-
-        #	Test input parameters
-
-        if debug>0:
+        # Override settings for debug
+        if debug > 0:
             #plot = np.max(plot, 1)
             debrief = np.maximum(debrief, 1)
             pause = 1
-        Recomb = 1
-        if no_recomb:
-            Recomb = 0
-        error = 0
 
-        nvr = self.mesh.vr.size
-        nvx = self.mesh.vx.size
-        nx = self.mesh.x.size
 
-        dx = self.mesh.x - np.roll(self.mesh.x,1)
-        dx = dx[1:]
-        notpos = np.argwhere(dx <= 0)
-        if notpos.size > 0:
-            raise Exception(prompt+'x[*] must be increasing with index!')
-        if nvx % 2 != 0:
-            raise Exception(prompt+'Number of elements in vx must be even!') 
-        if self.mesh.Ti.size != nx:
-            raise Exception(prompt+'Number of elements in Ti and x do not agree!')
-        if self.vxi is None:
-            self.vxi = np.zeros(nx)
-        if self.vxi.size != nx:
-            raise Exception(prompt+'Number of elements in vxi and x do not agree!')
-        if self.mesh.Te.size != nx:
-            raise Exception(prompt+'Number of elements in Te and x do not agree!')
-        if self.mesh.ne.size != nx:
-            raise Exception('Number of elements in n and x do not agree!')
-        if GammaxHBC is None:
-            raise Exception(prompt+'GammaxHBC is not defined!')
-        if self.mesh.PipeDia is None:
-            self.mesh.PipeDia = np.zeros(nx)
-        if self.mesh.PipeDia.size != nx:
-            raise Exception('Number of elements in PipeDia and x do not agree!')
-        if len(fHBC[:,0]) != nvr:
-            raise Exception(prompt+'Number of elements in fHBC[:,0] and vr do not agree!')
-        if len(fHBC[0,:]) != nvx:
-            raise Exception(prompt+'Number of elements in fHBC[0,:] and vx do not agree!')
+        # --- Initialize inputs ---
+
         if fH2 is None:
-            fH2 = np.zeros((nvr, nvx, nx))
-        if fH2[:,0,0].size != nvr:
-            raise Exception(prompt+'Number of elements in fH2[:,0,0] and vr do not agree!')
-        if fH2[0,:,0].size != nvx:
-            raise Exception(prompt+'Number of elements in fH2[0,:,0] and vx do not agree!')
-        if fH2[0,0,:].size != nx:
-            raise Exception(prompt+'Number of elements in fH2[0,0,:] and x do not agree!')
+            fH2 = np.zeros((self.nvr, self.nvx, self.nx))
         if fSH is None:
-            fSH = np.zeros((nvr, nvx, nx))
-        if fSH[:,0,0].size != nvr:
-            raise Exception(prompt+'Number of elements in fSH[:,0,0] and vr do not agree!')
-        if fSH[0,:,0].size != nvx:
-            raise Exception(prompt+'Number of elements in fSH[0,:,0] and vx do not agree!')
-        if fSH[0,0,:].size != nx:
-            raise Exception(prompt+'Number of elements in fSH[0,0,:] and x do not agree!')
+            fSH = np.zeros((self.nvr, self.nvx, self.nx))
         if nHP is None:
-            nHP = np.zeros(nx)
-        if nHP.size != nx:
-            raise Exception(prompt+'Number of elements in nHP and x do not agree!')
+            nHP = np.zeros(self.nx)
         if THP is None:
-            THP = np.full(nx, 1.0)
-        if THP.size != nx:
-            raise Exception(prompt+'Number of elements in nHP and x do not agree!')
+            THP = np.full(self.nx, 1.0)
         if fH is None:
-            fH = np.zeros((nvr,nvx,nx))
-        if fH[:,0,0].size != nvr:
-            raise Exception(prompt+'Number of elements in fH[:,0,0] and vr do not agree!')
-        if fH[0,:,0].size != nvx:
-            raise Exception(prompt+'Number of elements in fH[0,:,0] and vx do not agree!')
-        if fH[0,0,:].size != nx:
-            raise Exception(prompt+'Number of elements in fH[0,0,:] and x do not agree!')
-        if np.sum(abs(self.mesh.vr)) <= 0:
-            raise Exception(prompt+'vr is all 0!')
-        ii = np.argwhere(self.mesh.vr <= 0)
-        if ii.size > 0:
-            raise Exception(prompt+'vr contains zero or negative element(s)!')
-        if np.sum(abs(self.mesh.vx)) <= 0:
-            raise Exception(prompt+'vx is all 0!')
-        if np.sum(self.mesh.x) <= 0:
-            raise Exception(prompt+'Total(x) is less than or equal to 0!')
-        if self.mu is None:
-            raise Exception(prompt+'mu is not defined!')
-        if self.mu not in [1,2]:
-            raise Exception(prompt+'mu must be 1 or 2!')
+            fH = np.zeros((self.nvr,self.nvx,self.nx))
+        self._test_input_parameters(fH2, fSH, nHP, THP, fH)
 
-        #NOTE Removed Plotting formatting, bring back once the program actually works
-
-        i_n = np.argwhere(self.mesh.vx < 0)
-        if np.size(i_n) < 1:
-            print(prompt+'vx contains no negative elements!')
-        i_p = np.argwhere(self.mesh.vx > 0)
-        if np.size(i_p) < 1:
-            print(prompt+'vx contains no positive elements!')
-        i_z = np.argwhere(self.mesh.vx == 0)
-        if np.size(i_z) > 0:
-            print(prompt+'vx contains one or more zero elements!')
-        diff = np.argwhere(self.mesh.vx[i_p] != -np.flipud(self.mesh.vx[i_n]))
-        if diff.size > 0:
-            raise Exception(prompt + " vx array elements are not symmetric about zero!")
-
-
-        fHBC_input = np.zeros(fHBC.shape)
-        fHBC_input[:,i_p] = fHBC[:,i_p]
-        test = np.sum(fHBC_input)
-        if test <= 0.0 and abs(GammaxHBC) > 0:
-            raise Exception(prompt+'Values for fHBC[:,:] with vx > 0 are all zero!')
-
-        #	Output variables
-
-        nH = np.zeros(nx)
-        GammaxH = np.zeros(nx)
-        VxH = np.zeros(nx)
-        pH = np.zeros(nx)
-        TH = np.zeros(nx)
-        qxH = np.zeros(nx)
-        qxH_total = np.zeros(nx)
-        NetHSource = np.zeros(nx)
-        WallH = np.zeros(nx)
-        Sion = np.zeros(nx)
-        QH = np.zeros(nx)
-        RxH = np.zeros(nx)
-        QH_total = np.zeros(nx)
-        KH.Output.piH_xx = np.zeros(nx)
-        KH.Output.piH_yy = np.zeros(nx)
-        KH.Output.piH_zz = np.zeros(nx)
-        KH.Output.RxHCX = np.zeros(nx)
-        KH.Output.RxH2_H = np.zeros(nx)
-        KH.Output.RxP_H = np.zeros(nx)
-        KH.Output.RxW_H = np.zeros(nx)
-        KH.Output.EHCX = np.zeros(nx)
-        KH.Output.EH2_H = np.zeros(nx)
-        KH.Output.EP_H = np.zeros(nx)
-        KH.Output.EW_H = np.zeros(nx)
-        KH.Output.Epara_PerpH_H = np.zeros(nx)
-        AlbedoH = 0.0e0
-        KH.Output.SourceH = np.zeros(nx)
-        KH.Output.SRecomb = np.zeros(nx)
-
-        #	Internal variables
-
-        Work = np.zeros((nvr*nvx))
-        fHG = np.zeros((nvr,nvx,nx))
-        NHG = np.zeros((nx,max_gen+1))
-        Vth = np.sqrt((2*CONST.Q*self.mesh.Tnorm) / (self.mu*CONST.H_MASS))
-        Vth2 = Vth*Vth
-        Vth3 = Vth2*Vth
-        fHs = np.zeros(nx)
-        nHs = np.zeros(nx)
-        Alpha_H_H = np.zeros((nvr,nvx))
-        Omega_H_P = np.zeros(nx)
-        Omega_H_H2 = np.zeros(nx)
-        Omega_H_H = np.zeros(nx)
-        VxHG = np.zeros(nx)
-        THG = np.zeros(nx)
-        Wperp_paraH = np.zeros(nx)
-        vr2vx2_ran2 = np.zeros((nvr,nvx))
-        vr2_2vx_ran2 = np.zeros((nvr,nvx))
-        vr2_2vx2_2D = np.zeros((nvr,nvx))
-        RxCI_CX = np.zeros(nx)
-        RxCI_H2_H = np.zeros(nx)
-        RxCI_P_H = np.zeros(nx)
-        Epara_Perp_CI = np.zeros(nx)
-        CI_CX_error = np.zeros(nx)
-        CI_H2_H_error = np.zeros(nx)
-        CI_P_H_error = np.zeros(nx)
-        CI_H_H_error = np.zeros(nx)
-        Maxwell = np.zeros((nvr,nvx,nx))
-
-        #NOTE Fix later
-        differential = VSpace_Differentials(self.mesh.vr, self.mesh.vx)
-        Vr2pidVr = differential.dvr_vol
-        dVx = differential.dvx
-
-        #	Vr^2-2*Vx^2
-
-        for i in range(nvr):
-            vr2_2vx2_2D[i,:] = (self.mesh.vr[i]**2) - 2*(self.mesh.vx**2)
-
-        #	Theta-prime coordinate
-
-        # Theta-prime Coordinate
-        ntheta = 5 # use 5 theta mesh points for theta integration
-        dTheta = np.ones(ntheta)/ntheta
-        theta = np.pi*(np.arange(ntheta)/ntheta + 0.5/ntheta)
-        cos_theta = np.cos(theta)
-
-        #	Scale input molecular distribution function to agree with desired flux
-        gamma_input = 1.0
-        if abs(GammaxHBC) > 0:
-            gamma_input = Vth*np.sum(Vr2pidVr*(fHBC_input @ (self.mesh.vx*dVx)))
-        ratio = abs(GammaxHBC)/gamma_input
-        fHBC_input = fHBC_input*ratio
-        if abs(ratio - 1) > 0.01*truncate:
-            fHBC = fHBC_input
-        fH[:,i_p,0] = fHBC_input[:,i_p]
-
-        #	if fH2 is zero, then turn off elastic H2 <-> H collisions
+        # If fH2 is zero, then turn off elastic H2 <-> H collisions
         H_H2_EL = self.COLLISIONS['H2_H_EL']
         if np.sum(fH2) <= 0:
             H_H2_EL = 0
 
-        #	Set iteration scheme
-        fH_iterate = 0
-        if (self.COLLISIONS['H_H_EL'] != 0) or (self.COLLISIONS['H_P_EL'] != 0) or (H_H2_EL != 0): 
-            fH_iterate = 1
+        #	Scale input molecular distribution function to agree with desired flux
+        gamma_input = 1.0
+        if abs(self.GammaxHBC) > 0:
+            gamma_input = self.vth*np.sum(self.dvr_volume*(self.fHBC_input @ (self.mesh.vx*self.dvx)))
+        ratio = abs(self.GammaxHBC)/gamma_input
+        fHBC_input = self.fHBC_input*ratio
+        if abs(ratio - 1) > 0.01*truncate:
+            self.fHBC = fHBC_input
+        fH[:,self.vx_pos,0] = fHBC_input[:,self.vx_pos]
 
-        fH_generations = 0
-        if (fH_iterate != 0) or (self.COLLISIONS['H_P_CX'] != 0): 
-            fH_generations = 1
 
-        #	Set flags to make use of previously computed local parameters 
+        # --- Set Flags to determine computations needed ---
+        
         New_Grid = 1
-        if vx_s is not None:
+        if self.Input.vx_s is not None:
             test = 0 
-            ii = np.argwhere(vx_s != self.mesh.vx).T ; test = test + np.size(ii)
-            ii = np.argwhere(vr_s != self.mesh.vr).T ; test = test + np.size(ii)
-            ii = np.argwhere(x_s != self.mesh.x).T ; test = test + np.size(ii)
-            ii = np.argwhere(Tnorm_s != self.mesh.Tnorm).T ; test = test + np.size(ii)
-            ii = np.argwhere(mu_s != self.mu).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.vx_s != self.mesh.vx).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.vr_s != self.mesh.vr).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.x_s != self.mesh.x).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.Tnorm_s != self.mesh.Tnorm).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.mu_s != self.mu).T ; test = test + np.size(ii)
             if test <= 0:
                 New_Grid = 0
         New_Protons = 1
-        if Ti_s is not None:
+        if self.Input.Ti_s is not None:
             test = 0 
-            ii = np.argwhere(Ti_s != self.mesh.Ti).T ; test = test + np.size(ii)
-            ii = np.argwhere(n_s != self.mesh.ne).T ; test = test + np.size(ii)
-            ii = np.argwhere(vxi_s != self.vxi).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.Ti_s != self.mesh.Ti).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.n_s != self.mesh.ne).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.vxi_s != self.vxi).T ; test = test + np.size(ii)
             if test <= 0:
                 New_Protons = 0
         New_Molecular_Ions = 1
-        if nHP_s is not None:
+        if self.Input.nHP_s is not None:
             test = 0
-            ii = np.argwhere(nHP_s != nHP).T ; test = test + np.size(ii)
-            ii = np.argwhere(THP_s != THP).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.nHP_s != nHP).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.THP_s != THP).T ; test = test + np.size(ii)
             if test <= 0:
                 New_Molecular_Ions = 0
         New_Electrons = 1
-        if Te_s is not None:
+        if self.Input.Te_s is not None:
             test = 0 
-            ii = np.argwhere(Te_s != self.mesh.Te).T ; test = test + np.size(ii)
-            ii = np.argwhere(n_s != self.mesh.ne).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.Te_s != self.mesh.Te).T ; test = test + np.size(ii)
+            ii = np.argwhere(self.Input.n_s != self.mesh.ne).T ; test = test + np.size(ii)
             if test <= 0:
                 New_Electrons = 0
         New_fH2 = 1
-        if fH2_s is not None:
-            ii = np.argwhere(fH2_s != fH2)
+        if self.Input.fH2_s is not None:
+            ii = np.argwhere(self.Input.fH2_s != fH2)
             if np.size(ii) <= 0:
                 New_fH2 = 0
         New_fSH = 1
-        if fSH_s is not None:
-            ii = np.argwhere(fSH_s != fSH)
+        if self.Input.fSH_s is not None:
+            ii = np.argwhere(self.Input.fSH_s != fSH)
             if np.size(ii) <= 0:
                 New_fSH = 0
         New_Simple_CX = 1
-        if Simple_CX_s is not None:
-            ii = np.argwhere(Simple_CX_s != self.COLLISIONS['SIMPLE_CX'])
+        if self.Input.Simple_CX_s is not None:
+            ii = np.argwhere(self.Input.Simple_CX_s != self.COLLISIONS['SIMPLE_CX'])
             if np.size(ii) <= 0:
                 New_Simple_CX = 0
         New_H_Seed = 1
-        if fH_s is not None:
-            ii = np.argwhere(fH_s != fH)
+        if self.Input.fH_s is not None:
+            ii = np.argwhere(self.Input.fH_s != fH)
             if np.size(ii) <= 0:
                 New_H_Seed = 0
 
         Do_sigv = 			New_Grid | New_Electrons
         Do_ni = 			New_Grid | New_Electrons | New_Protons | New_Molecular_Ions
         Do_fH2_moments = 	(New_Grid | New_fH2) & (np.sum(fH2) > 0.0)
-        Do_Alpha_CX = 		(New_Grid | (Alpha_CX is None) | Do_ni | New_Simple_CX) and self.COLLISIONS['H_P_CX']
-        Do_SIG_CX = 		(New_Grid | (SIG_CX is None) | New_Simple_CX) & (self.COLLISIONS['SIMPLE_CX'] == 0) & Do_Alpha_CX
-        Do_Alpha_H_H2 = 	(New_Grid | (Alpha_H_H2 is None) | New_fH2) & H_H2_EL
-        Do_SIG_H_H2 = 		(New_Grid | (SIG_H_H2 is None)) & Do_Alpha_H_H2
-        Do_SIG_H_H = 		(New_Grid | (SIG_H_H is None)) & self.COLLISIONS['H_H_EL']
-        Do_Alpha_H_P = 		(New_Grid | (Alpha_H_P is None) | Do_ni) & self.COLLISIONS['H_P_EL']
-        Do_SIG_H_P = 		(New_Grid | (SIG_H_P is None)) & Do_Alpha_H_P
-        Do_v_v2 = 			(New_Grid | (v_v2 is None)) & (CI_Test | Do_SIG_CX | Do_SIG_H_H2 | Do_SIG_H_H | Do_SIG_H_P)
+        Do_Alpha_CX = 		(New_Grid | (self.Internal.Alpha_CX is None) | Do_ni | New_Simple_CX) and self.COLLISIONS['H_P_CX']
+        Do_SIG_CX = 		(New_Grid | (self.Internal.SIG_CX is None) | New_Simple_CX) & (self.COLLISIONS['SIMPLE_CX'] == 0) & Do_Alpha_CX
+        Do_Alpha_H_H2 = 	(New_Grid | (self.Internal.Alpha_H_H2 is None) | New_fH2) & H_H2_EL
+        Do_SIG_H_H2 = 		(New_Grid | (self.Internal.SIG_H_H2 is None)) & Do_Alpha_H_H2
+        Do_SIG_H_H = 		(New_Grid | (self.Internal.SIG_H_H is None)) & self.COLLISIONS['H_H_EL']
+        Do_Alpha_H_P = 		(New_Grid | (self.Internal.Alpha_H_P is None) | Do_ni) & self.COLLISIONS['H_P_EL']
+        Do_SIG_H_P = 		(New_Grid | (self.Internal.SIG_H_P is None)) & Do_Alpha_H_P
+        Do_v_v2 = 			(New_Grid | (self.Internal.v_v2 is None)) & (self.CI_Test | Do_SIG_CX | Do_SIG_H_H2 | Do_SIG_H_H | Do_SIG_H_P)
         
         if debug > 0:
             print("Kinetic H Settings")
@@ -551,250 +350,251 @@ class Kinetic_H():
             print("Do_v_v2", Do_v_v2)
             input()
 
-        nH2 = np.zeros(nx)
-        vxH2 = np.zeros(nx)
-        TH2 = np.full(nx, 1.0)
+        self.H2_Moments.nH2 = np.zeros(self.nx)
+        self.H2_Moments.VxH2 = np.zeros(self.nx)
+        self.H2_Moments.TH2 = np.full(self.nx, 1.0)
 
         if Do_fH2_moments:
             if debrief > 1:
-                print(prompt+'Computing vx and T moments of fH2')
+                print(self.prompt+'Computing vx and T moments of fH2')
 
             #	Compute x flow velocity and temperature of molecular species
-            for k in range(nx):
-                nH2[k] = np.sum(Vr2pidVr*(fH2[:,:,k] @ dVx))
-                if nH2[k] > 0:
-                    vxH2[k] = Vth*np.sum(Vr2pidVr*(fH2[:,:,k] @ (self.mesh.vx*dVx)))/nH2[k]
-                    for i in range(nvr):
-                        vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - vxH2[k]/Vth)**2
-                    TH2[k] = (2*self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fH2[:,:,k]) @ dVx)) / (3*CONST.Q*nH2[k])
+            vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
+            for k in range(self.nx):
+                self.H2_Moments.nH2[k] = np.sum(self.dvr_volume*(fH2[:,:,k] @ self.dvx))
+                if self.H2_Moments.nH2[k] > 0:
+                    self.H2_Moments.VxH2[k] = self.vth*np.sum(self.dvr_volume*(fH2[:,:,k] @ (self.mesh.vx*self.dvx)))/self.H2_Moments.nH2[k]
+                    for i in range(self.nvr):
+                        vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - self.H2_Moments.VxH2[k]/self.vth)**2
+                    self.H2_Moments.TH2[k] = (2*self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fH2[:,:,k]) @ self.dvx)) / (3*CONST.Q*self.H2_Moments.nH2[k])
 
         if New_Grid:
             if debrief > 1:
-                print(prompt+'Computing vr2vx2, vr2vx_vxi2, ErelH_P')
+                print(self.prompt+'Computing vr2vx2, vr2vx_vxi2, ErelH_P')
 
             #	Magnitude of total normalized v^2 at each mesh point
-            vr2vx2 = np.zeros((nvr,nvx,nx))
-            for i in range(nvr):
-                for k in range(nx):
-                    vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
+            self.Internal.vr2vx2 = np.zeros((self.nvr,self.nvx,self.nx))
+            for i in range(self.nvr):
+                for k in range(self.nx):
+                    self.Internal.vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
 
             #	Magnitude of total normalized (v-vxi)^2 at each mesh point
-            vr2vx_vxi2 = np.zeros((nvr,nvx,nx))
-            for i in range(nvr):
-                for k in range(nx):
-                    vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/Vth)**2
+            self.Internal.vr2vx_vxi2 = np.zeros((self.nvr,self.nvx,self.nx))
+            for i in range(self.nvr):
+                for k in range(self.nx):
+                    self.Internal.vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/self.vth)**2
 
             #	Atomic hydrogen ion energy in local rest frame of plasma at each mesh point
-            ErelH_P = (0.5*CONST.H_MASS*vr2vx_vxi2*Vth2) / CONST.Q
-            ErelH_P = np.maximum(ErelH_P, 0.1) # sigmav_cx does not handle neutral energies below 0.1 eV
-            ErelH_P = np.minimum(ErelH_P, 2e4) # sigmav_cx does not handle neutral energies above 20 keV
+            self.Internal.ErelH_P = (0.5*CONST.H_MASS*self.Internal.vr2vx_vxi2*self.vth**2) / CONST.Q
+            self.Internal.ErelH_P = np.maximum(self.Internal.ErelH_P, 0.1) # sigmav_cx does not handle neutral energies below 0.1 eV
+            self.Internal.ErelH_P = np.minimum(self.Internal.ErelH_P, 2e4) # sigmav_cx does not handle neutral energies above 20 keV
 
         if New_Protons:
             if debrief>1:
-                print(prompt+'Computing Ti/mu at each mesh point')
+                print(self.prompt+'Computing Ti/mu at each mesh point')
 
             #	Ti/mu at each mesh point
-            Ti_mu = np.zeros((nvr,nvx,nx))
-            for k in range(nx):
-                Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
+            self.Internal.Ti_mu = np.zeros((self.nvr,self.nvx,self.nx))
+            for k in range(self.nx):
+                self.Internal.Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
 
             #	Compute Fi_hat
             if debrief>1:
-                print(prompt+'Computing fi_Hat')
+                print(self.prompt+'Computing fi_Hat')
             vx_shift = self.vxi
             Tmaxwell = self.mesh.Ti
             mol = 1
             Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-            fi_hat = np.copy(Maxwell)
+            self.Internal.fi_hat = np.copy(Maxwell)
 
         if compute_errors:
             if debrief>1:
-                print(prompt+'Computing Vbar_Error')
+                print(self.prompt+'Computing Vbar_Error')
 
             #	Test: The average speed of a non-shifted maxwellian should be 2*Vth*sqrt(Ti[x]/Tnorm)/sqrt(pi)
 
-            vx_shift = np.zeros(nx)
+            vx_shift = np.zeros(self.nx)
             Tmaxwell = self.mesh.Ti
             mol = 1
             Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
             
-            vbar_test = np.zeros((nvr,nvx,ntheta))
-            vbar_error = np.zeros(nx)
-            for m in range(ntheta):
-                vbar_test[:,:,m] = vr2vx2[:,:,0]
-            _vbar_test = np.zeros((nvr*nvx,ntheta))
-            _vbar_test[:] = (Vth*np.sqrt(vbar_test)).reshape(_vbar_test.shape, order='F')
-            vbar_test = np.zeros((nvr,nvx))
-            vbar_test[:] = (_vbar_test @ dTheta).reshape(vbar_test.shape, order='F')
-            for k in range(nx):
-                vbar = np.sum(Vr2pidVr*((vbar_test*Maxwell[:,:,k]) @ dVx))
-                vbar_exact = 2*Vth*np.sqrt(self.mesh.Ti[k]/self.mesh.Tnorm) / np.sqrt(np.pi)
+            vbar_test = np.zeros((self.nvr,self.nvx,self.ntheta))
+            vbar_error = np.zeros(self.nx)
+            for m in range(self.ntheta):
+                vbar_test[:,:,m] = self.Internal.vr2vx2[:,:,0]
+            _vbar_test = np.zeros((self.nvr*self.nvx,self.ntheta))
+            _vbar_test[:] = (self.vth*np.sqrt(vbar_test)).reshape(_vbar_test.shape, order='F')
+            vbar_test = np.zeros((self.nvr,self.nvx))
+            vbar_test[:] = (_vbar_test @ self.dtheta).reshape(vbar_test.shape, order='F')
+            for k in range(self.nx):
+                vbar = np.sum(self.dvr_volume*((vbar_test*Maxwell[:,:,k]) @ self.dvx))
+                vbar_exact = 2*self.vth*np.sqrt(self.mesh.Ti[k]/self.mesh.Tnorm) / np.sqrt(np.pi)
                 vbar_error[k] = abs(vbar-vbar_exact) / vbar_exact
             if debrief > 0:
-                print(prompt+'Maximum Vbar error = ', sval(max(vbar_error)))
+                print(self.prompt+'Maximum Vbar error = ', sval(max(vbar_error)))
 
         if Do_ni:
             if debrief>1:
-                print(prompt+'Computing ni profile')
-            ni = self.mesh.ne
+                print(self.prompt+'Computing ni profile')
+            self.Internal.ni = self.mesh.ne
             if ni_correct:
-                ni = self.mesh.ne-nHP
-            ni = np.maximum(ni, 0.01*self.mesh.ne)
+                self.Internal.ni = self.mesh.ne-nHP
+            self.Internal.ni = np.maximum(self.Internal.ni, 0.01*self.mesh.ne)
 
         if Do_sigv:
             if debrief>1:
-                print(prompt+'Computing sigv')
+                print(self.prompt+'Computing sigv')
 
             #	Compute sigmav rates for each reaction with option to use rates
             #	from CR model of Johnson-Hinnov
 
-            sigv = np.zeros((nx,3))
+            self.Internal.sigv = np.zeros((self.nx,3))
 
             #	Reaction R1:  e + H -> e + H(+) + e   (ionization)
             #NOTE Replace Use_Collrad_Ionization with constant for consistency across program, check with someone who knows what they are doing if this is correct
             if self.ion_rate_option == "collrad":
-                sigv[:,1] = collrad_sigmav_ion_h0(self.mesh.ne, self.mesh.Te) # from COLLRAD code (DEGAS-2)
+                self.Internal.sigv[:,1] = collrad_sigmav_ion_h0(self.mesh.ne, self.mesh.Te) # from COLLRAD code (DEGAS-2)
             #NOTE Replace JH with constant for consistency across program, check with someone who knows what they are doing if this is correct
             elif self.ion_rate_option == "jh":
                 print("using in mesh")
-                sigv[:,1] = jhs_coef(self.mesh.ne, self.mesh.Te, jh_coeffs, no_null=True) # Johnson-Hinnov, limited Te range; fixed JHS_coef capitalization #NOTE Not tested yet
+                self.Internal.sigv[:,1] = jhs_coef(self.mesh.ne, self.mesh.Te, self.JH_Coefficients, no_null=True) # Johnson-Hinnov, limited Te range; fixed JHS_coef capitalization #NOTE Not tested yet
             else:
-                sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV #NOTE Not Tested Yet
+                self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV #NOTE Not Tested Yet
                     
             #	Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
             #NOTE Replace JH with constant for consistency across program, check with someone who knows what they are doing if this is correct
             if self.ion_rate_option == "jh":
-                sigv[:,2] = jhalpha_coef(self.mesh.ne, self.mesh.Te, jh_coeffs, no_null=True)
+                self.Internal.sigv[:,2] = jhalpha_coef(self.mesh.ne, self.mesh.Te, self.JH_Coefficients, no_null=True)
             else:
-                sigv[:,2] = sigmav_rec_h1s(self.mesh.Te)
+                self.Internal.sigv[:,2] = sigmav_rec_h1s(self.mesh.Te)
 
             #	H ionization rate (normalized by vth) = reaction 1
-            alpha_ion = (self.mesh.ne*sigv[:,1]) / Vth
+            self.Internal.alpha_ion = (self.mesh.ne*self.Internal.sigv[:,1]) / self.vth
 
             #	Recombination rate (normalized by vth) = reaction 2
-            Rec = (self.mesh.ne*sigv[:,2]) / Vth
+            self.Internal.Rec = (self.mesh.ne*self.Internal.sigv[:,2]) / self.vth
 
         #	Compute Total Atomic Hydrogen Source
-        Sn = np.zeros((nvr,nvx,nx))
+        self.Internal.Sn = np.zeros((self.nvr,self.nvx,self.nx))
 
         #	Add Recombination (optionally) and User-Supplied Hydrogen Source (velocity space distribution)
-        for k in range(nx):
-            Sn[:,:,k] = fSH[:,:,k]/Vth
-            if Recomb:
-                Sn[:,:,k] = Sn[:,:,k] + fi_hat[:,:,k]*ni[k]*Rec[k]
+        for k in range(self.nx):
+            self.Internal.Sn[:,:,k] = fSH[:,:,k]/self.vth
+            if recomb:
+                self.Internal.Sn[:,:,k] = self.Internal.Sn[:,:,k] + self.Internal.fi_hat[:,:,k]*self.Internal.ni[k]*self.Internal.Rec[k]
 
         #	Set up arrays for charge exchange and elastic collision computations, if needed
 
         if Do_v_v2 == 1:
             if debrief > 1:
-                print(prompt+'Computing v_v2, v_v, vr2_vx2, and vx_vx')
+                print(self.prompt+'Computing v_v2, v_v, vr2_vx2, and vx_vx')
 
             #	v_v2=(v-v_prime)^2 at each double velocity space mesh point, including theta angle
-            v_v2 = np.zeros((nvr,nvx,nvr,nvx,ntheta))
+            self.Internal.v_v2 = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx,self.ntheta))
 
             #	vr2_vx2=0.125* [ vr2 + vr2_prime - 2*vr*vr_prime*cos(theta) - 2*(vx-vx_prime)^2 ]
             #		at each double velocity space mesh point, including theta angle
-            vr2_vx2 = np.zeros((nvr,nvx,nvr,nvx,ntheta))
-            for m in range(ntheta):
-                for l in range(nvx):
-                    for k in range(nvr):
-                        for i in range(nvr):
-                            v_starter = self.mesh.vr[i]**2 + self.mesh.vr[k]**2 - 2*self.mesh.vr[i]*self.mesh.vr[k]*cos_theta[m]
-                            v_v2[i,:,k,l,m] = v_starter + (self.mesh.vx[:] - self.mesh.vx[l])**2
-                            vr2_vx2[i,:,k,l,m] = v_starter - 2*(self.mesh.vx[:] - self.mesh.vx[l])**2
+            self.Internal.vr2_vx2 = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx,self.ntheta))
+            for m in range(self.ntheta):
+                for l in range(self.nvx):
+                    for k in range(self.nvr):
+                        for i in range(self.nvr):
+                            v_starter = self.mesh.vr[i]**2 + self.mesh.vr[k]**2 - 2*self.mesh.vr[i]*self.mesh.vr[k]*self.cos_theta[m]
+                            self.Internal.v_v2[i,:,k,l,m] = v_starter + (self.mesh.vx[:] - self.mesh.vx[l])**2
+                            self.Internal.vr2_vx2[i,:,k,l,m] = v_starter - 2*(self.mesh.vx[:] - self.mesh.vx[l])**2
 
             #	v_v=|v-v_prime| at each double velocity space mesh point, including theta angle
-            v_v = np.sqrt(v_v2)
+            self.Internal.v_v = np.sqrt(self.Internal.v_v2)
 
             #	vx_vx=(vx-vx_prime) at each double velocity space mesh point
-            vx_vx = np.zeros((nvr,nvx,nvr,nvx))
-            for j in range(nvx):
-                for l in range(nvx):
-                    vx_vx[:,j,:,l] = self.mesh.vx[j] - self.mesh.vx[l]
+            self.Internal.vx_vx = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx))
+            for j in range(self.nvx):
+                for l in range(self.nvx):
+                    self.Internal.vx_vx[:,j,:,l] = self.mesh.vx[j] - self.mesh.vx[l]
 
             #	Set Vr'2pidVr'*dVx' for each double velocity space mesh point
 
-            Vr2pidVrdVx = np.zeros((nvr,nvx,nvr,nvx))
-            for k in range(nvr):
-                Vr2pidVrdVx[:,:,k,:] = Vr2pidVr[k]
-            for l in range(nvx):
-                Vr2pidVrdVx[:,:,:,l] = Vr2pidVrdVx[:,:,:,l]*dVx[l]
+            self.Internal.Vr2pidVrdVx = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx))
+            for k in range(self.nvr):
+                self.Internal.Vr2pidVrdVx[:,:,k,:] = self.dvr_volume[k]
+            for l in range(self.nvx):
+                self.Internal.Vr2pidVrdVx[:,:,:,l] = self.Internal.Vr2pidVrdVx[:,:,:,l]*self.dvx[l]
 
         if self.COLLISIONS['SIMPLE_CX'] == 0 and Do_SIG_CX == 1: #NOTE Not Tested Yet
             if debrief>1:
-                print(prompt+'Computing SIG_CX')
+                print(self.prompt+'Computing SIG_CX')
 
             #	Option (A) was selected: Compute SigmaV_CX from sigma directly.
             #	In preparation, compute SIG_CX for present velocity space grid, if it has not 
             #	already been computed with the present input parameters
 
             #	Compute sigma_cx * v_v at all possible relative velocities
-            _Sig = np.zeros((nvr*nvx*nvr*nvx, ntheta))
-            _Sig[:] = (v_v*sigma_cx_h0(v_v2*(0.5*CONST.H_MASS*Vth2/CONST.Q))).reshape(_Sig.shape, order='F')
+            _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
+            _Sig[:] = (self.Internal.v_v*sigma_cx_h0(self.Internal.v_v2*(0.5*CONST.H_MASS*self.vth**2/CONST.Q))).reshape(_Sig.shape, order='F')
 
             #	Set SIG_CX = vr' x Integral{v_v*sigma_cx} 
             #		over theta=0,2pi times differential velocity space element Vr'2pidVr'*dVx'
-            SIG_CX = np.zeros((nvr*nvx, nvr*nvx))
-            SIG_CX[:] = (Vr2pidVrdVx*((_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F'))).reshape(SIG_CX.shape, order='F')
+            self.Internal.SIG_CX = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
+            self.Internal.SIG_CX[:] = (self.Internal.Vr2pidVrdVx*((_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F'))).reshape(self.Internal.SIG_CX.shape, order='F')
 
             #	SIG_CX is now vr' * sigma_cx(v_v) * v_v (intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
         if Do_SIG_H_H == 1:
             if debrief>1:
-                print(prompt+'Computing SIG_H_H')
+                print(self.prompt+'Computing SIG_H_H')
 
             #	Compute SIG_H_H for present velocity space grid, if it is needed and has not already been computed with the present input parameters
 
             #	Compute sigma_H_H * vr2_vx2 * v_v at all possible relative velocities
-            _Sig = np.zeros((nvr*nvx*nvr*nvx,ntheta))
-            _Sig[:] = (vr2_vx2*v_v*sigma_el_h_h(v_v2*(0.5*CONST.H_MASS*self.mu*Vth2/CONST.Q), vis=True) / 8).reshape(_Sig.shape, order='F')
+            _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
+            _Sig[:] = (self.Internal.vr2_vx2*self.Internal.v_v*sigma_el_h_h(self.Internal.v_v2*(0.5*CONST.H_MASS*self.mu*self.vth**2/CONST.Q), vis=True) / 8).reshape(_Sig.shape, order='F')
 
             #	Note: For viscosity, the cross section for D -> D is the same function of center of mass energy as H -> H.
 
             #	Set SIG_H_H = vr' x Integral{vr2_vx2*v_v*sigma_H_H} over theta=0,2pi times differential velocity space element Vr'2pidVr'*dVx'
-            SIG_H_H = np.zeros((nvr*nvx,nvr*nvx))
-            SIG_H_H[:] = (Vr2pidVrdVx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_H.shape, order='F')
+            self.Internal.SIG_H_H = np.zeros((self.nvr*self.nvx,self.nvr*self.nvx))
+            self.Internal.SIG_H_H[:] = (self.Internal.Vr2pidVrdVx*(_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F')).reshape(self.Internal.SIG_H_H.shape, order='F')
             #	SIG_H_H is now vr' * sigma_H_H(v_v) * vr2_vx2 * v_v (intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
         if Do_SIG_H_H2 == 1:
             if debrief > 1:
-                print(prompt+'Computing SIG_H_H2')
+                print(self.prompt+'Computing SIG_H_H2')
 
             #	Compute SIG_H_H2 for present velocity space grid, if it is needed and has not
             #		already been computed with the present input parameters
 
             #	Compute sigma_H_H2 * v_v at all possible relative velocities
 
-            _Sig = np.zeros((nvr*nvx*nvr*nvx,ntheta))
-            _Sig[:] = (v_v*sigma_el_h_hh(v_v2*(0.5*CONST.H_MASS*Vth2/CONST.Q))).reshape(_Sig.shape, order='F')
+            _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
+            _Sig[:] = (self.Internal.v_v*sigma_el_h_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*self.vth**2/CONST.Q))).reshape(_Sig.shape, order='F')
 
             #	NOTE: using H energy here for cross-sections tabulated as H->H2
 
             #	Set SIG_H_H2 = vr' x vx_vx x Integral{v_v*sigma_H_H2} over theta=0,
             #		2pi times differential velocity space element Vr'2pidVr'*dVx'
 
-            SIG_H_H2 = np.zeros((nvr*nvx,nvr*nvx))
-            SIG_H_H2[:] = (Vr2pidVrdVx*vx_vx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_H2.shape, order='F')
+            self.Internal.SIG_H_H2 = np.zeros((self.nvr*self.nvx,self.nvr*self.nvx))
+            self.Internal.SIG_H_H2[:] = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*(_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F')).reshape(self.Internal.SIG_H_H2.shape, order='F')
 
             #	SIG_H_H2 is now vr' *vx_vx * sigma_H_H2(v_v) * v_v 
             #		(intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
         if Do_SIG_H_P == 1:
             if debrief>1:
-                print(prompt+'Computing SIG_H_P')
+                print(self.prompt+'Computing SIG_H_P')
 
             #	Compute SIG_H_P for present velocity space grid, if it is needed and has not 
             #		already been computed with the present input parameters
 
             #	Compute sigma_H_P * v_v at all possible relative velocities
-            _Sig = np.zeros((nvr*nvx*nvr*nvx,ntheta))
-            _Sig[:] = (v_v*sigma_el_p_h(v_v2*(0.5*CONST.H_MASS*Vth2/CONST.Q))).reshape(_Sig.shape, order='F') #NOTE Program slows significantly here
+            _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
+            _Sig[:] = (self.Internal.v_v*sigma_el_p_h(self.Internal.v_v2*(0.5*CONST.H_MASS*self.vth**2/CONST.Q))).reshape(_Sig.shape, order='F') #NOTE Program slows significantly here
 
             #	Set SIG_H_P = vr' x vx_vx x Integral{v_v*sigma_H_P} over theta=0,
             #		2pi times differential velocity space element Vr'2pidVr'*dVx'
 
-            SIG_H_P = np.zeros((nvr*nvx,nvr*nvx))
-            SIG_H_P[:] = (Vr2pidVrdVx*vx_vx*(_Sig @ dTheta).reshape(Vr2pidVrdVx.shape, order='F')).reshape(SIG_H_P.shape, order='F')
+            self.Internal.SIG_H_P = np.zeros((self.nvr*self.nvx,self.nvr*self.nvx))
+            self.Internal.SIG_H_P[:] = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*(_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F')).reshape(self.Internal.SIG_H_P.shape, order='F')
 
             #	SIG_H_P is now vr' *vx_vx * sigma_H_P(v_v) * v_v (intergated over theta) 
             #		for all possible ([vr,vx],[vr',vx'])
@@ -804,29 +604,29 @@ class Kinetic_H():
         #		already been computed with the present parameters
         if Do_Alpha_CX == 1:
             if debrief > 1:
-                print(prompt+'Computing Alpha_CX')
+                print(self.prompt+'Computing Alpha_CX')
 
             if self.COLLISIONS['SIMPLE_CX']:
                 #	Option (B): Use maxwellian weighted <sigma v>
 
                 #	Charge Exchange sink rate
 
-                Alpha_CX = sigmav_cx_h0(Ti_mu, ErelH_P) / Vth
-                for k in range(nx):
-                    Alpha_CX[:,:,k] = Alpha_CX[:,:,k]*ni[k]
+                self.Internal.Alpha_CX = sigmav_cx_h0(self.Internal.Ti_mu, self.Internal.ErelH_P) / self.vth
+                for k in range(self.nx):
+                    self.Internal.Alpha_CX[:,:,k] = self.Internal.Alpha_CX[:,:,k]*self.Internal.ni[k]
 
             else: #NOTE Not Tested Yet
                 #	Option (A): Compute SigmaV_CX from sigma directly via SIG_CX
 
-                Alpha_CX = np.zeros((nvr,nvx,nx))
-                for k in range(nx):
-                    Work[:] = (fi_hat[:,:,k]*ni[k]).reshape(Work.shape, order='F')
-                    Alpha_CX[:,:,k] = (SIG_CX @ Work).reshape(Alpha_CX[:,:,k].shape, order='F')
+                self.Internal.Alpha_CX = np.zeros((self.nvr,self.nvx,self.nx))
+                for k in range(self.nx):
+                    Work = (self.Internal.fi_hat[:,:,k]*self.Internal.ni[k]).reshape((self.nvr*self.nvx), order='F')
+                    self.Internal.Alpha_CX[:,:,k] = (self.Internal.SIG_CX @ Work).reshape(self.Internal.Alpha_CX[:,:,k].shape, order='F')
                 
-                if Do_Alpha_CX_Test:
-                    Alpha_CX_Test = sigmav_cx_h0(Ti_mu, ErelH_P) / Vth
-                    for k in range(nx):
-                        Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*ni[k]
+                if self.Do_Alpha_CX_Test:
+                    Alpha_CX_Test = sigmav_cx_h0(self.Internal.Ti_mu, self.Internal.ErelH_P) / self.vth
+                    for k in range(self.nx):
+                        Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*self.Internal.ni[k]
                     print('Compare alpha_cx and alpha_cx_test')
                 
 
@@ -835,35 +635,36 @@ class Kinetic_H():
 
         if Do_Alpha_H_H2 == 1:
             if debrief > 1:
-                print(prompt+'Computing Alpha_H_H2')
-            Alpha_H_H2 = np.zeros((nvr,nvx,nx))
-            for k in range(nx):
-                Work[:] = fH2[:,:,k].reshape(Work.shape, order='F')
-                Alpha_H_H2[:,:,k] = (SIG_H_H2 @ Work).reshape(Alpha_H_H2[:,:,k].shape, order='F')
+                print(self.prompt+'Computing Alpha_H_H2')
+            self.Internal.Alpha_H_H2 = np.zeros((self.nvr,self.nvx,self.nx))
+            for k in range(self.nx):
+                Work = fH2[:,:,k].reshape((self.nvr*self.nvx), order='F')
+                self.Internal.Alpha_H_H2[:,:,k] = (self.Internal.SIG_H_H2 @ Work).reshape(self.Internal.Alpha_H_H2[:,:,k].shape, order='F')
 
         #	Compute Alpha_H_P for present Ti and ni 
         #		if it is needed and has not already been computed with the present parameters
         if Do_Alpha_H_P == 1:
             if debrief > 1:
-                print(prompt+'Computing Alpha_H_P')
-            Alpha_H_P = np.zeros((nvr,nvx,nx))
-            for k in range(nx):
-                Work[:] = (fi_hat[:,:,k]*ni[k]).reshape(Work.shape, order='F')
-                Alpha_H_P[:,:,k] = (SIG_H_P @ Work).reshape(Alpha_H_P[:,:,k].shape, order='F')
+                print(self.prompt+'Computing Alpha_H_P')
+            self.Internal.Alpha_H_P = np.zeros((self.nvr,self.nvx,self.nx))
+            for k in range(self.nx):
+                Work = (self.Internal.fi_hat[:,:,k]*self.Internal.ni[k]).reshape((self.nvr*self.nvx), order='F')
+                self.Internal.Alpha_H_P[:,:,k] = (self.Internal.SIG_H_P @ Work).reshape(self.Internal.Alpha_H_P[:,:,k].shape, order='F')
 
         #	Compute nH
-        for k in range(nx):
-            nH[k] = np.sum(Vr2pidVr*(fH[:,:,k] @ dVx))
+        nH = np.zeros(self.nx)
+        for k in range(self.nx):
+            nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
         
         if New_H_Seed:
-            MH_H_sum = np.zeros((nvr,nvx,nx))
-            Delta_nHs = 1
+            self.Internal.MH_H_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            self.Internal.Delta_nHs = 1
 
         #	Compute Side-Wall collision rate
-        gamma_wall = np.zeros((nvr,nvx,nx))
-        for k in range(nx):
+        gamma_wall = np.zeros((self.nvr,self.nvx,self.nx))
+        for k in range(self.nx):
             if self.mesh.PipeDia[k] > 0:
-                for j in range(nvx):
+                for j in range(self.nvx):
                     gamma_wall[:,j,k] = 2*self.mesh.vr / self.mesh.PipeDia[k]
 
         do_fH_Iterate = True
@@ -871,98 +672,113 @@ class Kinetic_H():
         #	This is the entry point for fH iteration.
         #	Save 'seed' values for comparison later
 
+        #	Set iteration scheme
+        fH_iterate = 0
+        if (self.COLLISIONS['H_H_EL'] != 0) or (self.COLLISIONS['H_P_EL'] != 0) or (H_H2_EL != 0): 
+            fH_iterate = 1
+
+        fH_generations = 0
+        if (fH_iterate != 0) or (self.COLLISIONS['H_P_CX'] != 0): 
+            fH_generations = 1
+
+        fHG = np.zeros((self.nvr,self.nvx,self.nx))
+        NHG = np.zeros((self.nx,max_gen+1))
+        Omega_H_P = np.zeros(self.nx)
+        Omega_H_H2 = np.zeros(self.nx)
+        Omega_H_H = np.zeros(self.nx)
         while do_fH_Iterate: #NOTE Alpha_CX done before here, but done inside iteration in kh2, does it change per iteration? Is this an error?
             do_fH_Iterate = False
-            fHs = copy.copy(fH)
             nHs = copy.copy(nH)
 
             #	Compute Omega values if nH is non-zero
             ii = np.argwhere(nH <= 0)
-            if ii.size <= 0: #NOTE Not Tested Yet, return on iteration
+            if ii.size <= 0:
 
                 #	Compute VxH
+                VxH = np.zeros(self.nx)
                 if self.COLLISIONS['H_P_EL'] or H_H2_EL or self.COLLISIONS['H_H_EL']:
-                    for k in range(nx):
-                        VxH[k] = Vth*np.sum(Vr2pidVr*(fH[:,:,k] @ (self.mesh.vx*dVx))) / nH[k]
+                    for k in range(self.nx):
+                        VxH[k] = self.vth*np.sum(self.dvr_volume*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
 
                 #	Compute Omega_H_P for present fH and Alpha_H_P if H_P elastic collisions are included
                 if self.COLLISIONS['H_P_EL']:
                     if debrief > 1:
-                        print(prompt+'Computing Omega_H_P')
-                    for k in range(nx):
-                        DeltaVx = (VxH[k] - self.vxi[k]) / Vth
-                        MagDeltaVx = np.maximum(abs(DeltaVx), DeltaVx_tol)
+                        print(self.prompt+'Computing Omega_H_P')
+                    for k in range(self.nx):
+                        DeltaVx = (VxH[k] - self.vxi[k]) / self.vth
+                        MagDeltaVx = np.maximum(abs(DeltaVx), self.DeltaVx_tol)
                         DeltaVx = np.sign(DeltaVx)*MagDeltaVx
-                        Omega_H_P[k] = np.sum(Vr2pidVr*((Alpha_H_P[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
+                        Omega_H_P[k] = np.sum(self.dvr_volume*((self.Internal.Alpha_H_P[:,:,k]*fH[:,:,k]) @ self.dvx)) / (nH[k]*DeltaVx)
                     Omega_H_P = np.maximum(Omega_H_P, 0)
 
                 #	Compute Omega_H_H2 for present fH and Alpha_H_H2 if H_H2 elastic collisions are included
 
                 if H_H2_EL:
                     if debrief > 1:
-                        print(prompt+'Computing Omega_H_H2')
-                    for k in range(nx):
-                        DeltaVx = (VxH[k] - vxH2[k]) / Vth
-                        MagDeltaVx = np.maximum(abs(DeltaVx), DeltaVx_tol)
+                        print(self.prompt+'Computing Omega_H_H2')
+                    for k in range(self.nx):
+                        DeltaVx = (VxH[k] - self.H2_Moments.VxH2[k]) / self.vth
+                        MagDeltaVx = np.maximum(abs(DeltaVx), self.DeltaVx_tol)
                         DeltaVx = np.sign(DeltaVx)*MagDeltaVx
                         # print("Mag", fH[:,:,k].T)
                         # input()
-                        Omega_H_H2[k] = np.sum(Vr2pidVr*((Alpha_H_H2[:,:,k]*fH[:,:,k]) @ dVx)) / (nH[k]*DeltaVx)
+                        Omega_H_H2[k] = np.sum(self.dvr_volume*((self.Internal.Alpha_H_H2[:,:,k]*fH[:,:,k]) @ self.dvx)) / (nH[k]*DeltaVx)
                     Omega_H_H2 = np.maximum(Omega_H_H2, 0)
 
                 #	Compute Omega_H_H for present fH if H_H elastic collisions are included
 
                 if self.COLLISIONS['H_H_EL']:
                     if debrief > 1:
-                        print(prompt+'Computing Omega_H_H')
-                    if np.sum(MH_H_sum) <= 0:
-                        for k in range(nx):
-                            for i in range(nvr):
-                                vr2_2vx_ran2[i,:] = self.mesh.vr[i]**2 - 2*((self.mesh.vx - (VxH[k]/Vth))**2)
-                            Wperp_paraH[k] = np.sum(Vr2pidVr*((vr2_2vx_ran2*fH[:,:,k]) @ dVx)) / nH[k]
+                        print(self.prompt+'Computing Omega_H_H')
+                    Wperp_paraH = np.zeros(self.nx)
+                    vr2_2vx_ran2 = np.zeros((self.nvr,self.nvx))
+                    if np.sum(self.Internal.MH_H_sum) <= 0:
+                        for k in range(self.nx):
+                            for i in range(self.nvr):
+                                vr2_2vx_ran2[i,:] = self.mesh.vr[i]**2 - 2*((self.mesh.vx - (VxH[k]/self.vth))**2)
+                            Wperp_paraH[k] = np.sum(self.dvr_volume*((vr2_2vx_ran2*fH[:,:,k]) @ self.dvx)) / nH[k]
                     else:
-                        for k in range(nx):
-                            M_fH = MH_H_sum[:,:,k] - fH[:,:,k]
-                            Wperp_paraH[k] = -np.sum(Vr2pidVr*((vr2_2vx2_2D*M_fH) @ dVx)) / nH[k]
-                    for k in range(nx):
-                        Work[:] = fH[:,:,k].reshape(Work.shape, order='F')
-                        Alpha_H_H[:] = (SIG_H_H @ Work).reshape(Alpha_H_H.shape, order='F')
+                        for k in range(self.nx):
+                            M_fH = self.Internal.MH_H_sum[:,:,k] - fH[:,:,k]
+                            Wperp_paraH[k] = -np.sum(self.dvr_volume*((self.vr2_2vx2_2D*M_fH) @ self.dvx)) / nH[k]
+                    for k in range(self.nx):
+                        Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
+                        Alpha_H_H = (self.Internal.SIG_H_H @ Work).reshape((self.nvr,self.nvx), order='F')
                         Wpp = Wperp_paraH[k]
-                        MagWpp = np.maximum(np.abs(Wpp), Wpp_tol)
+                        MagWpp = np.maximum(np.abs(Wpp), self.Wpp_tol)
                         Wpp = np.sign(Wpp)*MagWpp
-                        Omega_H_H[k] = np.sum(Vr2pidVr*((Alpha_H_H*Work.reshape(Alpha_H_H.shape, order='F')) @ dVx)) / (nH[k]*Wpp)
+                        Omega_H_H[k] = np.sum(self.dvr_volume*((Alpha_H_H*Work.reshape((self.nvr,self.nvx), order='F')) @ self.dvx)) / (nH[k]*Wpp)
                     Omega_H_H = np.maximum(Omega_H_H, 0)
 
             #	Total Elastic scattering frequency
-
             Omega_EL = Omega_H_P + Omega_H_H2 + Omega_H_H
 
             #	Total collision frequency
 
-            alpha_c = np.zeros((nvr,nvx,nx))
+            alpha_c = np.zeros((self.nvr,self.nvx,self.nx))
             if self.COLLISIONS['H_P_CX']:
-                for k in range(nx):
-                    alpha_c[:,:,k] = Alpha_CX[:,:,k] + alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
+                for k in range(self.nx):
+                    alpha_c[:,:,k] = self.Internal.Alpha_CX[:,:,k] + self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
             else:
-                for k in range(nx):
-                    alpha_c[:,:,k] = alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
+                for k in range(self.nx):
+                    alpha_c[:,:,k] = self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
 
             #	Test x grid spacing based on Eq.(27) in notes
             if debrief>1:
-                print(prompt+'Testing x grid spacing')
-            Max_dx = np.full(nx, 1e32)
-            for k in range(nx):
-                for j in range(i_p[0][0], nvx): # changed ip to i_p
+                print(self.prompt+'Testing x grid spacing')
+            Max_dx = np.full(self.nx, 1e32)
+            for k in range(self.nx):
+                for j in self.vx_pos:
                     Max_dx[k] = np.minimum(Max_dx[k], min(2*self.mesh.vx[j] / alpha_c[:,j,k]))
 
             dx = np.roll(self.mesh.x,-1) - self.mesh.x
-            Max_dxL = Max_dx[0:nx-1]
-            Max_dxR = Max_dx[1:nx]
+            Max_dxL = Max_dx[0:self.nx-1]
+            Max_dxR = Max_dx[1:self.nx]
             Max_dx = np.minimum(Max_dxL, Max_dxR)
-            ilarge = np.argwhere(Max_dx < dx[0:nx-1])
+            ilarge = np.argwhere(Max_dx < dx[0:self.nx-1])
 
             if ilarge.size > 0:
-                print(prompt+'x mesh spacing is too large!') #NOTE Check Formatting
+                print(self.prompt+'x mesh spacing is too large!') #NOTE Check Formatting
                 debug = 1
                 out = ""
                 jj = 0
@@ -979,48 +795,47 @@ class Kinetic_H():
                         out = "\t"
                 if jj>0:
                     print(out)
-                error = 1
                 raise Exception("x mesh spacing is too large")
 
             #	Define parameters Ak, Bk, Ck, Dk, Fk, Gk
 
-            Ak = np.zeros((nvr,nvx,nx))
-            Bk = np.zeros((nvr,nvx,nx))
-            Ck = np.zeros((nvr,nvx,nx))
-            Dk = np.zeros((nvr,nvx,nx))
-            Fk = np.zeros((nvr,nvx,nx))
-            Gk = np.zeros((nvr,nvx,nx))
+            Ak = np.zeros((self.nvr,self.nvx,self.nx))
+            Bk = np.zeros((self.nvr,self.nvx,self.nx))
+            Ck = np.zeros((self.nvr,self.nvx,self.nx))
+            Dk = np.zeros((self.nvr,self.nvx,self.nx))
+            Fk = np.zeros((self.nvr,self.nvx,self.nx))
+            Gk = np.zeros((self.nvr,self.nvx,self.nx))
 
-            for k in range(0, nx-1):
-                for j in range(i_p[0][0], nvx): # double check some of the ranges in for statements I might have some typos
+            for k in range(0, self.nx-1):
+                for j in self.vx_pos: # double check some of the ranges in for statements I might have some typos
                     denom = 2*self.mesh.vx[j] + (self.mesh.x[k+1] - self.mesh.x[k])*alpha_c[:,j,k+1]
                     Ak[:,j,k] = (2*self.mesh.vx[j] - (self.mesh.x[k+1] - self.mesh.x[k])*alpha_c[:,j,k]) / denom
                     Bk[:,j,k] = (self.mesh.x[k+1] - self.mesh.x[k]) / denom
-                    Fk[:,j,k] = (self.mesh.x[k+1] - self.mesh.x[k])*(Sn[:,j,k+1]+Sn[:,j,k]) / denom
-            for k in range(1, nx):
-                for j in range(0, i_p[0][0]):
+                    Fk[:,j,k] = (self.mesh.x[k+1] - self.mesh.x[k])*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
+            for k in range(1, self.nx):
+                for j in self.vx_neg:
                     denom = -2*self.mesh.vx[j] + (self.mesh.x[k] - self.mesh.x[k-1])*alpha_c[:,j,k-1]
                     Ck[:,j,k] = (-2*self.mesh.vx[j] - (self.mesh.x[k] - self.mesh.x[k -1])*alpha_c[:,j,k]) / denom
                     Dk[:,j,k] = (self.mesh.x[k] - self.mesh.x[k-1]) / denom
-                    Gk[:,j,k] = (self.mesh.x[k] - self.mesh.x[k-1])*(Sn[:,j,k]+Sn[:,j,k-1]) / denom
+                    Gk[:,j,k] = (self.mesh.x[k] - self.mesh.x[k-1])*(self.Internal.Sn[:,j,k]+self.Internal.Sn[:,j,k-1]) / denom
                             
             #	Compute first-flight (0th generation) neutral distribution function
-            Beta_CX_sum = np.zeros((nvr,nvx,nx))
-            MH_P_sum = np.zeros((nvr,nvx,nx))
-            MH_H2_sum = np.zeros((nvr,nvx,nx))
-            MH_H_sum = np.zeros((nvr,nvx,nx))
+            Beta_CX_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            MH_P_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            MH_H2_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            self.Internal.MH_H_sum = np.zeros((self.nvr,self.nvx,self.nx))
             igen = 0
             if debrief > 0:
-                print(prompt+'Computing atomic neutral generation#'+sval(igen))
-            fHG[:,i_p,0] = fH[:,i_p,0]
-            for k in range(nx-1):
-                fHG[:,i_p,k+1] = fHG[:,i_p,k]*Ak[:,i_p,k] + Fk[:,i_p,k]
-            for k in range(nx-1,0,-1):
-                fHG[:,i_n,k-1] = fHG[:,i_n,k]*Ck[:,i_n,k] + Gk[:,i_n,k]
+                print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
+            fHG[:,self.vx_pos,0] = fH[:,self.vx_pos,0]
+            for k in range(self.nx-1):
+                fHG[:,self.vx_pos,k+1] = fHG[:,self.vx_pos,k]*Ak[:,self.vx_pos,k] + Fk[:,self.vx_pos,k]
+            for k in range(self.nx-1,0,-1):
+                fHG[:,self.vx_neg,k-1] = fHG[:,self.vx_neg,k]*Ck[:,self.vx_neg,k] + Gk[:,self.vx_neg,k]
                     
             #	Compute first-flight neutral density profile
-            for k in range(nx):
-                NHG[k,igen] = np.sum(Vr2pidVr*(fHG[:,:,k] @ dVx))
+            for k in range(self.nx):
+                NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
 
             # NOTE Add plotting once program is working
 
@@ -1033,87 +848,90 @@ class Kinetic_H():
             while True:
                 if igen+1 > max_gen or fH_generations == 0:
                     if debrief > 0:
-                        print(prompt+'Completed '+sval(max_gen)+' generations. Returning present solution...')
+                        print(self.prompt+'Completed '+sval(max_gen)+' generations. Returning present solution...')
                     break
                 igen += 1
                 if debrief > 0:
-                    print(prompt+'Computing atomic neutral generation#'+sval(igen))
+                    print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
 
                 #	Compute Beta_CX from previous generation
 
-                Beta_CX = np.zeros((nvr,nvx,nx))
+                Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
                 if self.COLLISIONS['H_P_CX']:
                     if debrief>1:
-                        print(prompt+'Computing Beta_CX')
+                        print(self.prompt+'Computing Beta_CX')
 
                     if self.COLLISIONS['SIMPLE_CX']:
                         #	Option (B): Compute charge exchange source with assumption that CX source 
                         #		neutrals have ion distribution function
-                        for k in range(nx):
-                            Beta_CX[:,:,k] = fi_hat[:,:,k]*np.sum(Vr2pidVr*((Alpha_CX[:,:,k]*fHG[:,:,k]) @ dVx))
+                        for k in range(self.nx):
+                            Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*((self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k]) @ self.dvx))
                     else:
                         #	Option (A): Compute charge exchange source using fH and vr x sigma x v_v at 
                         #		each velocity mesh point
-                        for k in range(nx):
-                            Work[:] = fHG[:,:,k]
-                            Beta_CX[:,:,k] = ni[k]*fi_hat[:,:,k]*(SIG_CX @ Work)
+                        for k in range(self.nx):
+                            Work = fHG[:,:,k]
+                            Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
 
                     #	Sum charge exchange source over all generations
                     Beta_CX_sum += Beta_CX
 
                 #	Compute MH from previous generation
-                MH_H = np.zeros((nvr,nvx,nx))
-                MH_P = np.zeros((nvr,nvx,nx))
-                MH_H2 = np.zeros((nvr,nvx,nx))
-                OmegaM = np.zeros((nvr,nvx,nx))
+                MH_H = np.zeros((self.nvr,self.nvx,self.nx))
+                MH_P = np.zeros((self.nvr,self.nvx,self.nx))
+                MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
+                OmegaM = np.zeros((self.nvr,self.nvx,self.nx))
+                VxHG = np.zeros(self.nx)
+                THG = np.zeros(self.nx)
                 if self.COLLISIONS['H_H_EL'] or self.COLLISIONS['H_P_EL'] or H_H2_EL:
 
                     #	Compute VxHG, THG
-                    for k in range(0, nx):
-                        VxHG[k] = Vth*np.sum(Vr2pidVr*(fHG[:,:,k] @ (self.mesh.vx*dVx))) / NHG[k,igen-1]
-                        for i in range(0, nvr):
-                            vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/Vth)**2
-                        THG[k] = (self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fHG[:,:,k]) @ dVx)) / (3*CONST.Q*NHG[k,igen-1])
+                    vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
+                    for k in range(0, self.nx):
+                        VxHG[k] = self.vth*np.sum(self.dvr_volume*(fHG[:,:,k] @ (self.mesh.vx*self.dvx))) / NHG[k,igen-1]
+                        for i in range(0, self.nvr):
+                            vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/self.vth)**2
+                        THG[k] = (self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fHG[:,:,k]) @ self.dvx)) / (3*CONST.Q*NHG[k,igen-1])
 
                     if self.COLLISIONS['H_H_EL']:
                         if debrief > 1:
-                            print(prompt+'Computing MH_H')
+                            print(self.prompt+'Computing MH_H')
 
                         #	Compute MH_H 
                         vx_shift = VxHG
                         Tmaxwell = THG
                         mol = 1
                         Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                        for k in range(nx):
+                        for k in range(self.nx):
                             MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                             OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
-                        MH_H_sum += MH_H
+                        self.Internal.MH_H_sum += MH_H
 
                     if self.COLLISIONS['H_P_EL']:
                         if debrief>1:
-                            print(prompt+'Computing MH_P')
+                            print(self.prompt+'Computing MH_P')
 
                         #	Compute MH_P 
                         vx_shift = (VxHG+self.vxi)/2
                         Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
                         mol = 1
                         Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                        for k in range(nx):
+                        for k in range(self.nx):
                             MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                             OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
                         MH_P_sum += MH_P
 
                     if H_H2_EL:
                         if debrief>1:
-                            print(prompt+'Computing MH_H2')
+                            print(self.prompt+'Computing MH_H2')
 
                         #	Compute MH_H2
-                        vx_shift = (VxHG + 2*vxH2)/3
-                        Tmaxwell = THG + (4./9.)*(TH2 - THG + 2*self.mu*CONST.H_MASS*((vxH2 - VxHG)**2) / (6*CONST.Q))
+                        vx_shift = (VxHG + 2*self.H2_Moments.VxH2)/3
+                        Tmaxwell = THG + (4./9.)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
                         mol = 1
                         Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
                         
-                        for k in range(nx):
+                        for k in range(self.nx):
                             MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
                             OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
                         MH_H2_sum += MH_H2
@@ -1121,12 +939,12 @@ class Kinetic_H():
                 #	Compute next generation atomic distribution
 
                 fHG[:] = 0
-                for k in range(0, nx-1):
-                    fHG[:,i_p,k+1] = Ak[:,i_p,k]*fHG[:,i_p,k] + Bk[:,i_p,k]*(Beta_CX[:,i_p,k+1] + OmegaM[:,i_p,k+1] + Beta_CX[:,i_p,k] + OmegaM[:,i_p,k])
-                for k in range(nx-1, 0, -1):
-                    fHG[:,i_n,k-1] = Ck[:,i_n,k]*fHG[:,i_n,k] + Dk[:,i_n,k]*(Beta_CX[:,i_n,k-1] + OmegaM[:,i_n,k-1] + Beta_CX[:,i_n,k] + OmegaM[:,i_n,k])
-                for k in range(0, nx):
-                    NHG[k,igen] = np.sum(Vr2pidVr*(fHG[:,:,k] @ dVx))
+                for k in range(0, self.nx-1):
+                    fHG[:,self.vx_pos,k+1] = Ak[:,self.vx_pos,k]*fHG[:,self.vx_pos,k] + Bk[:,self.vx_pos,k]*(Beta_CX[:,self.vx_pos,k+1] + OmegaM[:,self.vx_pos,k+1] + Beta_CX[:,self.vx_pos,k] + OmegaM[:,self.vx_pos,k])
+                for k in range(self.nx-1, 0, -1):
+                    fHG[:,self.vx_neg,k-1] = Ck[:,self.vx_neg,k]*fHG[:,self.vx_neg,k] + Dk[:,self.vx_neg,k]*(Beta_CX[:,self.vx_neg,k-1] + OmegaM[:,self.vx_neg,k-1] + Beta_CX[:,self.vx_neg,k] + OmegaM[:,self.vx_neg,k])
+                for k in range(0, self.nx):
+                    NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
 
                 # NOTE Add plotting once program is working
 
@@ -1137,7 +955,7 @@ class Kinetic_H():
                 #	Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
                 #		and decide if another generation should be computed
                 Delta_nHG = max(NHG[:,igen]/max(nH))
-                if (Delta_nHG < truncate) or (fH_iterate and (Delta_nHG < 0.003*Delta_nHs)):
+                if (Delta_nHG < truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
                     #	If fH 'seed' is being iterated, then do another generation until the 'generation error'
                     #		is less than 0.003 times the 'seed error' or is less than TRUNCATE
                     break
@@ -1147,83 +965,86 @@ class Kinetic_H():
             # NOTE Add plotting once program is working
 
             #	Compute H density profile
-            for k in range(0, nx):
-                nH[k] = np.sum(Vr2pidVr*(fH[:,:,k] @ dVx))
+            for k in range(0, self.nx):
+                nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
 
             if fH_iterate:
 
                 #	Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
                 #		If Delta_nHs is greater than 10*truncate then iterate fH
-                Delta_nHs = np.max(np.abs(nHs - nH))/np.max(nH)
-                if Delta_nHs > 10*truncate:
+                self.Internal.Delta_nHs = np.max(np.abs(nHs - nH))/np.max(nH)
+                if self.Internal.Delta_nHs > 10*truncate:
                     do_fH_Iterate = True 
 
         #	Update Beta_CX_sum using last generation
         if self.COLLISIONS['H_P_CX']:
             if debrief > 1:
-                print(prompt, 'Computing Beta_CX')
+                print(self.prompt, 'Computing Beta_CX')
             if self.COLLISIONS['SIMPLE_CX']:
                 # Option (B): Compute charge exchange source with assumption that CX source neutrals have
                 # ion distribution function
-                for k in range(0, nx):
-                    Beta_CX[:,:,k] = fi_hat[:,:,k]*np.sum(Vr2pidVr*(Alpha_CX[:,:,k]*fHG[:,:,k] @ dVx))
+                for k in range(0, self.nx):
+                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*(self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k] @ self.dvx))
             else:
                 # Option (A): Compute charge exchange source using fH2 and vr x sigma x v_v at each velocity mesh point
-                for k in range(0, nx):
-                    Work[:] = fHG[:,:,k]
-                    Beta_CX[:,:,k] = ni[k]*fi_hat[:,:,k]*(SIG_CX @ Work)
+                for k in range(0, self.nx):
+                    Work = fHG[:,:,k]
+                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
             Beta_CX_sum = Beta_CX_sum + Beta_CX
                 
         #	Update MH_*_sum using last generation
-        MH_H2 = np.zeros((nvr,nvx,nx))
-        MH_P = np.zeros((nvr,nvx,nx))
-        MH_H = np.zeros((nvr,nvx,nx))
-        OmegaM = np.zeros((nvr,nvx,nx))
+        MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
+        MH_P = np.zeros((self.nvr,self.nvx,self.nx))
+        MH_H = np.zeros((self.nvr,self.nvx,self.nx))
+        OmegaM = np.zeros((self.nvr,self.nvx,self.nx))
+        VxHG = np.zeros(self.nx)
+        THG = np.zeros(self.nx)
         if self.COLLISIONS['H_H_EL'] or self.COLLISIONS['H_P_EL'] or H_H2_EL: 
             # Compute VxH2G, TH2G
-            for k in range(0, nx):
-                VxHG[k] = Vth*np.sum(Vr2pidVr*(fHG[:,:,k] @ (self.mesh.vx*dVx))) / NHG[k,igen]
-                for i in range(0, nvr):
-                    vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/Vth)**2
-                THG[k] = (self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran2*fHG[:,:,k]) @ dVx)) / (3*CONST.Q*NHG[k,igen])
+            vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
+            for k in range(0, self.nx):
+                VxHG[k] = self.vth*np.sum(self.dvr_volume*(fHG[:,:,k] @ (self.mesh.vx*self.dvx))) / NHG[k,igen]
+                for i in range(0, self.nvr):
+                    vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/self.vth)**2
+                THG[k] = (self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fHG[:,:,k]) @ self.dvx)) / (3*CONST.Q*NHG[k,igen])
 
             if self.COLLISIONS['H_H_EL']:
                 if debrief > 1: 
-                    print(prompt, 'Computing MH_H')
+                    print(self.prompt, 'Computing MH_H')
                 # Compute MH_H
                 vx_shift = VxHG
                 Tmaxwell = np.copy(THG)
                 mol = 1
                 Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
                 
-                for k in range(0, nx):
+                for k in range(0, self.nx):
                     MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                     OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
-                MH_H_sum = MH_H_sum + MH_H
+                self.Internal.MH_H_sum = self.Internal.MH_H_sum + MH_H
 
             if self.COLLISIONS['H_P_EL']:
                 if debrief > 1:
-                    print(prompt, 'Computing MH_P')
+                    print(self.prompt, 'Computing MH_P')
                 # Compute MH_P
                 vx_shift = (VxHG + self.vxi)/2
                 Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
                 mol = 1
                 Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
                 
-                for k in range(0, nx):
+                for k in range(0, self.nx):
                     MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                     OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
                 MH_P_sum = MH_P_sum + MH_P
 
                 if H_H2_EL: #NOTE Not Tested Yet
                     if debrief > 1:
-                        print(prompt, 'Computing MH_H2')
+                        print(self.prompt, 'Computing MH_H2')
                     # Compute MH_H
-                    vx_shift = (VxHG + 2*vxH2)/3
-                    Tmaxwell = THG + (4/9)*(TH2 - THG + 2*self.mu*CONST.H_MASS*((vxH2 - VxHG)**2) / (6*CONST.Q))
+                    vx_shift = (VxHG + 2*self.H2_Moments.VxH2)/3
+                    Tmaxwell = THG + (4/9)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
                     mol = 1
                     Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                    for k in range(0, nx):
+                    for k in range(0, self.nx):
                         MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
                         OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
                     MH_H2_sum = MH_H2_sum + MH_H2
@@ -1232,246 +1053,264 @@ class Kinetic_H():
 
         #NOTE In kinetic_h2, these are calculated in the iteration, does that matter?
         #	GammaxH - particle flux in x direction
-        for k in range(0, nx):
-                GammaxH[k] = Vth*np.sum(Vr2pidVr*(fH[:,:,k] @ (self.mesh.vx*dVx)))
+        GammaxH = np.zeros(self.nx)
+        for k in range(0, self.nx):
+                GammaxH[k] = self.vth*np.sum(self.dvr_volume*(fH[:,:,k] @ (self.mesh.vx*self.dvx)))
 
         #	VxH - x velocity
         VxH = GammaxH / nH
-        _VxH = VxH / Vth
+        _VxH = VxH / self.vth
 
         #	magnitude of random velocity at each mesh point
-        vr2vx2_ran = np.zeros((nvr,nvx,nx))
-        for i in range(0, nvr):
-            for k in range(0, nx):
+        vr2vx2_ran = np.zeros((self.nvr,self.nvx,self.nx))
+        for i in range(0, self.nvr):
+            for k in range(0, self.nx):
                 vr2vx2_ran[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - _VxH[k])**2
 
         #	pH - pressure 
-        for k in range(nx):
-            pH[k] = ((self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ dVx))) / (3*CONST.Q)
+        pH = np.zeros(self.nx)
+        for k in range(self.nx):
+            pH[k] = ((self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ self.dvx))) / (3*CONST.Q)
 
         #	TH - temperature
         TH = pH/nH
 
         #	piH_xx
-        for k in range(nx):
-            KH.Output.piH_xx[k] = (((self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*(fH[:,:,k] @ (dVx*(self.mesh.vx - _VxH[k])**2)))) / CONST.Q) - pH[k]
+        for k in range(self.nx):
+            self.Output.piH_xx[k] = (((self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*(fH[:,:,k] @ (self.dvx*(self.mesh.vx - _VxH[k])**2)))) / CONST.Q) - pH[k]
         #	piH_yy
-        for k in range(nx):
-            KH.Output.piH_yy[k] = (((self.mu*CONST.H_MASS)*Vth2*0.5*np.sum((Vr2pidVr*(self.mesh.vr**2))*(fH[:,:,k] @ dVx))) / CONST.Q) - pH[k]
+        for k in range(self.nx):
+            self.Output.piH_yy[k] = (((self.mu*CONST.H_MASS)*self.vth**2*0.5*np.sum((self.dvr_volume*(self.mesh.vr**2))*(fH[:,:,k] @ self.dvx))) / CONST.Q) - pH[k]
         #	piH_zz
-        KH.Output.piH_zz = copy.copy(KH.Output.piH_yy)
+        self.Output.piH_zz = copy.copy(self.Output.piH_yy)
         #	qxH
-        for k in range(nx):
-            qxH[k] = 0.5*(self.mu*CONST.H_MASS)*Vth3*np.sum(Vr2pidVr*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ (dVx*(self.mesh.vx - _VxH[k]))))
+        qxH = np.zeros(self.nx)
+        for k in range(self.nx):
+            qxH[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**3*np.sum(self.dvr_volume*((vr2vx2_ran[:,:,k]*fH[:,:,k]) @ (self.dvx*(self.mesh.vx - _VxH[k]))))
 
         #	C = RHS of Boltzman equation for total fH
 
-        for k in range(nx):
-            C = Vth*(Sn[:,:,k] + Beta_CX_sum[:,:,k] - alpha_c[:,:,k]*fH[:,:,k] + \
-                    Omega_H_P[k]*MH_P_sum[:,:,k] + Omega_H_H2[k]*MH_H2_sum[:,:,k] + Omega_H_H[k]*MH_H_sum[:,:,k])
+        QH = np.zeros(self.nx)
+        RxH = np.zeros(self.nx)
+        NetHSource = np.zeros(self.nx)
+        Sion = np.zeros(self.nx)
+        WallH = np.zeros(self.nx)
+        for k in range(self.nx):
+            C = self.vth*(self.Internal.Sn[:,:,k] + Beta_CX_sum[:,:,k] - alpha_c[:,:,k]*fH[:,:,k] + \
+                    Omega_H_P[k]*MH_P_sum[:,:,k] + Omega_H_H2[k]*MH_H2_sum[:,:,k] + Omega_H_H[k]*self.Internal.MH_H_sum[:,:,k])
             # print("C", C.T)
             # input()
-            QH[k] = 0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2_ran[:,:,k]*C) @ dVx))
-            RxH[k] = (self.mu*CONST.H_MASS)*Vth*np.sum(Vr2pidVr*(C @ (dVx*(self.mesh.vx - _VxH[k]))))
-            NetHSource[k] = np.sum(Vr2pidVr*(C @ dVx))
-            Sion[k] = Vth*nH[k]*alpha_ion[k]
-            KH.Output.SourceH[k] = np.sum(Vr2pidVr*(fSH[:,:,k] @ dVx))
-            WallH[k] = np.sum(Vr2pidVr*((gamma_wall[:,:,k]*fH[:,:,k]) @ dVx))
+            QH[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran[:,:,k]*C) @ self.dvx))
+            RxH[k] = (self.mu*CONST.H_MASS)*self.vth*np.sum(self.dvr_volume*(C @ (self.dvx*(self.mesh.vx - _VxH[k]))))
+            NetHSource[k] = np.sum(self.dvr_volume*(C @ self.dvx))
+            Sion[k] = self.vth*nH[k]*self.Internal.alpha_ion[k]
+            self.Output.SourceH[k] = np.sum(self.dvr_volume*(fSH[:,:,k] @ self.dvx))
+            WallH[k] = np.sum(self.dvr_volume*((gamma_wall[:,:,k]*fH[:,:,k]) @ self.dvx))
 
-            if Recomb:
-                KH.Output.SRecomb[k] = Vth*ni[k]*Rec[k]
+            if recomb:
+                self.Output.SRecomb[k] = self.vth*self.Internal.ni[k]*self.Internal.Rec[k]
             else:
-                KH.Output.SRecomb[k] = 0
+                self.Output.SRecomb[k] = 0
 
             if self.COLLISIONS['H_P_CX']:
-                CCX = Vth*(Beta_CX_sum[:,:,k] - Alpha_CX[:,:,k]*fH[:,:,k])
-                KH.Output.RxHCX[k] = (self.mu*CONST.H_MASS)*Vth*np.sum(Vr2pidVr*(CCX @ (dVx*(self.mesh.vx - _VxH[k]))))
-                KH.Output.EHCX[k] = 0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2[:,:,k]*CCX) @ dVx))
+                CCX = self.vth*(Beta_CX_sum[:,:,k] - self.Internal.Alpha_CX[:,:,k]*fH[:,:,k])
+                self.Output.RxHCX[k] = (self.mu*CONST.H_MASS)*self.vth*np.sum(self.dvr_volume*(CCX @ (self.dvx*(self.mesh.vx - _VxH[k]))))
+                self.Output.EHCX[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*CCX) @ self.dvx))
 
             if H_H2_EL:
-                CH_H2 = Vth*Omega_H_H2[k]*(MH_H2_sum[:,:,k] - fH[:,:,k])
-                KH.Output.RxH2_H[k] = (self.mu*CONST.H_MASS)*Vth*np.sum(Vr2pidVr*(CH_H2 @ (dVx*(self.mesh.vx - _VxH[k]))))
-                KH.Output.EH2_H[k] = 0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2[:,:,k]*CH_H2) @ dVx))
+                CH_H2 = self.vth*Omega_H_H2[k]*(MH_H2_sum[:,:,k] - fH[:,:,k])
+                self.Output.RxH2_H[k] = (self.mu*CONST.H_MASS)*self.vth*np.sum(self.dvr_volume*(CH_H2 @ (self.dvx*(self.mesh.vx - _VxH[k]))))
+                self.Output.EH2_H[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*CH_H2) @ self.dvx))
 
             if self.COLLISIONS['H_P_EL']:
-                CH_P = Vth*Omega_H_P[k]*(MH_P_sum[:,:,k] - fH[:,:,k])
-                KH.Output.RxP_H[k] = (self.mu*CONST.H_MASS)*Vth*np.sum(Vr2pidVr*(CH_P @ (dVx*(self.mesh.vx - _VxH[k]))))
-                KH.Output.EP_H[k] = 0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2[:,:,k]*CH_P) @ dVx))
+                CH_P = self.vth*Omega_H_P[k]*(MH_P_sum[:,:,k] - fH[:,:,k])
+                self.Output.RxP_H[k] = (self.mu*CONST.H_MASS)*self.vth*np.sum(self.dvr_volume*(CH_P @ (self.dvx*(self.mesh.vx - _VxH[k]))))
+                self.Output.EP_H[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*CH_P) @ self.dvx))
 
-            CW_H = -Vth*(gamma_wall[:,:,k]*fH[:,:,k])
-            KH.Output.RxW_H[k] = (self.mu*CONST.H_MASS)*Vth*np.sum(Vr2pidVr*(CW_H @ (dVx*(self.mesh.vx - _VxH[k]))))
-            KH.Output.EW_H[k] = 0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2vx2[:,:,k]*CW_H) @ dVx))
+            CW_H = -self.vth*(gamma_wall[:,:,k]*fH[:,:,k])
+            self.Output.RxW_H[k] = (self.mu*CONST.H_MASS)*self.vth*np.sum(self.dvr_volume*(CW_H @ (self.dvx*(self.mesh.vx - _VxH[k]))))
+            self.Output.EW_H[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*CW_H) @ self.dvx))
             
             if self.COLLISIONS['H_H_EL']:
-                CH_H = Vth*Omega_H_H[k]*(MH_H_sum[:,:,k] - fH[:,:,k])
-                for i in range(0, nvr):
+                vr2_2vx_ran2 = np.zeros((self.nvr,self.nvx))
+                CH_H = self.vth*Omega_H_H[k]*(self.Internal.MH_H_sum[:,:,k] - fH[:,:,k])
+                for i in range(0, self.nvr):
                     vr2_2vx_ran2[i,:] = self.mesh.vr[i]**2 - 2*((self.mesh.vx - _VxH[k])**2)
-                KH.Output.Epara_PerpH_H[k] = -0.5*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((vr2_2vx_ran2*CH_H) @ dVx))
+                self.Output.Epara_PerpH_H[k] = -0.5*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2_2vx_ran2*CH_H) @ self.dvx))
 
         #	qxH_total
-        qxH_total = (0.5*nH*(self.mu*CONST.H_MASS)*VxH*VxH + 2.5*pH*CONST.Q)*VxH + CONST.Q*KH.Output.piH_xx*VxH + qxH
+        qxH_total = (0.5*nH*(self.mu*CONST.H_MASS)*VxH*VxH + 2.5*pH*CONST.Q)*VxH + CONST.Q*self.Output.piH_xx*VxH + qxH
 
         #	QH_total
         QH_total = QH + RxH*VxH + 0.5*(self.mu*CONST.H_MASS)*NetHSource*VxH*VxH
 
         #	Albedo
-        gammax_plus = Vth*np.sum(Vr2pidVr*(fH[:,i_p[:,0],0] @ (self.mesh.vx[i_p[:,0]]*dVx[i_p[:,0]]))) #NOTE Had to reference i_p and i_n in a weird way, fix how they are called in the first place
-        gammax_minus = Vth*np.sum(Vr2pidVr*(fH[:,i_n[:,0],0] @ (self.mesh.vx[i_n[:,0]]*dVx[i_n[:,0]]))) #This is awful and should not be allowed to remain
+        gammax_plus = self.vth*np.sum(self.dvr_volume*(fH[:,self.vx_pos,0] @ (self.mesh.vx[self.vx_pos]*self.dvx[self.vx_pos]))) 
+        gammax_minus = self.vth*np.sum(self.dvr_volume*(fH[:,self.vx_neg,0] @ (self.mesh.vx[self.vx_neg]*self.dvx[self.vx_neg])))
+        AlbedoH = 0.0e0
         if np.abs(gammax_plus) > 0:
             AlbedoH = -gammax_minus/gammax_plus
 
         #	Compute Mesh Errors
 
-        mesh_error = np.zeros((nvr,nvx,nx))
+        mesh_error = np.zeros((self.nvr,self.nvx,self.nx))
         max_mesh_error = 0.0
         min_mesh_error = 0.0
         mtest = 5
-        moment_error = np.zeros((nx,mtest))
+        moment_error = np.zeros((self.nx,mtest))
         max_moment_error = np.zeros(mtest)
-        C_error = np.zeros(nx)
-        CX_error = np.zeros(nx)
-        H_H_error = np.zeros((nx, 3))
-        H_H2_error = np.zeros((nx, 3))
-        H_P_error = np.zeros((nx, 3))
+        C_error = np.zeros(self.nx)
+        CX_error = np.zeros(self.nx)
+        H_H_error = np.zeros((self.nx, 3))
+        H_H2_error = np.zeros((self.nx, 3))
+        H_P_error = np.zeros((self.nx, 3))
         max_H_H_error = np.zeros(3)
         max_H_H2_error = np.zeros(3)
         max_H_P_error = np.zeros(3)
 
         if compute_errors:
             if debrief > 1:
-                print(prompt+'Computing Collision Operator, Mesh, and Moment Normalized Errors')
-            NetHSource2 = KH.Output.SourceH + KH.Output.SRecomb - Sion - WallH
-            for k in range(nx):
+                print(self.prompt+'Computing Collision Operator, Mesh, and Moment Normalized Errors')
+            NetHSource2 = self.Output.SourceH + self.Output.SRecomb - Sion - WallH
+            for k in range(self.nx):
                 C_error[k] = abs(NetHSource[k] - NetHSource2[k]) / max(abs(np.array([NetHSource[k], NetHSource2[k]])))
 
             #	Test conservation of particles for charge exchange operator
             if self.COLLISIONS['H_P_CX']:
-                for k in range(nx):
-                    CX_A = np.sum(Vr2pidVr*((Alpha_CX[:,:,k]*fH[:,:,k]) @ dVx))
-                    CX_B = np.sum(Vr2pidVr*(Beta_CX_sum[:,:,k] @ dVx))
+                for k in range(self.nx):
+                    CX_A = np.sum(self.dvr_volume*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+                    CX_B = np.sum(self.dvr_volume*(Beta_CX_sum[:,:,k] @ self.dvx))
                     CX_error[k] = np.abs(CX_A - CX_B) / np.max(np.abs(np.array([CX_A, CX_B])))
 
             #	Test conservation of particles, x momentum, and total energy of elastic collision operators
             for m in range(0, 3):
-                for k in range(0, nx):
+                for k in range(0, self.nx):
                     if m < 2:
-                        TfH = np.sum(Vr2pidVr*(fH[:,:,k] @ (dVx*(self.mesh.vx**m))))
+                        TfH = np.sum(self.dvr_volume*(fH[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
                     else:
-                        TfH = np.sum(Vr2pidVr*((vr2vx2[:,:,k]*fH[:,:,k]) @ dVx))
+                        TfH = np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*fH[:,:,k]) @ self.dvx))
 
                     if self.COLLISIONS['H_H_EL']:
                         if m < 2:
-                            TH_H = np.sum(Vr2pidVr*(MH_H_sum[:,:,k] @ (dVx*(self.mesh.vx**m))))
+                            TH_H = np.sum(self.dvr_volume*(self.Internal.MH_H_sum[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
                         else:
-                            TH_H = np.sum(Vr2pidVr*((vr2vx2[:,:,k]*MH_H_sum[:,:,k]) @ dVx))
+                            TH_H = np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*self.Internal.MH_H_sum[:,:,k]) @ self.dvx))
                         H_H_error[k,m] = np.abs(TfH - TH_H) / np.max(np.abs(np.array([TfH, TH_H])))
                     
                     if H_H2_EL:
                         if m < 2:
-                            TH_H2 = np.sum(Vr2pidVr*(MH_H2_sum[:,:,k] @ (dVx*(self.mesh.vx**m))))
+                            TH_H2 = np.sum(self.dvr_volume*(MH_H2_sum[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
                         else:
-                            TH_H2 = np.sum(Vr2pidVr*((vr2vx2[:,:,k]*MH_H2_sum[:,:,k]) @ dVx))
+                            TH_H2 = np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*MH_H2_sum[:,:,k]) @ self.dvx))
                         H_H2_error[k,m] = np.abs(TfH - TH_H2) / np.max(np.abs(np.array([TfH, TH_H2])))
 
                     if self.COLLISIONS['H_P_EL']:
                         if m < 2:
-                            TH_P = np.sum(Vr2pidVr*(MH_P_sum[:,:,k] @ (dVx*(self.mesh.vx**m))))
+                            TH_P = np.sum(self.dvr_volume*(MH_P_sum[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
                         else:
-                            TH_P = np.sum(Vr2pidVr*((vr2vx2[:,:,k]*MH_P_sum[:,:,k]) @ dVx))
+                            TH_P = np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*MH_P_sum[:,:,k]) @ self.dvx))
                         H_P_error[k,m] = np.abs(TfH - TH_P) / np.max(np.abs(np.array([TfH, TH_P])))
 
                 max_H_H_error[m] = np.max(H_H_error[:,m])
                 max_H_H2_error[m] = np.max(H_H2_error[:,m])
                 max_H_P_error[m] = np.max(H_P_error[:,m])
 
-            if CI_Test:
+            if self.CI_Test:
                 #	Compute Momentum transfer rate via full collision integrals for charge exchange and 
                 #		mixed elastic scattering.
                 #		Then compute error between this and actual momentum transfer 
                 #		resulting from CX and BKG (elastic) models.
 
                 if self.COLLISIONS['H_P_CX']: # P -> H charge exchange momentum transfer via full collision integral
-                    print(prompt, 'Computing P -> H2 Charge Exchange Momentum Transfer')
-                    _Sig = np.zeros((nvr*nvx*nvr*nvx,ntheta))
-                    _Sig[:] = (v_v*sigma_cx_h0(v_v2*(0.5*CONST.H_MASS*Vth2 / CONST.Q))).reshape(_Sig.shape, order='F')
-                    SIG_VX_CX = np.zeros((nvr*nvx,nvr*nvx))
-                    SIG_VX_CX[:] = (Vr2pidVrdVx*vx_vx*((_Sig @ dTheta).reshape(vx_vx.shape, order='F'))).reshape(SIG_VX_CX.shape, order='F')
-                    alpha_vx_cx = np.zeros((nvr,nvx,nx))
+                    print(self.prompt, 'Computing P -> H2 Charge Exchange Momentum Transfer')
+                    _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
+                    _Sig[:] = (self.Internal.v_v*sigma_cx_h0(self.Internal.v_v2*(0.5*CONST.H_MASS*self.vth**2 / CONST.Q))).reshape(_Sig.shape, order='F')
+                    SIG_VX_CX = np.zeros((self.nvr*self.nvx,self.nvr*self.nvx))
+                    SIG_VX_CX[:] = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*((_Sig @ self.dtheta).reshape(self.Internal.vx_vx.shape, order='F'))).reshape(SIG_VX_CX.shape, order='F')
+                    alpha_vx_cx = np.zeros((self.nvr,self.nvx,self.nx))
 
-                    for k in range(0, nx):
-                        Work[:] = (fi_hat[:,:,k]*ni[k]).reshape(Work.shape, order='F')
+                    for k in range(0, self.nx):
+                        Work = (self.Internal.fi_hat[:,:,k]*self.Internal.ni[k]).reshape((self.nvr*self.nvx), order='F')
                         alpha_vx_cx[:,:,k] = (SIG_VX_CX @ Work).reshape(alpha_vx_cx[:,:,k].shape, order='F')
 
-                    for k in range(0, nx):
-                        RxCI_CX[k] = -(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((alpha_vx_cx[:,:,k]*fH[:,:,k]) @ dVx))
+                    RxCI_CX = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        RxCI_CX[k] = -(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((alpha_vx_cx[:,:,k]*fH[:,:,k]) @ self.dvx))
 
-                    norm = np.max(np.abs(np.array([KH.Output.RxHCX, RxCI_CX])))
-                    for k in range(0, nx):
-                        CI_CX_error[k] = np.abs(KH.Output.RxHCX[k] - RxCI_CX[k]) / norm
+                    norm = np.max(np.abs(np.array([self.Output.RxHCX, RxCI_CX])))
+                    CI_CX_error = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        CI_CX_error[k] = np.abs(self.Output.RxHCX[k] - RxCI_CX[k]) / norm
 
-                    print(prompt,'Maximum normalized momentum transfer error in CX collision operator: ', sval(np.max(CI_CX_error)))
+                    print(self.prompt,'Maximum normalized momentum transfer error in CX collision operator: ', sval(np.max(CI_CX_error)))
 
                 if self.COLLISIONS['H_P_EL']: # P -> H momentum transfer via full collision integral
-                    for k in range(0, nx):
-                        RxCI_P_H[k] = -(1/2)*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((Alpha_H_P[:,:,k]*fH[:,:,k]) @ dVx))
+                    RxCI_P_H = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        RxCI_P_H[k] = -(1/2)*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.Alpha_H_P[:,:,k]*fH[:,:,k]) @ self.dvx))
 
-                    norm = np.max(np.abs(np.array([KH.Output.RxP_H, RxCI_P_H])))
-                    for k in range(0, nx):
-                        CI_P_H_error[k] = np.abs(KH.Output.RxP_H[k] - RxCI_P_H[k]) / norm 
+                    norm = np.max(np.abs(np.array([self.Output.RxP_H, RxCI_P_H])))
+                    CI_P_H_error = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        CI_P_H_error[k] = np.abs(self.Output.RxP_H[k] - RxCI_P_H[k]) / norm 
 
-                    print(prompt, 'Maximum normalized momentum transfer error in P -> H elastic BKG collision operator: ', sval(np.max(CI_P_H_error)))
+                    print(self.prompt, 'Maximum normalized momentum transfer error in P -> H elastic BKG collision operator: ', sval(np.max(CI_P_H_error)))
 
                 if H_H2_EL: # H2 -> H momentum transfer via full collision integral
-                    for k in range(0, nx):
-                        RxCI_H2_H[k] = -(2/3)*(self.mu*CONST.H_MASS)*Vth2*np.sum(Vr2pidVr*((Alpha_H_H2[:,:,k]*fH[:,:,k]) @ dVx))
+                    RxCI_H2_H = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        RxCI_H2_H[k] = -(2/3)*(self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((self.Internal.Alpha_H_H2[:,:,k]*fH[:,:,k]) @ self.dvx))
                     
-                    norm = np.max(np.abs(np.array([KH.Output.RxH2_H, RxCI_H2_H])))
-                    for k in range(0, nx):
-                        CI_H2_H_error[k] = np.abs(KH.Output.RxH2_H[k] - RxCI_H2_H[k])/norm
+                    norm = np.max(np.abs(np.array([self.Output.RxH2_H, RxCI_H2_H])))
+                    CI_H2_H_error = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        CI_H2_H_error[k] = np.abs(self.Output.RxH2_H[k] - RxCI_H2_H[k])/norm
                     
-                    print(prompt, 'Maximum normalized momentum transfer error in H2 -> H elastic BKG collision operator: ', sval(np.max(CI_H2_H_error)))
+                    print(self.prompt, 'Maximum normalized momentum transfer error in H2 -> H elastic BKG collision operator: ', sval(np.max(CI_H2_H_error)))
 
                 if self.COLLISIONS['H_H_EL']: # H -> H perp/parallel energy transfer via full collision integral
-                    for k in range(0, nx):
-                        Work[:] = fH[:,:,k].reshape(Work.shape, order='F')
-                        Alpha_H_H[:] = (SIG_H_H @ Work).reshape(Alpha_H_H.shape, order='F')
-                        Epara_Perp_CI[k] = 0.5*(self.mu*CONST.H_MASS)*Vth3*np.sum(Vr2pidVr*((Alpha_H_H*fH[:,:,k]) @ dVx)) 
+                    Epara_Perp_CI = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
+                        Alpha_H_H = (self.Internal.SIG_H_H @ Work).reshape((self.nvr,self.nvx), order='F')
+                        Epara_Perp_CI[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**3*np.sum(self.dvr_volume*((Alpha_H_H*fH[:,:,k]) @ self.dvx)) 
                     
-                    norm = np.max(np.abs(np.array([KH.Output.Epara_PerpH_H, Epara_Perp_CI])))
-                    for k in range(0, nx):
-                        CI_H_H_error[k] = np.abs(KH.Output.Epara_PerpH_H[k] - Epara_Perp_CI[k]) / norm 
+                    norm = np.max(np.abs(np.array([self.Output.Epara_PerpH_H, Epara_Perp_CI])))
+                    CI_H_H_error = np.zeros(self.nx)
+                    for k in range(0, self.nx):
+                        CI_H_H_error[k] = np.abs(self.Output.Epara_PerpH_H[k] - Epara_Perp_CI[k]) / norm 
                     
-                    print(prompt, 'Maximum normalized perp/parallel energy transfer error in H -> H elastic BKG collision operator: ', sval(np.max(CI_H_H_error)))
+                    print(self.prompt, 'Maximum normalized perp/parallel energy transfer error in H -> H elastic BKG collision operator: ', sval(np.max(CI_H_H_error)))
 
             #	Mesh Point Error based on fH satisfying Boltzmann equation
 
-            T1 = np.zeros((nvr,nvx,nx))
-            T2 = np.zeros((nvr,nvx,nx))
-            T3 = np.zeros((nvr,nvx,nx))
-            T4 = np.zeros((nvr,nvx,nx))
-            T5 = np.zeros((nvr,nvx,nx))
-            for k in range(0, nx-1):
-                for j in range(0, nvx):
+            T1 = np.zeros((self.nvr,self.nvx,self.nx))
+            T2 = np.zeros((self.nvr,self.nvx,self.nx))
+            T3 = np.zeros((self.nvr,self.nvx,self.nx))
+            T4 = np.zeros((self.nvr,self.nvx,self.nx))
+            T5 = np.zeros((self.nvr,self.nvx,self.nx))
+            for k in range(0, self.nx-1):
+                for j in range(0, self.nvx):
                     T1[:,j,k] = 2*self.mesh.vx[j]*(fH[:,j,k+1] - fH[:,j,k]) / (self.mesh.x[k+1] - self.mesh.x[k]) 
-                T2[:,:,k] = (Sn[:,:,k+1] + Sn[:,:,k])
+                T2[:,:,k] = (self.Internal.Sn[:,:,k+1] + self.Internal.Sn[:,:,k])
                 T3[:,:,k] = Beta_CX_sum[:,:,k+1] + Beta_CX_sum[:,:,k]
                 T4[:,:,k] = alpha_c[:,:,k+1]*fH[:,:,k+1] + alpha_c[:,:,k]*fH[:,:,k]
-                T5[:,:,k] = Omega_H_P[k+1]*MH_P_sum[:,:,k+1] + Omega_H_H2[k+1]*MH_H2_sum[:,:,k+1] + Omega_H_H[k+1]*MH_H_sum[:,:,k+1] + \
-                        Omega_H_P[k]*MH_P_sum[:,:,k] + Omega_H_H2[k]*MH_H2_sum[:,:,k] + Omega_H_H[k]*MH_H_sum[:,:,k]
+                T5[:,:,k] = Omega_H_P[k+1]*MH_P_sum[:,:,k+1] + Omega_H_H2[k+1]*MH_H2_sum[:,:,k+1] + Omega_H_H[k+1]*self.Internal.MH_H_sum[:,:,k+1] + \
+                        Omega_H_P[k]*MH_P_sum[:,:,k] + Omega_H_H2[k]*MH_H2_sum[:,:,k] + Omega_H_H[k]*self.Internal.MH_H_sum[:,:,k]
                 mesh_error[:,:,k] = np.abs(T1[:,:,k] - T2[:,:,k] - T3[:,:,k] + T4[:,:,k] - T5[:,:,k]) / \
                                     np.max(np.abs(np.array([T1[:,:,k], T2[:,:,k], T3[:,:,k], T4[:,:,k], T5[:,:,k]])))
             ave_mesh_error = np.sum(mesh_error) / np.size(mesh_error)
             max_mesh_error = np.max(mesh_error)
-            min_mesh_error = np.min(mesh_error[:,:,0:nx-1])
+            min_mesh_error = np.min(mesh_error[:,:,0:self.nx-1])
 
             #	Moment Error
             for m in range(0, mtest):
-                for k in range(0, nx-1):
-                    MT1 = np.sum(Vr2pidVr*(T1[:,:,k] @ (dVx*(self.mesh.vx**m))))
-                    MT2 = np.sum(Vr2pidVr*(T2[:,:,k] @ (dVx*(self.mesh.vx**m))))
-                    MT3 = np.sum(Vr2pidVr*(T3[:,:,k] @ (dVx*(self.mesh.vx**m))))
-                    MT4 = np.sum(Vr2pidVr*(T4[:,:,k] @ (dVx*(self.mesh.vx**m))))
-                    MT5 = np.sum(Vr2pidVr*(T5[:,:,k] @ (dVx*(self.mesh.vx**m))))
+                for k in range(0, self.nx-1):
+                    MT1 = np.sum(self.dvr_volume*(T1[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
+                    MT2 = np.sum(self.dvr_volume*(T2[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
+                    MT3 = np.sum(self.dvr_volume*(T3[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
+                    MT4 = np.sum(self.dvr_volume*(T4[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
+                    MT5 = np.sum(self.dvr_volume*(T5[:,:,k] @ (self.dvx*(self.mesh.vx**m))))
                     #NOTE This is correct for the original code, but is it correct mathematically?
                     moment_error[k,m] = np.abs(MT1 - MT2 - MT3 + MT4 - MT5) / np.max(np.abs(np.array([MT1, MT2, MT3, MT4, MT5])))
                 max_moment_error[m] = np.max(moment_error[:,m])
@@ -1482,101 +1321,167 @@ class Kinetic_H():
             #			This is the total heat flux transported by the neutrals
             #			computed in a different way from:
 
-            #			qxH_total2(k)=vth3*total(Vr2pidVr*((vr2vx2(*,*,k)*fH(*,*,k))#(Vx*dVx)))*0.5*(mu*mH)
+            #			qxH_total2(k)=Vth**3*total(Vr2pidVr*((vr2vx2(*,*,k)*fH(*,*,k))#(Vx*dVx)))*0.5*(mu*mH)
 
             #			This should agree with qxH_total if the definitions of nH, pH, piH_xx,
             #			TH, VxH, and qxH are coded correctly.
-            qxH_total2 = np.zeros(nx)
-            for k in range(0, nx):
-                qxH_total2[k] = 0.5*(self.mu*CONST.H_MASS)*Vth3*np.sum(Vr2pidVr*((vr2vx2[:,:,k]*fH[:,:,k]) @ (self.mesh.vx*dVx)))
+            qxH_total2 = np.zeros(self.nx)
+            for k in range(0, self.nx):
+                qxH_total2[k] = 0.5*(self.mu*CONST.H_MASS)*self.vth**3*np.sum(self.dvr_volume*((self.Internal.vr2vx2[:,:,k]*fH[:,:,k]) @ (self.mesh.vx*self.dvx)))
             qxH_total_error = np.abs(qxH_total - qxH_total2) / np.max(np.abs(np.array([qxH_total, qxH_total2])))
 
             #	Compute error in QH_total
-            Q1 = np.zeros(nx)
-            Q2 = np.zeros(nx)
-            QH_total_error = np.zeros(nx)
-            for k in range(0, nx-1):
+            Q1 = np.zeros(self.nx)
+            Q2 = np.zeros(self.nx)
+            QH_total_error = np.zeros(self.nx)
+            for k in range(0, self.nx-1):
                 Q1[k] = (qxH_total[k+1] - qxH_total[k]) / (self.mesh.x[k+1] - self.mesh.x[k])
                 Q2[k] = 0.5*(QH_total[k+1] + QH_total[k])
             QH_total_error = np.abs(Q1 - Q2) / np.max(np.abs(np.array([Q1, Q2])))
 
             if debrief > 0:
-                print(prompt+'Maximum particle convervation error of total collision operator: '+sval(max(C_error)))
-                print(prompt+'Maximum H_P_CX  particle convervation error: '+sval(max(CX_error)))
-                print(prompt+'Maximum H_H_EL  particle conservation error: '+sval(max_H_H_error[0]))
-                print(prompt+'Maximum H_H_EL  x-momentum conservation error: '+sval(max_H_H_error[1]))
-                print(prompt+'Maximum H_H_EL  total energy conservation error: '+sval(max_H_H_error[2]))
-                print(prompt+'Maximum H_H2_EL particle conservation error: '+sval(max_H_H2_error[0]))
-                print(prompt+'Maximum H_P_EL  particle conservation error: '+sval(max_H_P_error[0]))
-                print(prompt+'Average mesh_error = '+str(ave_mesh_error))
-                print(prompt+'Maximum mesh_error = '+str(max_mesh_error))
+                print(self.prompt+'Maximum particle convervation error of total collision operator: '+sval(max(C_error)))
+                print(self.prompt+'Maximum H_P_CX  particle convervation error: '+sval(max(CX_error)))
+                print(self.prompt+'Maximum H_H_EL  particle conservation error: '+sval(max_H_H_error[0]))
+                print(self.prompt+'Maximum H_H_EL  x-momentum conservation error: '+sval(max_H_H_error[1]))
+                print(self.prompt+'Maximum H_H_EL  total energy conservation error: '+sval(max_H_H_error[2]))
+                print(self.prompt+'Maximum H_H2_EL particle conservation error: '+sval(max_H_H2_error[0]))
+                print(self.prompt+'Maximum H_P_EL  particle conservation error: '+sval(max_H_P_error[0]))
+                print(self.prompt+'Average mesh_error = '+str(ave_mesh_error))
+                print(self.prompt+'Maximum mesh_error = '+str(max_mesh_error))
                 for m in range(5):
-                    print(prompt+'Maximum fH vx^'+sval(m)+' moment error: '+sval(max_moment_error[m]))
-                print(prompt+'Maximum qxH_total error = '+str(max(qxH_total_error)))
-                print(prompt+'Maximum QH_total error = '+str(max(QH_total_error)))
+                    print(self.prompt+'Maximum fH vx^'+sval(m)+' moment error: '+sval(max_moment_error[m]))
+                print(self.prompt+'Maximum qxH_total error = '+str(max(qxH_total_error)))
+                print(self.prompt+'Maximum QH_total error = '+str(max(QH_total_error)))
                 if debug > 0:
                     input()
 
         # NOTE Add plotting once program is working
 
-        #	Save input parameters in kinetic_H_input common block
+        self.Input.vx_s = self.mesh.vx
+        self.Input.vr_s = self.mesh.vr
+        self.Input.x_s = self.mesh.x
+        self.Input.Tnorm_s = self.mesh.Tnorm
+        self.Input.mu_s = self.mu
+        self.Input.Ti_s = self.mesh.Ti
+        self.Input.Te_s = self.mesh.Te
+        self.Input.n_s = self.mesh.ne
+        self.Input.vxi_s = self.vxi
+        self.Input.fHBC_s = self.fHBC
+        self.Input.GammaxHBC_s = self.GammaxHBC
+        self.Input.PipeDia_s = self.mesh.PipeDia
+        self.Input.fH2_s = fH2
+        self.Input.fSH_s = fSH
+        self.Input.nHP_s = nHP
+        self.Input.THP_s = THP
+        self.Input.fH_s = fH
+        self.Input.Simple_CX_s = self.COLLISIONS['SIMPLE_CX']
+        self.Input.Recomb_s = recomb
+        self.Input.H_H_EL_s = self.COLLISIONS['H_H_EL']
+        self.Input.H_P_EL_s = self.COLLISIONS['H_P_EL']
+        self.Input.H_H2_EL_s = H_H2_EL
+        self.Input.H_P_CX_s = self.COLLISIONS['H_P_CX']
 
-        KH.Input.vx_s = self.mesh.vx
-        KH.Input.vr_s = self.mesh.vr
-        KH.Input.x_s = self.mesh.x
-        KH.Input.Tnorm_s = self.mesh.Tnorm
-        KH.Input.mu_s = self.mu
-        KH.Input.Ti_s = self.mesh.Ti
-        KH.Input.vxi_s = self.vxi
-        KH.Input.Te_s = self.mesh.Te
-        KH.Input.n_s = self.mesh.ne
-        KH.Input.vxi_s = self.vxi
-        KH.Input.fHBC_s = fHBC
-        KH.Input.GammaxHBC_s = GammaxHBC
-        KH.Input.PipeDia_s = self.mesh.PipeDia
-        KH.Input.fH2_s = fH2
-        KH.Input.fSH_s = fSH
-        KH.Input.nHP_s = nHP
-        KH.Input.THP_s = THP
-        KH.Input.fH_s = fH
-        KH.Input.Simple_CX_s = self.COLLISIONS['SIMPLE_CX']
-        KH.Input.Recomb_s = Recomb
-        KH.Input.H_H_EL_s = self.COLLISIONS['H_H_EL']
-        KH.Input.H_P_EL_s = self.COLLISIONS['H_P_EL']
-        KH.Input.H_H2_EL_s = H_H2_EL
-        KH.Input.H_P_CX_s = self.COLLISIONS['H_P_CX']
+        return fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH
+    
 
-        #	Save input parameters in kinetic_H_internal common block
+    def _compute_fBHC_input(self):
+        '''
+        Computes fHBC_input, helper function for initialization
+        '''
+        fHBC_input = np.zeros(self.fHBC.shape)
+        fHBC_input[:,self.vx_pos] = self.fHBC[:,self.vx_pos]
+        if np.sum(fHBC_input) <= 0.0 and abs(self.GammaxHBC) > 0:
+            raise Exception(self.prompt+'Values for fHBC[:,:] with vx > 0 are all zero!')
+        
+        return fHBC_input
+    
 
-        KH.Internal.vr2vx2 = vr2vx2
-        KH.Internal.vr2vx_vxi2 = vr2vx_vxi2
-        KH.Internal.fi_hat = fi_hat
-        KH.Internal.ErelH_P = ErelH_P
-        KH.Internal.Ti_mu = Ti_mu
-        KH.Internal.ni = ni
-        KH.Internal.sigv = sigv
-        KH.Internal.alpha_ion = alpha_ion
-        KH.Internal.v_v2 = v_v2
-        KH.Internal.v_v = v_v
-        KH.Internal.vr2_vx2 = vr2_vx2
-        KH.Internal.vx_vx = vx_vx
-        KH.Internal.Vr2pidVrdVx = Vr2pidVrdVx
-        KH.Internal.SIG_CX = SIG_CX
-        KH.Internal.SIG_H_H = SIG_H_H
-        KH.Internal.SIG_H_H2 = SIG_H_H2
-        KH.Internal.SIG_H_P = SIG_H_P
-        KH.Internal.Alpha_CX = Alpha_CX
-        KH.Internal.Alpha_H_H2 = Alpha_H_H2
-        KH.Internal.Alpha_H_P = Alpha_H_P
-        KH.Internal.MH_H_sum = MH_H_sum
-        KH.Internal.Delta_nHs = Delta_nHs
-        KH.Internal.Sn = Sn
-        KH.Internal.Rec = Rec
+    def _test_init_parameters(self):
+        '''
+        Performs compatibility tests for passed parameters when initializing class
+        '''
 
-        #	Save input parameters in kinetic_H_Moments common block
+        dx = self.mesh.x - np.roll(self.mesh.x, 1)
+        dx = dx[1:]
+        notpos = np.argwhere(dx <= 0)
+        if notpos.size > 0:
+            raise Exception(self.prompt + 'x[*] must be increasing with index!')
+        if self.nvx % 2 != 0:
+            raise Exception(self.prompt + 'Number of elements in vx must be even!') 
+        if self.mesh.Ti.size != self.nx:
+            raise Exception(self.prompt + 'Number of elements in Ti and x do not agree!')
+        if self.vxi is None:
+            self.vxi = np.zeros(self.nx)
+        if self.vxi.size != self.nx:
+            raise Exception(self.prompt + 'Number of elements in vxi and x do not agree!')
+        if self.mesh.Te.size != self.nx:
+            raise Exception(self.prompt + 'Number of elements in Te and x do not agree!')
+        if self.mesh.ne.size != self.nx:
+            raise Exception(self.prompt + 'Number of elements in n and x do not agree!')
+        if self.GammaxHBC is None:
+            raise Exception(self.prompt + 'GammaxHBC is not defined!')
+        if self.mesh.PipeDia is None:
+            self.mesh.PipeDia = np.zeros(self.nx)
+        if self.mesh.PipeDia.size != self.nx:
+            raise Exception(self.prompt + 'Number of elements in PipeDia and x do not agree!')
+        if len(self.fHBC[:,0]) != self.nvr:
+            raise Exception(self.prompt + 'Number of elements in fHBC[:,0] and vr do not agree!')
+        if len(self.fHBC[0,:]) != self.nvx:
+            raise Exception(self.prompt + 'Number of elements in fHBC[0,:] and vx do not agree!')
+        if np.sum(abs(self.mesh.vr)) <= 0:
+            raise Exception(self.prompt+'vr is all 0!')
+        ii = np.argwhere(self.mesh.vr <= 0)
+        if ii.size > 0:
+            raise Exception(self.prompt+'vr contains zero or negative element(s)!')
+        if np.sum(abs(self.mesh.vx)) <= 0:
+            raise Exception(self.prompt+'vx is all 0!')
+        if np.sum(self.mesh.x) <= 0:
+            raise Exception(self.prompt+'Total(x) is less than or equal to 0!')
+        if self.mu is None:
+            raise Exception(self.prompt+'mu is not defined!')
+        if self.mu not in [1,2]:
+            raise Exception(self.prompt+'mu must be 1 or 2!')
+        
+        if np.size(self.vx_neg) < 1:
+            print(self.prompt+'vx contains no negative elements!')
+        if np.size(self.vx_pos) < 1:
+            print(self.prompt+'vx contains no positive elements!')
+        if np.size(self.vx_zero) > 0:
+            print(self.prompt+'vx contains one or more zero elements!')
+        diff = np.nonzero(self.mesh.vx[self.vx_pos] != -np.flipud(self.mesh.vx[self.vx_neg]))[0]
+        if diff.size > 0:
+            raise Exception(self.prompt + " vx array elements are not symmetric about zero!")
+        
+        return
+        
+    
+    def _test_input_parameters(self, fH2, fSH, nHP, THP, fH):
+        '''
+        Performs compatibility tests for passed parameters when calling run_generation
+        '''
 
-        KH.Moments.nH2 = nH2
-        KH.Moments.VxH2 = vxH2
-        KH.Moments.TH2 = TH2
-
-        return fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH,error
+        if fH2[:,0,0].size != self.nvr:
+            raise Exception(self.prompt+'Number of elements in fH2[:,0,0] and vr do not agree!')
+        if fH2[0,:,0].size != self.nvx:
+            raise Exception(self.prompt+'Number of elements in fH2[0,:,0] and vx do not agree!')
+        if fH2[0,0,:].size != self.nx:
+            raise Exception(self.prompt+'Number of elements in fH2[0,0,:] and x do not agree!')
+        if fSH[:,0,0].size != self.nvr:
+            raise Exception(self.prompt+'Number of elements in fSH[:,0,0] and vr do not agree!')
+        if fSH[0,:,0].size != self.nvx:
+            raise Exception(self.prompt+'Number of elements in fSH[0,:,0] and vx do not agree!')
+        if fSH[0,0,:].size != self.nx:
+            raise Exception(self.prompt+'Number of elements in fSH[0,0,:] and x do not agree!')
+        if nHP.size != self.nx:
+            raise Exception(self.prompt+'Number of elements in nHP and x do not agree!')
+        if THP.size != self.nx:
+            raise Exception(self.prompt+'Number of elements in nHP and x do not agree!')
+        if fH[:,0,0].size != self.nvr:
+            raise Exception(self.prompt+'Number of elements in fH[:,0,0] and vr do not agree!')
+        if fH[0,:,0].size != self.nvx:
+            raise Exception(self.prompt+'Number of elements in fH[0,:,0] and vx do not agree!')
+        if fH[0,0,:].size != self.nx:
+            raise Exception(self.prompt+'Number of elements in fH[0,0,:] and x do not agree!')
+        
+        return
