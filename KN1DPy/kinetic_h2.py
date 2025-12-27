@@ -1769,6 +1769,8 @@ def kinetic_h2(mesh: KineticMesh, mu: int, vxi: NDArray, fH2BC: NDArray, GammaxH
 
             for k in range(nx):
                 SFCn[:,:,k,ii] = SFCn[:,:,k,ii] / (np.sum(Vr2pidVr*(SFCn[:,:,k,ii] @ dVx)))
+
+        # NOTE Add Plotting back in later
         
 
         Vbar_Error = np.zeros(nx)
