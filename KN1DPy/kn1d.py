@@ -9,14 +9,13 @@ from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import KineticMesh
-from .kinetic_h import Kinetic_H
+from .kinetic_h import KineticH
 from .kinetic_h2 import kinetic_h2
 from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
 
 from .common import constants as CONST
 from .common.Kinetic_H2 import Kinetic_H2_Common
-from .common.Kinetic_H import Kinetic_H_Common
 from .common.JH_Coef import JH_Coef
 
 
@@ -274,7 +273,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     GammaxHBC = 0
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
-    kinetic_h = Kinetic_H(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients)
+    kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients, debrief=Hdebrief, compute_errors=compute_errors)
         
     if oldrun:
         # checks if the previous run satisfies the required conditions 
@@ -347,7 +346,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             kh_results = kinetic_h.run_generation(
                     fH2A, fSHA, fH, nHPA, THPA,
                     truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
-                    plot=Hplot, debug=Hdebug, debrief=Hdebrief, pause=Hpause)
+                    plot=Hplot, debug=Hdebug, pause=Hpause)
             
             fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH = kh_results
 
