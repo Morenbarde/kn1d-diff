@@ -343,8 +343,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             # Compute fH using Kinetic_H
             Hcompute_errors = compute_errors and Hdebrief
 
-            kh_results = kinetic_h.run_generation(
-                    fH2A, fSHA, fH, nHPA, THPA,
+            kh_results = kinetic_h.run_generations(fH2A, fSHA, fH, nHPA, THPA,
                     truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
                     plot=Hplot, debug=Hdebug, pause=Hpause)
             
@@ -457,6 +456,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
     # NOTE Add plotting later
 
+    # NOTE turn results into dataclass
     results = {}
     results["xH2"] = kh2_mesh.x
     results["nH2"] = nH2

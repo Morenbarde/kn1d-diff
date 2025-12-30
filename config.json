@@ -9,13 +9,13 @@
     },
 
     "collisions" : {
-        "H2_H2_EL" : 1,
-        "H2_P_EL" : 1,
-        "H2_H_EL" : 1,
-        "H2_HP_CX" : 1,
-        "H_H_EL" : 1,
-        "H_P_EL" : 1,
-        "H_P_CX" : 1,
-        "SIMPLE_CX" : 1
+        "H2_H2_EL" : true,
+        "H2_P_EL" : true,
+        "H2_H_EL" : true,
+        "H2_HP_CX" : true,
+        "H_H_EL" : true,
+        "H_P_EL" : true,
+        "H_P_CX" : true,
+        "SIMPLE_CX" : true
     }
 }
