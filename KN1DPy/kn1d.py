@@ -347,7 +347,15 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
                     truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
                     plot=Hplot, debug=Hdebug, pause=Hpause)
             
-            fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,SideWallH = kh_results
+            fH = kh_results.fH
+            nH = kh_results.nH
+            GammaxH = kh_results.GammaxH
+            TH = kh_results.TH
+            qxH_total = kh_results.qxH_total
+            NetHSource = kh_results.NetHSource
+            Sion = kh_results.Sion
+            QH_total = kh_results.QH_total
+            SideWallH = kh_results.WallH
 
             # print("fH", fH.T)
             # input()
