@@ -22,14 +22,32 @@ from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
 from .common.Kinetic_H import *
 
+
+# Dataclasses for use in kinetic_h
+
 @dataclass
 class KHCollisions():
+    '''
+    Collision settings for Kinetic H procedure
+    '''
     H2_H_EL: bool = False
     H_H_EL: bool = False
     H_P_EL: bool = False
     H_P_CX: bool = False
     SIMPLE_CX: bool = False
 
+@dataclass
+class MeshEqCoefficients():
+    '''
+    Mesh Equation values used in kinetic_h iteration
+    Eqs. (3.22), (3.25), (3.30), (3.33)
+    '''
+    A: NDArray
+    B: NDArray
+    C: NDArray
+    D: NDArray
+    F: NDArray
+    G: NDArray
 
 
 class KineticH():
@@ -111,7 +129,7 @@ class KineticH():
         return
     
     
-    def run_generations(self, fH2: NDArray = None, fSH: NDArray = None, fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, 
+    def run_procedure(self, fH2: NDArray = None, fSH: NDArray = None, fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, 
               truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, recomb = True, plot = 0, debug = 0, debrief = 0, pause = 0):
         '''
         Solves a 1-D spatial, 2-D velocity kinetic neutral transport 
@@ -278,7 +296,7 @@ class KineticH():
         gamma_input = 1.0
         if abs(self.GammaxHBC) > 0:
             gamma_input = self.vth*np.sum(self.dvr_volume*(self.fHBC_input @ (self.mesh.vx*self.dvx)))
-        ratio = abs(self.GammaxHBC)/gamma_input
+        ratio = abs(self.GammaxHBC) / gamma_input
         fHBC_input = self.fHBC_input*ratio
         if abs(ratio - 1) > 0.01*truncate:
             self.fHBC = fHBC_input
@@ -301,271 +319,9 @@ class KineticH():
                 for j in range(self.nvx):
                     gamma_wall[:,j,k] = 2*self.mesh.vr / self.mesh.PipeDia[k]
 
-
         # --- Iteration ---
-
-        do_fH_Iterate = True
-
-        #	Set iteration scheme
-        fH_iterate = 0
-        if (self.COLLISIONS.H_H_EL != 0) or (self.COLLISIONS.H_P_EL != 0) or (self.COLLISIONS.H2_H_EL != 0): 
-            fH_iterate = 1
-
-        fH_generations = 0
-        if (fH_iterate != 0) or (self.COLLISIONS.H_P_CX != 0): 
-            fH_generations = 1
-
-        # Begin Iteration
-        fHG = np.zeros((self.nvr,self.nvx,self.nx))
-        NHG = np.zeros((self.nx,max_gen+1))
-        while do_fH_Iterate: #NOTE Alpha_CX done before here, but done inside iteration in kh2, does it change per iteration? Is this an error?
-            do_fH_Iterate = False
-            nHs = np.copy(nH)
-
-
-            # --- Compute Collision Frequency ---
-
-            # Omega Values
-            Omega_H_P, Omega_H_H2, Omega_H_H = self._compute_omega_values(fH, nH)
-            # Collision Frequency
-            alpha_c = self._compute_collision_frequency(Omega_H_P, Omega_H_H2, Omega_H_H, gamma_wall)
-
-
-            # --- 0th Generation ---
-
-            # Generate Coefficients
-            Ak, Bk, Ck, Dk, Fk, Gk = self._compute_generation_coefficients(alpha_c)
-                            
-            # Compute first-flight (0th generation) neutral distribution function
-            igen = 0
-            if self.debrief > 0:
-                print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
-            fHG[:,self.vx_pos,0] = fH[:,self.vx_pos,0]
-            for k in range(self.nx-1):
-                fHG[:,self.vx_pos,k+1] = fHG[:,self.vx_pos,k]*Ak[:,self.vx_pos,k] + Fk[:,self.vx_pos,k]
-            for k in range(self.nx-1,0,-1):
-                fHG[:,self.vx_neg,k-1] = fHG[:,self.vx_neg,k]*Ck[:,self.vx_neg,k] + Gk[:,self.vx_neg,k]
-                    
-            #	Compute first-flight neutral density profile
-            for k in range(self.nx):
-                NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
-
-            # NOTE Add plotting once program is working
-
-            #	Set total atomic neutral distribution function to first flight generation
-
-            fH = np.copy(fHG)
-            nH = NHG[:,0]
-
-            # --- Iterative Generations ---
-
-            Beta_CX_sum = np.zeros((self.nvr,self.nvx,self.nx))
-            MH_P_sum = np.zeros((self.nvr,self.nvx,self.nx))
-            MH_H2_sum = np.zeros((self.nvr,self.nvx,self.nx))
-            self.Internal.MH_H_sum = np.zeros((self.nvr,self.nvx,self.nx))
-            while True:
-                if igen+1 > max_gen or fH_generations == 0:
-                    if self.debrief > 0:
-                        print(self.prompt+'Completed '+sval(max_gen)+' generations. Returning present solution...')
-                    break
-                igen += 1
-                if self.debrief > 0:
-                    print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
-
-                #	Compute Beta_CX from previous generation
-
-                Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
-                if self.COLLISIONS.H_P_CX:
-                    if self.debrief>1:
-                        print(self.prompt+'Computing Beta_CX')
-
-                    if self.COLLISIONS.SIMPLE_CX:
-                        #	Option (B): Compute charge exchange source with assumption that CX source 
-                        #		neutrals have ion distribution function
-                        for k in range(self.nx):
-                            Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*((self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k]) @ self.dvx))
-                    else:
-                        #	Option (A): Compute charge exchange source using fH and vr x sigma x v_v at 
-                        #		each velocity mesh point
-                        for k in range(self.nx):
-                            Work = fHG[:,:,k]
-                            Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
-
-                    #	Sum charge exchange source over all generations
-                    Beta_CX_sum += Beta_CX
-
-                #	Compute MH from previous generation
-                MH_H = np.zeros((self.nvr,self.nvx,self.nx))
-                MH_P = np.zeros((self.nvr,self.nvx,self.nx))
-                MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
-                OmegaM = np.zeros((self.nvr,self.nvx,self.nx))
-                VxHG = np.zeros(self.nx)
-                THG = np.zeros(self.nx)
-                if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
-
-                    #	Compute VxHG, THG
-                    vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
-                    for k in range(0, self.nx):
-                        VxHG[k] = self.vth*np.sum(self.dvr_volume*(fHG[:,:,k] @ (self.mesh.vx*self.dvx))) / NHG[k,igen-1]
-                        for i in range(0, self.nvr):
-                            vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/self.vth)**2
-                        THG[k] = (self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fHG[:,:,k]) @ self.dvx)) / (3*CONST.Q*NHG[k,igen-1])
-
-                    if self.COLLISIONS.H_H_EL:
-                        if self.debrief > 1:
-                            print(self.prompt+'Computing MH_H')
-
-                        #	Compute MH_H 
-                        vx_shift = VxHG
-                        Tmaxwell = THG
-                        mol = 1
-                        Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                        for k in range(self.nx):
-                            MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
-                            OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
-                        self.Internal.MH_H_sum += MH_H
-
-                    if self.COLLISIONS.H_P_EL:
-                        if self.debrief>1:
-                            print(self.prompt+'Computing MH_P')
-
-                        #	Compute MH_P 
-                        vx_shift = (VxHG+self.vxi)/2
-                        Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
-                        mol = 1
-                        Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                        for k in range(self.nx):
-                            MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
-                            OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
-                        MH_P_sum += MH_P
-
-                    if self.COLLISIONS.H2_H_EL:
-                        if self.debrief>1:
-                            print(self.prompt+'Computing MH_H2')
-
-                        #	Compute MH_H2
-                        vx_shift = (VxHG + 2*self.H2_Moments.VxH2)/3
-                        Tmaxwell = THG + (4./9.)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
-                        mol = 1
-                        Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                        
-                        for k in range(self.nx):
-                            MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen-1]
-                            OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
-                        MH_H2_sum += MH_H2
-
-                #	Compute next generation atomic distribution
-
-                fHG[:] = 0
-                for k in range(0, self.nx-1):
-                    fHG[:,self.vx_pos,k+1] = Ak[:,self.vx_pos,k]*fHG[:,self.vx_pos,k] + Bk[:,self.vx_pos,k]*(Beta_CX[:,self.vx_pos,k+1] + OmegaM[:,self.vx_pos,k+1] + Beta_CX[:,self.vx_pos,k] + OmegaM[:,self.vx_pos,k])
-                for k in range(self.nx-1, 0, -1):
-                    fHG[:,self.vx_neg,k-1] = Ck[:,self.vx_neg,k]*fHG[:,self.vx_neg,k] + Dk[:,self.vx_neg,k]*(Beta_CX[:,self.vx_neg,k-1] + OmegaM[:,self.vx_neg,k-1] + Beta_CX[:,self.vx_neg,k] + OmegaM[:,self.vx_neg,k])
-                for k in range(0, self.nx):
-                    NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
-
-                # NOTE Add plotting once program is working
-
-                #	Add result to total neutral distribution function
-                fH += fHG
-                nH += NHG[:,igen]
-
-                #	Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
-                #		and decide if another generation should be computed
-                Delta_nHG = max(NHG[:,igen]/max(nH))
-                if (Delta_nHG < truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
-                    #	If fH 'seed' is being iterated, then do another generation until the 'generation error'
-                    #		is less than 0.003 times the 'seed error' or is less than TRUNCATE
-                    break
-
-    # fH2_done #########################################################################################################################################################################
-            
-            # NOTE Add plotting once program is working
-
-            #	Compute H density profile
-            for k in range(0, self.nx):
-                nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
-
-            if fH_iterate:
-
-                #	Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
-                #		If Delta_nHs is greater than 10*truncate then iterate fH
-                self.Internal.Delta_nHs = np.max(np.abs(nHs - nH))/np.max(nH)
-                if self.Internal.Delta_nHs > 10*truncate:
-                    do_fH_Iterate = True 
-
-        #	Update Beta_CX_sum using last generation
-        if self.COLLISIONS.H_P_CX:
-            if self.debrief > 1:
-                print(self.prompt, 'Computing Beta_CX')
-            if self.COLLISIONS.SIMPLE_CX:
-                # Option (B): Compute charge exchange source with assumption that CX source neutrals have
-                # ion distribution function
-                for k in range(0, self.nx):
-                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*(self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k] @ self.dvx))
-            else:
-                # Option (A): Compute charge exchange source using fH2 and vr x sigma x v_v at each velocity mesh point
-                for k in range(0, self.nx):
-                    Work = fHG[:,:,k]
-                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
-            Beta_CX_sum = Beta_CX_sum + Beta_CX
-                
-        #	Update MH_*_sum using last generation
-        MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_P = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_H = np.zeros((self.nvr,self.nvx,self.nx))
-        OmegaM = np.zeros((self.nvr,self.nvx,self.nx))
-        VxHG = np.zeros(self.nx)
-        THG = np.zeros(self.nx)
-        if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL: 
-            # Compute VxH2G, TH2G
-            vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
-            for k in range(0, self.nx):
-                VxHG[k] = self.vth*np.sum(self.dvr_volume*(fHG[:,:,k] @ (self.mesh.vx*self.dvx))) / NHG[k,igen]
-                for i in range(0, self.nvr):
-                    vr2vx2_ran2[i,:] = self.mesh.vr[i]**2 + (self.mesh.vx - VxHG[k]/self.vth)**2
-                THG[k] = (self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fHG[:,:,k]) @ self.dvx)) / (3*CONST.Q*NHG[k,igen])
-
-            if self.COLLISIONS.H_H_EL:
-                if self.debrief > 1: 
-                    print(self.prompt, 'Computing MH_H')
-                # Compute MH_H
-                vx_shift = VxHG
-                Tmaxwell = np.copy(THG)
-                mol = 1
-                Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                
-                for k in range(0, self.nx):
-                    MH_H[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
-                    OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H[k]*MH_H[:,:,k]
-                self.Internal.MH_H_sum = self.Internal.MH_H_sum + MH_H
-
-            if self.COLLISIONS.H_P_EL:
-                if self.debrief > 1:
-                    print(self.prompt, 'Computing MH_P')
-                # Compute MH_P
-                vx_shift = (VxHG + self.vxi)/2
-                Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
-                mol = 1
-                Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                
-                for k in range(0, self.nx):
-                    MH_P[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
-                    OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_P[k]*MH_P[:,:,k]
-                MH_P_sum = MH_P_sum + MH_P
-
-                if self.COLLISIONS.H2_H_EL: #NOTE Not Tested Yet
-                    if self.debrief > 1:
-                        print(self.prompt, 'Computing MH_H2')
-                    # Compute MH_H
-                    vx_shift = (VxHG + 2*self.H2_Moments.VxH2)/3
-                    Tmaxwell = THG + (4/9)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
-                    mol = 1
-                    Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-                    for k in range(0, self.nx):
-                        MH_H2[:,:,k] = Maxwell[:,:,k]*NHG[k,igen]
-                        OmegaM[:,:,k] = OmegaM[:,:,k] + Omega_H_H2[k]*MH_H2[:,:,k]
-                    MH_H2_sum = MH_H2_sum + MH_H2
+        fH, nH, alpha_c, Beta_CX_sum, Omega_H_H, Omega_H_P, Omega_H_H2, MH_P_sum, MH_H2_sum = self._run_iteration_scheme(fH, nH, gamma_wall, max_gen, truncate)
+        
 
         #	Compute remaining moments
 
@@ -682,6 +438,170 @@ class KineticH():
         self.Input.Recomb_s = recomb
 
         return fH,nH,GammaxH,VxH,pH,TH,qxH,qxH_total,NetHSource,Sion,QH,RxH,QH_total,AlbedoH,WallH
+        
+
+    def _run_iteration_scheme(self, fH, nH, gamma_wall, max_gen, truncate):
+
+        #	Set iteration scheme
+        fH_iterate = 0
+        if (self.COLLISIONS.H_H_EL != 0) or (self.COLLISIONS.H_P_EL != 0) or (self.COLLISIONS.H2_H_EL != 0): 
+            fH_iterate = 1
+
+        fH_generations = 0
+        if (fH_iterate != 0) or (self.COLLISIONS.H_P_CX != 0): 
+            fH_generations = 1
+
+        # Begin Iteration
+        fHG = np.zeros((self.nvr,self.nvx,self.nx))
+        NHG = np.zeros((self.nx,max_gen+1))
+        while True: #NOTE Alpha_CX done before here, but done inside iteration in kh2, does it change per iteration? Is this an error?
+            nHs = np.copy(nH)
+
+
+            # --- Compute Collision Frequency ---
+
+            # Omega Values
+            Omega_H_P, Omega_H_H2, Omega_H_H = self._compute_omega_values(fH, nH)
+            # Collision Frequency
+            alpha_c = self._compute_collision_frequency(Omega_H_P, Omega_H_H2, Omega_H_H, gamma_wall)
+
+            # Generate Coefficients
+            meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c) #NOTE maybe come up with a better name
+
+
+            # --- 0th Generation ---
+                            
+            # Compute first-flight (0th generation) neutral distribution function
+            igen = 0
+            if self.debrief > 0:
+                print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
+            fHG[:,self.vx_pos,0] = fH[:,self.vx_pos,0]
+            for k in range(self.nx-1):
+                fHG[:,self.vx_pos,k+1] = fHG[:,self.vx_pos,k]*meq_coeffs.A[:,self.vx_pos,k] + meq_coeffs.F[:,self.vx_pos,k]
+            for k in range(self.nx-1,0,-1):
+                fHG[:,self.vx_neg,k-1] = fHG[:,self.vx_neg,k]*meq_coeffs.C[:,self.vx_neg,k] + meq_coeffs.G[:,self.vx_neg,k]
+                    
+            #	Compute first-flight neutral density profile
+            for k in range(self.nx):
+                NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
+
+            # NOTE Add plotting once program is working
+
+            #	Set total atomic neutral distribution function to first flight generation
+            fH = np.copy(fHG)
+            nH = NHG[:,0]
+
+            # --- Iterative Generations ---
+
+            Beta_CX_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            MH_P_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            MH_H2_sum = np.zeros((self.nvr,self.nvx,self.nx))
+            self.Internal.MH_H_sum = np.zeros((self.nvr,self.nvx,self.nx)) #NOTE Consider modifying, does this need to be internal?
+            while True:
+
+                if igen+1 > max_gen or fH_generations == 0:
+                    if self.debrief > 0:
+                        print(self.prompt+'Completed '+sval(max_gen)+' generations. Returning present solution...')
+                    break
+                igen += 1
+                if self.debrief > 0:
+                    print(self.prompt+'Computing atomic neutral generation#'+sval(igen))
+
+                #	Compute Beta_CX from previous generation
+
+                Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
+                if self.COLLISIONS.H_P_CX:
+                    if self.debrief>1:
+                        print(self.prompt+'Computing Beta_CX')
+
+                    if self.COLLISIONS.SIMPLE_CX:
+                        #	Option (B): Compute charge exchange source with assumption that CX source 
+                        #		neutrals have ion distribution function
+                        for k in range(self.nx):
+                            Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*((self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k]) @ self.dvx))
+                    else:
+                        #	Option (A): Compute charge exchange source using fH and vr x sigma x v_v at 
+                        #		each velocity mesh point
+                        for k in range(self.nx):
+                            Work = fHG[:,:,k]
+                            Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
+
+                    #	Sum charge exchange source over all generations
+                    Beta_CX_sum += Beta_CX
+
+                
+                mh_h, mh_p, mh_h2 = self._compute_mh_values(fHG, NHG[:,igen-1])
+                
+                self.Internal.MH_H_sum += mh_h
+                MH_P_sum += mh_p
+                MH_H2_sum += mh_h2
+                OmegaM = Omega_H_H*mh_h + Omega_H_P*mh_p + Omega_H_H2*mh_h2
+
+                fHG[:] = 0
+                for k in range(0, self.nx-1):
+                    fHG[:,self.vx_pos,k+1] = meq_coeffs.A[:,self.vx_pos,k]*fHG[:,self.vx_pos,k] + meq_coeffs.B[:,self.vx_pos,k]*(Beta_CX[:,self.vx_pos,k+1] + OmegaM[:,self.vx_pos,k+1] + Beta_CX[:,self.vx_pos,k] + OmegaM[:,self.vx_pos,k])
+                for k in range(self.nx-1, 0, -1):
+                    fHG[:,self.vx_neg,k-1] = meq_coeffs.C[:,self.vx_neg,k]*fHG[:,self.vx_neg,k] + meq_coeffs.D[:,self.vx_neg,k]*(Beta_CX[:,self.vx_neg,k-1] + OmegaM[:,self.vx_neg,k-1] + Beta_CX[:,self.vx_neg,k] + OmegaM[:,self.vx_neg,k])
+                for k in range(0, self.nx):
+                    NHG[k,igen] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
+
+                # NOTE Add plotting once program is working
+
+                #	Add result to total neutral distribution function
+                fH += fHG
+                nH += NHG[:,igen]
+
+                #	Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
+                #		and decide if another generation should be computed
+                Delta_nHG = max(NHG[:,igen]/max(nH))
+                if (Delta_nHG < truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
+                    #	If fH 'seed' is being iterated, then do another generation until the 'generation error'
+                    #		is less than 0.003 times the 'seed error' or is less than TRUNCATE
+                    break
+
+            
+            # --- End Iteration ---
+            
+            # NOTE Add plotting once program is working
+
+            #	Compute H density profile
+            for k in range(0, self.nx):
+                nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
+
+            if fH_iterate:
+
+                #	Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
+                #		If Delta_nHs is greater than 10*truncate then iterate fH
+                self.Internal.Delta_nHs = np.max(np.abs(nHs - nH))/np.max(nH)
+                if self.Internal.Delta_nHs <= 10*truncate:
+                    break
+
+        #	Update Beta_CX_sum using last generation
+        if self.COLLISIONS.H_P_CX:
+            if self.debrief > 1:
+                print(self.prompt, 'Computing Beta_CX')
+            if self.COLLISIONS.SIMPLE_CX:
+                # Option (B): Compute charge exchange source with assumption that CX source neutrals have
+                # ion distribution function
+                for k in range(0, self.nx):
+                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_volume*(self.Internal.Alpha_CX[:,:,k]*fHG[:,:,k] @ self.dvx))
+            else:
+                # Option (A): Compute charge exchange source using fH2 and vr x sigma x v_v at each velocity mesh point
+                for k in range(0, self.nx):
+                    Work = fHG[:,:,k]
+                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ Work)
+            Beta_CX_sum = Beta_CX_sum + Beta_CX
+                
+        
+        #	Update MH_*_sum using last generation
+
+        mh_h, mh_p, mh_h2 = self._compute_mh_values(fHG, NHG[:,igen])
+        self.Internal.MH_H_sum += mh_h
+        MH_P_sum += mh_p
+        MH_H2_sum += mh_h2
+
+        return fH, nH, alpha_c, Beta_CX_sum, Omega_H_H, Omega_H_P, Omega_H_H2, MH_P_sum, MH_H2_sum
+    
 
 
     # ------ Variable Functions ------
@@ -1104,6 +1024,51 @@ class KineticH():
         return Omega_H_P, Omega_H_H2, Omega_H_H
     
 
+    def _compute_mh_values(self, fH, nH):
+        MH_H = np.zeros((self.nvr,self.nvx,self.nx)) #NOTE For reference, remove later
+        MH_P = np.zeros((self.nvr,self.nvx,self.nx))
+        MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
+        VxHG = np.zeros(self.nx)
+        THG = np.zeros(self.nx)
+        if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
+
+            # Compute VxHG, THG
+            vr2vx2_ran2 = np.zeros((self.nvr,self.nvx))
+            for k in range(0, self.nx): #NOTE This may be able to be simplified and sped up with vectorizations
+                VxHG[k] = self.vth*np.sum(self.dvr_volume*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
+                vr2vx2_ran2 = (self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxHG[k]/self.vth)**2)
+                THG[k] = (self.mu*CONST.H_MASS)*self.vth**2*np.sum(self.dvr_volume*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
+
+            if self.COLLISIONS.H_H_EL:
+                if self.debrief > 1:
+                    print(self.prompt+'Computing MH_H')
+                # Compute MH_H
+                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, THG, VxHG, self.mu, 1, self.mesh.Tnorm)
+                MH_H = Maxwell*nH
+
+            if self.COLLISIONS.H_P_EL:
+                if self.debrief>1:
+                    print(self.prompt+'Computing MH_P')
+
+                # Compute MH_P 
+                vx_shift = (VxHG + self.vxi) / 2
+                Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
+                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
+                MH_P = Maxwell*nH
+
+            if self.COLLISIONS.H2_H_EL:
+                if self.debrief>1:
+                    print(self.prompt+'Computing MH_H2')
+
+                # Compute MH_H2
+                vx_shift = (VxHG + 2*self.H2_Moments.VxH2) / 3
+                Tmaxwell = THG + (4/9)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
+                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
+                MH_H2 = Maxwell*nH
+        
+        return MH_H, MH_P, MH_H2
+    
+
     def _compute_collision_frequency(self, Omega_H_P, Omega_H_H2, Omega_H_H, gamma_wall):
         # Total Elastic scattering frequency
         Omega_EL = Omega_H_P + Omega_H_H2 + Omega_H_H
@@ -1122,7 +1087,10 @@ class KineticH():
         return alpha_c
     
 
-    def _compute_generation_coefficients(self, alpha_c):
+    def _compute_mesh_equation_coefficients(self, alpha_c):
+        '''
+        Eqs. (3.22), (3.25), (3.30), (3.33)
+        '''
         #	Define parameters Ak, Bk, Ck, Dk, Fk, Gk
 
         Ak = np.zeros((self.nvr,self.nvx,self.nx))
@@ -1145,7 +1113,7 @@ class KineticH():
                 Dk[:,j,k+1] = x_diffs / denom
                 Gk[:,j,k+1] = x_diffs*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
 
-        return Ak, Bk, Ck, Dk, Fk, Gk
+        return MeshEqCoefficients(Ak, Bk, Ck, Dk, Fk, Gk)
 
 
     # ------ Error Computation ------
