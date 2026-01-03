@@ -9,10 +9,10 @@
     },
 
     "collisions" : {
+        "H2_H_EL" : true,
         "H2_H2_EL" : true,
         "H2_P_EL" : true,
-        "H2_H_EL" : true,
-        "H2_HP_CX" : true,
+        "H2_P_CX" : true,
         "H_H_EL" : true,
         "H_P_EL" : true,
         "H_P_CX" : true,

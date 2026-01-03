@@ -10,7 +10,7 @@ from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
 from .kinetic_mesh import KineticMesh
 from .kinetic_h import KineticH
-from .kinetic_h2 import kinetic_h2
+from .kinetic_h2 import KineticH2
 from .jh_related.lyman_alpha import lyman_alpha
 from .jh_related.balmer_alpha import balmer_alpha
 
@@ -269,179 +269,172 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     print(prompt+"Satisfaction condition: ", truncate)
 
 
+    # --- Setup Procedure Classes ---
     KH2_Common = Kinetic_H2_Common() #Common blocks for Kinetic_H2
 
     GammaxHBC = 0
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients, debrief=Hdebrief, compute_errors=compute_errors)
-        
-    if oldrun:
-        # checks if the previous run satisfies the required conditions 
+    
+    kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss)
+
+
+    #   Entry point for fH_fH2 iteration : iterates through solving fh and fh2 until they satisfy boltzmans equation
+    nDelta_nH2 = truncate + 1
+    while nDelta_nH2 > truncate: # Used goto statements in IDL; changed here to while loop
         if debrief: 
             print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
         if debrief and pause: 
-            input("Press any key to continue")
-        if nDelta_nH2 > truncate: 
-            # goto fH_fH2_iterate I think we will have to make fH_fH2_iterate a function 
-            # since we wont be reading old runs right now I am going to leave this as is 
-            pass
-    else:
-        #   Entry point for fH_fH2 iteration : iterates through solving fh and fh2 until they satisfy boltzmans equation
-        nDelta_nH2 = truncate + 1
-        while nDelta_nH2 > truncate: # Used goto statements in IDL; changed here to while loop
-            if debrief: 
-                print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
-            if debrief and pause: 
-                input()
+            input()
 
-            iter += 1
+        iter += 1
+        if debrief:
+            print(prompt+'fH/fH2 Iteration: '+sval(iter))
+        nH2s = nH2
+
+        # interpolate fH data onto H2 mesh: fH -> fHM
+        do_warn = 5e-3
+        fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug) 
+        # print("fHM", fHM.shape)
+
+        # Compute fH2 using Kinetic_H2
+        H2compute_errors = compute_errors and H2debrief # is this accurate, how can it be equal to both? - GG 2/15
+        
+        # print("fH2", fH2)
+        # print("shape", fH2.shape)
+        # input()
+        kh2_results = kinetic_h2.run_procedure(
+                fHM, SH2, fH2, nHP, THP, KH2_Common,\
+                truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,\
+                compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
+        
+        fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
+            QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis, error = kh2_results
+
+        # print("fH2", fH2.T)
+        # print("nHP", nHP)
+        # print("THP", THP)
+        # print("nH2", nH2)
+        # print("GammaxH2", GammaxH2)
+        # print("TH2", TH2)
+        # print("qxH2_total", qxH2_total)
+        # print("AlbedoH2", AlbedoH2)
+        # print("fSH", fSH.T)
+        # print("SH", SH)
+        # print("SP", SP)
+        # input()
+        
+
+        # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
+        do_warn = 5.0E-3
+        fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) 
+        fSHA = interp_fvrvxx(fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
+
+        nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
+        THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
+
+        # Compute fH using Kinetic_H
+        Hcompute_errors = compute_errors and Hdebrief
+
+        kh_results = kinetic_h.run_procedure(fH2A, fSHA, fH, nHPA, THPA,
+                truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
+                plot=Hplot, debug=Hdebug, pause=Hpause)
+        
+        fH = kh_results.fH
+        nH = kh_results.nH
+        GammaxH = kh_results.GammaxH
+        TH = kh_results.TH
+        qxH_total = kh_results.qxH_total
+        NetHSource = kh_results.NetHSource
+        Sion = kh_results.Sion
+        QH_total = kh_results.QH_total
+        SideWallH = kh_results.WallH
+
+        # print("fH", fH.T)
+        # input()
+        # print("nH", nH)
+        # print("GammaxH2", GammaxH2)
+        # print("TH", TH)
+        # print("qxH_total", qxH_total)
+        # print("NetHSource", NetHSource)
+        # print("Sion", Sion)
+        # print("QH_total", QH_total)
+        # print("SideWallH", SideWallH)
+        # input()
+
+
+        # Interpolate SideWallH data onto H2 mesh: SideWallH -> SideWallHM
+        SideWallHM = np.interp(kh2_mesh.x, kh_mesh.x, SideWallH, left=0, right=0)
+        # print("SideWallHM", SideWallHM)
+        # input()
+
+        # Adjust SpH2 to achieve net zero hydrogen atom/molecule flux from wall
+        # (See notes "Procedure to adjust the normalization of the molecular source at the 
+        # limiters (SpH2) to attain a net zero atom/molecule flux from wall")
+
+        # Compute SI, GammaH2Wall_minus, and GammaHWall_minus
+        SI = np.trapezoid(SpH2, kh2_mesh.x)
+        SwallI = np.trapezoid(0.5*SideWallHM, kh2_mesh.x)
+        GammaH2Wall_minus = AlbedoH2*GammaxH2BC
+        GammaHWall_minus = -GammaxH[0]
+        # print("SI", SI)
+        # print("SwallI", SwallI)
+        # print("GammaH2Wall_minus", GammaH2Wall_minus)
+        # print("GammaHWall_minus", GammaHWall_minus)
+        # input()
+
+        # Compute Epsilon and alphaplus1RH0Dis
+        Epsilon = 2*GammaH2Wall_minus / (SI+SwallI)
+        alphaplus1RH0Dis = GammaHWall_minus / ((1 - 0.5*Epsilon)*(SI + SwallI) + GammaxH2BC)
+        # print("Epsilon", Epsilon)
+        # print("alphaplus1RH0Dis", alphaplus1RH0Dis)
+        # input()
+
+        # Compute flux error, EH, and dEHdSI
+        EH = 2*GammaxH2[0] - GammaHWall_minus
+        dEHdSI = -Epsilon - alphaplus1RH0Dis*(1 - 0.5*Epsilon)
+        # print("EH", EH)
+        # print("dEHdSI", dEHdSI)
+        # input()
+
+        # Option: print normalized flux error
+        nEH = np.abs(EH) / np.max(np.abs(np.array([2*GammaxH2[0], GammaHWall_minus] )))
+        if debrief and compute_errors:
+            print(prompt, 'Normalized Hydrogen Flux Error: ', sval(nEH))
+        
+        # Compute Adjustment 
+        Delta_SI = -EH/dEHdSI
+        SI = SI + Delta_SI
+        # print("Delta_SI", GammaH2Wall_minus)
+        # print("SI", GammaHWall_minus)
+        # input()
+
+        # Rescale SpH2 to have new integral value, SI
+        SpH2 = SI*SpH2_hat
+        EH_hist = np.append(EH_hist, EH)
+        SI_hist = np.append(SI_hist, SI)
+        # print("SpH2", SpH2)
+        # print("EH_hist", EH_hist)
+        # print("SI_hist", SI_hist)
+        # input()
+
+        # Set total H2 source
+        SH2 = SpH2 + 0.5*SideWallHM
+        # print("SH2", SH2)
+        # input()
+
+        # print("RxH_H2", KH2_Common.Output.RxH_H2)
+        # print("RxH2_H", KH_Common.Output.RxH2_H)
+        # input()
+        if compute_errors:
+            _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, KH2_Common.Output.RxH_H2, left=0, right=0)
+            DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
+            nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
             if debrief:
-                print(prompt+'fH/fH2 Iteration: '+sval(iter))
-            nH2s = nH2
-
-            # interpolate fH data onto H2 mesh: fH -> fHM
-            do_warn = 5e-3
-            fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug) 
-            # print("fHM", fHM.shape)
-
-            # Compute fH2 using Kinetic_H2
-            H2compute_errors = compute_errors and H2debrief # is this accurate, how can it be equal to both? - GG 2/15
-            
-            # print("fH2", fH2)
-            # print("shape", fH2.shape)
-            # input()
-            kh2_results = kinetic_h2(
-                    kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, fHM, SH2, fH2, nHP, THP, KH2_Common,\
-                    truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,\
-                    compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
-            
-            fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
-                QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis, error = kh2_results
-
-            # print("fH2", fH2.T)
-            # print("nHP", nHP)
-            # print("THP", THP)
-            # print("nH2", nH2)
-            # print("GammaxH2", GammaxH2)
-            # print("TH2", TH2)
-            # print("qxH2_total", qxH2_total)
-            # print("AlbedoH2", AlbedoH2)
-            # print("fSH", fSH.T)
-            # print("SH", SH)
-            # print("SP", SP)
-            # input()
-            
-
-            # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
-            do_warn = 5.0E-3
-            fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) 
-            fSHA = interp_fvrvxx(fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
-
-            nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
-            THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
-
-            # Compute fH using Kinetic_H
-            Hcompute_errors = compute_errors and Hdebrief
-
-            kh_results = kinetic_h.run_procedure(fH2A, fSHA, fH, nHPA, THPA,
-                    truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
-                    plot=Hplot, debug=Hdebug, pause=Hpause)
-            
-            fH = kh_results.fH
-            nH = kh_results.nH
-            GammaxH = kh_results.GammaxH
-            TH = kh_results.TH
-            qxH_total = kh_results.qxH_total
-            NetHSource = kh_results.NetHSource
-            Sion = kh_results.Sion
-            QH_total = kh_results.QH_total
-            SideWallH = kh_results.WallH
-
-            # print("fH", fH.T)
-            # input()
-            # print("nH", nH)
-            # print("GammaxH2", GammaxH2)
-            # print("TH", TH)
-            # print("qxH_total", qxH_total)
-            # print("NetHSource", NetHSource)
-            # print("Sion", Sion)
-            # print("QH_total", QH_total)
-            # print("SideWallH", SideWallH)
-            # input()
-
-
-            # Interpolate SideWallH data onto H2 mesh: SideWallH -> SideWallHM
-            SideWallHM = np.interp(kh2_mesh.x, kh_mesh.x, SideWallH, left=0, right=0)
-            # print("SideWallHM", SideWallHM)
-            # input()
-
-            # Adjust SpH2 to achieve net zero hydrogen atom/molecule flux from wall
-            # (See notes "Procedure to adjust the normalization of the molecular source at the 
-            # limiters (SpH2) to attain a net zero atom/molecule flux from wall")
-
-            # Compute SI, GammaH2Wall_minus, and GammaHWall_minus
-            SI = np.trapezoid(SpH2, kh2_mesh.x)
-            SwallI = np.trapezoid(0.5*SideWallHM, kh2_mesh.x)
-            GammaH2Wall_minus = AlbedoH2*GammaxH2BC
-            GammaHWall_minus = -GammaxH[0]
-            # print("SI", SI)
-            # print("SwallI", SwallI)
-            # print("GammaH2Wall_minus", GammaH2Wall_minus)
-            # print("GammaHWall_minus", GammaHWall_minus)
-            # input()
-
-            # Compute Epsilon and alphaplus1RH0Dis
-            Epsilon = 2*GammaH2Wall_minus / (SI+SwallI)
-            alphaplus1RH0Dis = GammaHWall_minus / ((1 - 0.5*Epsilon)*(SI + SwallI) + GammaxH2BC)
-            # print("Epsilon", Epsilon)
-            # print("alphaplus1RH0Dis", alphaplus1RH0Dis)
-            # input()
-
-            # Compute flux error, EH, and dEHdSI
-            EH = 2*GammaxH2[0] - GammaHWall_minus
-            dEHdSI = -Epsilon - alphaplus1RH0Dis*(1 - 0.5*Epsilon)
-            # print("EH", EH)
-            # print("dEHdSI", dEHdSI)
-            # input()
-
-            # Option: print normalized flux error
-            nEH = np.abs(EH) / np.max(np.abs(np.array([2*GammaxH2[0], GammaHWall_minus] )))
-            if debrief and compute_errors:
-                print(prompt, 'Normalized Hydrogen Flux Error: ', sval(nEH))
-            
-            # Compute Adjustment 
-            Delta_SI = -EH/dEHdSI
-            SI = SI + Delta_SI
-            # print("Delta_SI", GammaH2Wall_minus)
-            # print("SI", GammaHWall_minus)
-            # input()
-
-            # Rescale SpH2 to have new integral value, SI
-            SpH2 = SI*SpH2_hat
-            EH_hist = np.append(EH_hist, EH)
-            SI_hist = np.append(SI_hist, SI)
-            # print("SpH2", SpH2)
-            # print("EH_hist", EH_hist)
-            # print("SI_hist", SI_hist)
-            # input()
-
-            # Set total H2 source
-            SH2 = SpH2 + 0.5*SideWallHM
-            # print("SH2", SH2)
-            # input()
-
-            # print("RxH_H2", KH2_Common.Output.RxH_H2)
-            # print("RxH2_H", KH_Common.Output.RxH2_H)
-            # input()
-            if compute_errors:
-                _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, KH2_Common.Output.RxH_H2, left=0, right=0)
-                DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
-                nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
-                if debrief:
-                    print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
-            
-            Delta_nH2 = np.abs(nH2 - nH2s)
-            nDelta_nH2 = np.max(Delta_nH2/np.max(nH2))
+                print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
+        
+        Delta_nH2 = np.abs(nH2 - nH2s)
+        nDelta_nH2 = np.max(Delta_nH2/np.max(nH2))
     
     # fH_fH2_done code section  
 
