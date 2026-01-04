@@ -1,21 +1,23 @@
+import numpy as np
+
 # Contains Class definitions for shared variables primarily used in Kinetic_H2
 
 #   From the Kinetic_H_Output common block
 class Kinetic_H2_Output:
 
-    def __init__(self):
-        self.piH2_xx = None
-        self.piH2_yy = None
-        self.piH2_zz = None
-        self.RxH2CX = None
-        self.RxH_H2 = None
-        self.RxP_H2 = None
-        self.RxW_H2 = None
-        self.EH2CX = None
-        self.EH_H2 = None
-        self.EP_H2 = None
-        self.EW_H2 = None
-        self.Epara_PerpH2_H2 = None
+    def __init__(self, nx):
+        self.piH2_xx = np.zeros(nx)
+        self.piH2_yy = np.zeros(nx)
+        self.piH2_zz = np.zeros(nx)
+        self.RxH2CX = np.zeros(nx)
+        self.RxH_H2 = np.zeros(nx)
+        self.RxP_H2 = np.zeros(nx)
+        self.RxW_H2 = np.zeros(nx)
+        self.EH2CX = np.zeros(nx)
+        self.EH_H2 = np.zeros(nx)
+        self.EP_H2 = np.zeros(nx)
+        self.EW_H2 = np.zeros(nx)
+        self.Epara_PerpH2_H2 = np.zeros(nx)
 
     #Setup string conversion for printing
     def __str__(self):

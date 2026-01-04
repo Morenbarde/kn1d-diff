@@ -270,7 +270,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
 
     # --- Setup Procedure Classes ---
-    KH2_Common = Kinetic_H2_Common() #Common blocks for Kinetic_H2
 
     GammaxHBC = 0
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
@@ -304,12 +303,12 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
         # print("shape", fH2.shape)
         # input()
         kh2_results = kinetic_h2.run_procedure(
-                fHM, SH2, fH2, nHP, THP, KH2_Common,\
-                truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,\
+                fHM, SH2, fH2, nHP, THP,
+                truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,
                 compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
         
         fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
-            QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis, error = kh2_results
+            QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis = kh2_results
 
         # print("fH2", fH2.T)
         # print("nHP", nHP)
@@ -427,7 +426,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
         # print("RxH2_H", KH_Common.Output.RxH2_H)
         # input()
         if compute_errors:
-            _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, KH2_Common.Output.RxH_H2, left=0, right=0)
+            _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, kinetic_h2.Output.RxH_H2, left=0, right=0)
             DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
             nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
             if debrief:
