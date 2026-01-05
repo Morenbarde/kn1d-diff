@@ -275,7 +275,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients, debrief=Hdebrief, compute_errors=compute_errors)
     
-    kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss)
+    kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, SH2, debrief=H2debrief)
 
 
     #   Entry point for fH_fH2 iteration : iterates through solving fh and fh2 until they satisfy boltzmans equation
@@ -305,7 +305,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
         kh2_results = kinetic_h2.run_procedure(
                 fHM, SH2, fH2, nHP, THP,
                 truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,
-                compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,debrief=H2debrief,pause=H2pause)
+                compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,pause=H2pause)
         
         fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
             QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis = kh2_results
@@ -337,7 +337,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
 
         kh_results = kinetic_h.run_procedure(fH2A, fSHA, fH, nHPA, THPA,
                 truncate=truncate, max_gen=max_gen, ni_correct=True, compute_errors=Hcompute_errors,
-                plot=Hplot, debug=Hdebug, pause=Hpause)
+                debug=Hdebug)
         
         fH = kh_results.fH
         nH = kh_results.nH

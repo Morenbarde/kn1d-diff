@@ -160,6 +160,7 @@ class Kinetic_H2_Internal:
         self.SIG_H2_P = None
         self.Alpha_CX = None
         self.Alpha_H2_H = None
+        self.Alpha_H2_P = None
         self.MH2_H2_sum = None
         self.Delta_nH2s = 0.0
 

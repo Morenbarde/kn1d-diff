@@ -153,7 +153,6 @@ class KineticH():
 
         # Initial Computations
         # Some may not be used depending on inputs
-        # NOTE Change such that all internal variables are defined here
         self._init_static_internals()
 
         if compute_errors:
@@ -164,7 +163,7 @@ class KineticH():
     
     
     def run_procedure(self, fH2: NDArray = None, fSH: NDArray = None, fH: NDArray = None, nHP: NDArray = None, THP: NDArray = None, 
-              truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, recomb = True, plot = 0, debug = 0, debrief = 0, pause = 0) -> KHResults:
+              truncate: float = 1e-4, max_gen = 50, ni_correct = 0, compute_errors = 0, recomb = True, debug = 0) -> KHResults:
         '''
         Solves a 1-D spatial, 2-D velocity kinetic neutral transport 
         problem for atomic hydrogen or deuterium (H)
@@ -341,12 +340,12 @@ class KineticH():
 
         self._compute_dynamic_internals(fH, fH2, nHP, THP, fSH, recomb, ni_correct, debug)
 
-        #	Compute nH
+        # Compute nH
         nH = np.zeros(self.nx)
         for k in range(self.nx):
             nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
 
-        #	Compute Side-Wall collision rate
+        # Compute Side-Wall collision rate
         gamma_wall = np.zeros((self.nvr,self.nvx,self.nx))
         for k in range(self.nx):
             if self.mesh.PipeDia[k] > 0:
@@ -375,7 +374,6 @@ class KineticH():
         self.Input.nHP_s = nHP
         self.Input.THP_s = THP
         self.Input.fH_s = fH
-        self.Input.Recomb_s = recomb
 
         return results
         
