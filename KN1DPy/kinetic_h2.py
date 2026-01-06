@@ -487,7 +487,7 @@ class KineticH2():
             self.Internal.MH2_H2_sum = m_sums.H2_H2
 
             # Compute needed results for iteration
-            nH2, GammaxH2, VxH2, vr2vx2_ran, pH2, TH2, NuDis, NuE, nHP, THP = self._compute_iteration_results(fH2)
+            nH2, _, _, _, _, _, _, _, nHP, THP = self._compute_iteration_results(fH2)
             
 
             # --- End Iteration ---
@@ -625,7 +625,7 @@ class KineticH2():
         return nH2, GammaxH2, VxH2, vr2vx2_ran, pH2, TH2, NuDis, NuE, nHP, THP
     
 
-    def _compile_results(self, fH2, SH2, gamma_wall, alpha_c, Swall_sum, Beta_CX_sum, m_sums, collision_freqs):
+    def _compile_results(self, fH2, SH2, gamma_wall, alpha_c, Swall_sum, Beta_CX_sum, m_sums, collision_freqs) -> KH2Results:
         
         # --- Recompute Results from end of iteration ---
 
@@ -709,7 +709,56 @@ class KineticH2():
 
     # ------ H Source Functions ------
 
-    def _compute_h_source(self, results, SH2):
+    def _compute_h_source(self, results, SH2) -> KH2Results:
+
+        '''
+        Set Normalized Franck-Condon Velocity Distributions for reactions R2, R3, R4, R5, R6, R7, R8, R10
+
+        The following function is chosen to represent the velocity distribution of the
+        hydrogen products for a given reaction, accounting for the Franck-Condon energy
+        distribution and accounting for additional velocity spreading due to the finite
+        temperature of the molcules (neutral and ionic) prior to breakup:
+        
+            f(Vr,Vx) = exp( -0.5*mH*mu*(|v|-Vfc+0.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
+
+              	|v|=sqrt(Vr^2+Vx^2)
+        	        Tfc= Franck-Condon 'temperature' = (Emax-Emin)/4
+        	        Vfc= Franck-Condon  velocity = sqrt(2 Eave/mH/mu)
+        		    Tmol= temperature of H2 molecule (neutral or ionic)
+
+        This function is isotropic in velocity space and can be written in terms
+        of a distribution in particle speed, |v|, 
+
+            f(|v|) = exp( -(|v|-Vfc+1.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
+        
+        with velocities normalized by vth and T normalized by Tnorm.
+
+        Recognizing the the distribution in energy, f(E), and particle speed, f(|v|),
+        are related by  f(E) dE = f(|v|) 2 pi v^2 dv, and that dE/dv = mH mu v,
+        f(E) can be written as
+
+            f(E) = f(|v|) 2 pi |v|/(mH mu) = const. |v| exp( -(|v|-Vfc+1.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
+
+        The function f(Vr,Vx) was chosen because it has has the following characteristics:
+
+        (1) For Tmol/2 << Tfc,  the peak in the v^2 times the energy distribution, can be found
+        by finding the |v| where df(E)/d|v| =0
+
+           df(E)/d|v|= 0 = 3v^2 exp() - 2(|v|-Vfc+1.5*Tfc/Vfc)/Tfc v^3 exp() 
+                           2(|v|-Vfc+1.5*Tfc/Vfc)/Tfc |v| = 3
+        
+        which is satisfied when |v|=Vfc. Thus the energy-weighted energy distribution peaks
+        at the velocity corresponding to the average Franck-Condon energy.
+
+        (2) for Tmol/2 >> Tfc ~ Vfc^2, the velocity distribution becomes
+
+        	f(|v|) = exp( -2(|v|-Vfc+1.5*Tfc/Vfc)^2/Tmol )
+
+        which leads to a velocity distribution that approaches the molecular velocity
+        distribution with the magnitude of the average velocity divided by 2. This
+        is the appropriate situation for when the Franck-Condon energies are negligible
+        relative to the thermal speed of the molecules.
+        '''
 
         results.fSH = np.zeros((self.nvr,self.nvx,self.nx))
         results.SH = np.zeros(self.nx)
@@ -718,16 +767,118 @@ class KineticH2():
         results.ESH = np.zeros((self.nvr,self.nx))
 
         if not self.compute_h_source:
+            # Stop Computation, return 0 arrays
             return results
         
         if self.debrief > 1:
             print(self.prompt, 'Computing Velocity Distributions of H products...')
-        # Set Normalized Franck-Condon Velocity Distributions for reactions R2, R3, R4, R5, R6, R7, R8, R10
 
+        # Set SFCn values for reactions R2, R3, R4, R5, R6, R7, R8, R10
+        SFCn = np.zeros((self.nvr,self.nvx,self.nx,8))
+        Vfc = np.zeros((self.nvr,self.nvx,self.nx))
+        Tfc = np.zeros((self.nvr,self.nvx,self.nx))
+        magV = np.sqrt(self.Internal.vr2vx2)
+
+        _THP = results.THP/self.mesh.Tnorm
+        _TH2 = results.TH2/self.mesh.Tnorm 
+        
+        # Generate Lookup Table
+        nFC, Eave, Emax, Emin = self.generate_h_source_table()
+
+        Rn = np.array([2, 3, 4, 5, 6, 7, 8, 10])
+        for jRn in range(np.size(Rn)):
+            ii = nFC[Rn[jRn]]
+            # print("ii", ii)
+            Tfc[0,0,:] = 0.25*(Emax[:,ii] - Emin[:,ii])/self.mesh.Tnorm # Franck-Condon 'effective temperature'
+            Vfc[0,0,:] = np.sqrt(Eave[:,ii]/self.mesh.Tnorm) # Velocity corresponding to Franck-Condon 'mean evergy'
+            for k in range(self.nx):
+                Vfc[:,:,k] = Vfc[0,0,k]
+                Tfc[:,:,k] = Tfc[0,0,k]
+
+            if Rn[jRn] <= 6:
+                # For R2-R6, the Franck-Condon 'mean energy' is taken equal to Eave
+                #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
+                #          and the temperature of the H2 molecules, TH2. (Note: directed neutral molecule velocity
+                #	   is not included and assumed to be small)
+                arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_TH2)
+                SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
+            else: 
+                #   For R7, R8 and R10, the Franck-Condon 'mean energy' is taken equal to Eave
+                #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
+                #          and the temperature of the H2(+) molecular ions, THP. (Note: directed molecular ion velocity
+                #	   is not included and assumed to be small)    
+                arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_THP)
+                SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
+
+            for k in range(self.nx):
+                SFCn[:,:,k,ii] = SFCn[:,:,k,ii] / (np.sum(self.dvr_vol*(SFCn[:,:,k,ii] @ self.dvx)))
+        
+
+        self.Errors.vbar_error = np.zeros(self.nx)
+        if self.compute_errors:
+            # Test: The average speed of a non-shifted maxwellian should be 2*Vth*sqrt(Ti(x)/Tnorm)/sqrt(!pi)
+            TFC = np.min(Eave[0,:]) + ((np.max(Eave[0,:]) - np.min(Eave[0,:]))*np.arange(0, self.nx) / (self.nx - 1))
+            vx_shift = np.zeros_like(TFC)
+            Tmaxwell = TFC
+            mol = 1
+            Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
+            vbar_test = self.vth*np.sqrt(self.Internal.vr2vx2[:,:,0])
+            for k in range(0, self.nx):
+                vbar = np.sum(self.dvr_vol*((vbar_test*Maxwell[:,:,k]) @ self.dvx))
+                vbar_exact = 2*self.vth*np.sqrt(TFC[k] / self.mesh.Tnorm) / np.sqrt(np.pi)
+                self.Errors.vbar_error[k] = np.abs(vbar - vbar_exact) / vbar_exact
+            if self.debrief > 0: 
+                print(self.prompt, 'Maximum Vbar error over FC energy range = ', np.max(self.Errors.vbar_error))
+
+        # Compute atomic hydrogen source distribution function
+        # using normalized FC source distributions SFCn
+        fSH_calc = lambda k,x : self.Internal.sigv[k,x]*SFCn[:,:,k,nFC[x]]
+        for k in range(0, self.nx):
+
+            results.fSH[:,:,k] = self.mesh.ne[k]*results.nH2[k]*(2*fSH_calc(k,2) + 2*fSH_calc(k,3) + fSH_calc(k,4) + 2*fSH_calc(k,5) + 2*fSH_calc(k,6))
+            
+            results.fSH[:,:,k] = results.fSH[:,:,k] + self.mesh.ne[k]*results.nHP[k]*(fSH_calc(k,7) + fSH_calc(k,8) + 2*fSH_calc(k,10))
+
+        # Compute total H and H(+) sources
+        for k in range(self.nx):
+            results.SH[k] = np.sum(self.dvr_vol*(results.fSH[:,:,k] @ self.dvx))
+            results.SP[k] = self.mesh.ne[k]*results.nH2[k]*self.Internal.sigv[k,4] + self.mesh.ne[k]*results.nHP[k]*(self.Internal.sigv[k,7] + self.Internal.sigv[k,8] + 2*self.Internal.sigv[k,9])
+
+        # Compute total HP source
+        results.SHP = self.mesh.ne*results.nH2*self.Internal.sigv[:,1]
+
+        # Compute energy distribution of H source 
+        for k in range(0, self.nx):
+            results.ESH[:,k] = (self.Eaxis*results.fSH[:,self.vx_pos[0],k]*self.dvr_vol_h_order) / self.dEaxis
+            results.ESH[:,k] = results.ESH[:,k] / np.max(results.ESH[:,k])
+        
+        Source_Error = np.zeros(self.nx)
+
+        # Compute Source Error
+        if self.compute_errors:
+            if self.debrief > 1:
+                print(self.prompt, 'Computing Source Error')
+            # Test Mass Balance
+            # The relationship, 2 dGammaxH2/dx - 2 SH2 + SH + SP + 2 nHp x Nuloss = 0, should be satisfied.
+            dGammaxH2dx = np.zeros((self.nx-1))
+            SH_p = np.zeros(self.nx-1)
+            for k in range(0, self.nx-1):
+                dGammaxH2dx[k] = (results.GammaxH2[k+1] - results.GammaxH2[k]) / (self.mesh.x[k+1] - self.mesh.x[k])
+            for k in range(0, self.nx-1):
+                SH_p[k] = 0.5*(results.SH[k+1] + results.SP[k+1] + 2*self.NuLoss[k+1]*results.nHP[k+1] - 2*SH2[k+1] + results.SH[k] + results.SP[k] + 2*self.NuLoss[k]*results.nHP[k] - 2*SH2[k])
+            max_source = np.max(np.array([results.SH, 2*SH2]))
+            for k in range(0, self.nx - 1):
+                Source_Error[k] = np.abs(2*dGammaxH2dx[k] + SH_p[k]) / np.max(np.abs(np.array([2*dGammaxH2dx[k], SH_p[k], max_source])))
+            if self.debrief > 0:
+                print(self.prompt, 'Maximum Normalized Source_error =', np.max(Source_Error))
+
+        return results
+    
+
+    def generate_h_source_table(self):
         # Make lookup table to select reaction Rn in SFCn
         #   Rn=2 3 4 5 6 7 8   10
         nFC = np.array([0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 7])
-        SFCn = np.zeros((self.nvr,self.nvx,self.nx,8))
         Eave = np.zeros((self.nx, 8))
         Emax = np.zeros((self.nx, 8))
         Emin = np.zeros((self.nx, 8))
@@ -795,160 +946,15 @@ class KineticH2():
             R10rel = np.append(R10rel, 10/(k**3))
         En = 13.58/((2 + np.arange(9))**2) # Energy of Levels
 
-        for k in range(0, self.nx):
-            truncate_point = np.minimum(len(Ee), len(En))
-            EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/np.sum(R10rel)
-            EHn = np.maximum(EHn, 0)
-            Eave[k,ii] = np.sum(EHn)
-            Eave[k,ii] = np.maximum(Eave[k,ii], 0.25)
-            Emax[k,ii] = 1.5*Eave[k,ii] # Note the max/min values here are a guess
-            Emin[k,ii] = 0.5*Eave[k,ii] # Note the max/min values here are a guess
-        
-        # Set SFCn values for reactions R2, R3, R4, R5, R6, R7, R8, R10
-        Vfc = np.zeros((self.nvr,self.nvx,self.nx))
-        Tfc = np.zeros((self.nvr,self.nvx,self.nx))
-        magV = np.sqrt(self.Internal.vr2vx2)
-        _THP = np.zeros((self.nvr,self.nvx,self.nx))
-        _TH2 = np.zeros((self.nvr,self.nvx,self.nx)) 
-        for k in range(0, self.nx):
-            _THP[:,:,k] = results.THP[k]/self.mesh.Tnorm
-            _TH2[:,:,k] = results.TH2[k]/self.mesh.Tnorm 
-        
-        # The following function is choosen to represent the velocity distribution of the
-        # hydrogen products for a given reaction, accounting for the Franck-Condon energy
-        # distribution and accounting for additional velocity spreading due to the finite
-        # temperature of the molcules (neutral and ionic) prior to breakup:
-        # 
-        #     f(Vr,Vx) = exp( -0.5*mH*mu*(|v|-Vfc+0.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
+        truncate_point = np.minimum(len(Ee), len(En))
+        EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/np.sum(R10rel)
+        EHn = np.maximum(EHn, 0)
 
-        #       	|v|=sqrt(Vr^2+Vx^2)
-        #	        Tfc= Franck-Condon 'temperature' = (Emax-Emin)/4
-        #	        Vfc= Franck-Condon  velocity = sqrt(2 Eave/mH/mu)
-        #		    Tmol= temperature of H2 molecule (neutral or ionic)
+        Eave[:,ii] = np.maximum(np.sum(EHn), 0.25)
+        Emax[:,ii] = 1.5*Eave[:,ii] # Note the max/min values here are a guess
+        Emin[:,ii] = 0.5*Eave[:,ii] # Note the max/min values here are a guess
 
-        #    This function is isotropic in velocity space and can be written in terms
-        #  of a distribution in particle speed, |v|, 
-
-        #     f(|v|) = exp( -(|v|-Vfc+1.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
-        #
-        # with velocities normalized by vth and T normalized by Tnorm.
-
-        #  Recognizing the the distribution in energy, f(E), and particle speed, f(|v|),
-        #  are related by  f(E) dE = f(|v|) 2 pi v^2 dv, and that dE/dv = mH mu v,
-        #  f(E) can be written as
-
-        #     f(E) = f(|v|) 2 pi |v|/(mH mu) = const. |v| exp( -(|v|-Vfc+1.5*Tfc/Vfc)^2/(Tfc+0.5*Tmol) )
-
-        # The function f(Vr,Vx) was chosen because it has has the following characteristics:
-
-        # (1) For Tmol/2 << Tfc,  the peak in the v^2 times the energy distribution, can be found
-        #    by finding the |v| where df(E)/d|v| =0
-
-        #    df(E)/d|v|= 0 = 3v^2 exp() - 2(|v|-Vfc+1.5*Tfc/Vfc)/Tfc v^3 exp() 
-        #                    2(|v|-Vfc+1.5*Tfc/Vfc)/Tfc |v| = 3
-        #    which is satisfied when |v|=Vfc. Thus the energy-weighted energy distribution peaks
-        #    at the velocity corresponding to the average Franck-Condon energy.
-
-        # (2) for Tmol/2 >> Tfc ~ Vfc^2, the velocity distribution becomes
-
-        #	f(|v|) = exp( -2(|v|-Vfc+1.5*Tfc/Vfc)^2/Tmol )
-
-        #    which leads to a velocity distribution that approaches the molecular velocity
-        #    distribution with the magnitude of the average velocity divided by 2. This
-        #    is the appropriate situation for when the Franck-Condon energies are negligible
-        #    relative to the thermal speed of the molecules.
-
-        Rn = np.array([2, 3, 4, 5, 6, 7, 8, 10])
-        for jRn in range(np.size(Rn)):
-            ii = nFC[Rn[jRn]]
-            # print("ii", ii)
-            Tfc[0,0,:] = 0.25*(Emax[:,ii] - Emin[:,ii])/self.mesh.Tnorm # Franck-Condon 'effective temperature'
-            Vfc[0,0,:] = np.sqrt(Eave[:,ii]/self.mesh.Tnorm) # Velocity corresponding to Franck-Condon 'mean evergy'
-            for k in range(self.nx):
-                Vfc[:,:,k] = Vfc[0,0,k]
-                Tfc[:,:,k] = Tfc[0,0,k]
-
-            if Rn[jRn] <= 6:
-                # For R2-R6, the Franck-Condon 'mean energy' is taken equal to Eave
-                #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
-                #          and the temperature of the H2 molecules, TH2. (Note: directed neutral molecule velocity
-                #	   is not included and assumed to be small)
-                arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_TH2)
-                SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
-            else: 
-            #   For R7, R8 and R10, the Franck-Condon 'mean energy' is taken equal to Eave
-            #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
-            #          and the temperature of the H2(+) molecular ions, THP. (Note: directed molecular ion velocity
-            #	   is not included and assumed to be small)    
-                arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_THP)
-                SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
-
-            for k in range(self.nx):
-                SFCn[:,:,k,ii] = SFCn[:,:,k,ii] / (np.sum(self.dvr_vol*(SFCn[:,:,k,ii] @ self.dvx)))
-
-        # NOTE Add Plotting back in later
-        
-
-        self.Errors.vbar_error = np.zeros(self.nx)
-        if self.compute_errors:
-            # Test: The average speed of a non-shifted maxwellian should be 2*Vth*sqrt(Ti(x)/Tnorm)/sqrt(!pi)
-            TFC = np.min(Eave[0,:]) + ((np.max(Eave[0,:]) - np.min(Eave[0,:]))*np.arange(0, self.nx) / (self.nx - 1))
-            vx_shift = np.zeros_like(TFC)
-            Tmaxwell = TFC
-            mol = 1
-            Maxwell = create_shifted_maxwellian(self.mesh.vr,self.mesh.vx,Tmaxwell,vx_shift,self.mu,mol,self.mesh.Tnorm)
-            vbar_test = self.vth*np.sqrt(self.Internal.vr2vx2[:,:,0])
-            for k in range(0, self.nx):
-                vbar = np.sum(self.dvr_vol*((vbar_test*Maxwell[:,:,k]) @ self.dvx))
-                vbar_exact = 2*self.vth*np.sqrt(TFC[k] / self.mesh.Tnorm) / np.sqrt(np.pi)
-                self.Errors.vbar_error[k] = np.abs(vbar - vbar_exact) / vbar_exact
-            if self.debrief > 0: 
-                print(self.prompt, 'Maximum Vbar error over FC energy range = ', np.max(self.Errors.vbar_error))
-
-        # Compute atomic hydrogen source distribution function
-        # using normalized FC source distributions SFCn
-        fSH_calc = lambda k,x : self.Internal.sigv[k,x]*SFCn[:,:,k,nFC[x]]
-        for k in range(0, self.nx):
-
-            results.fSH[:,:,k] = self.mesh.ne[k]*results.nH2[k]*(2*fSH_calc(k,2) + 2*fSH_calc(k,3) + fSH_calc(k,4) + 2*fSH_calc(k,5) + 2*fSH_calc(k,6))
-            
-            results.fSH[:,:,k] = results.fSH[:,:,k] + self.mesh.ne[k]*results.nHP[k]*(fSH_calc(k,7) + fSH_calc(k,8) + 2*fSH_calc(k,10))
-
-        # Compute total H and H(+) sources
-        for k in range(self.nx):
-            results.SH[k] = np.sum(self.dvr_vol*(results.fSH[:,:,k] @ self.dvx))
-            results.SP[k] = self.mesh.ne[k]*results.nH2[k]*self.Internal.sigv[k,4] + self.mesh.ne[k]*results.nHP[k]*(self.Internal.sigv[k,7] + self.Internal.sigv[k,8] + 2*self.Internal.sigv[k,9])
-
-        # Compute total HP source
-        results.SHP = self.mesh.ne*results.nH2*self.Internal.sigv[:,1]
-
-        # Compute energy distrobution of H source 
-        for k in range(0, self.nx):
-            results.ESH[:,k] = (self.Eaxis*results.fSH[:,self.vx_pos[0],k]*self.dvr_vol_h_order) / self.dEaxis
-            results.ESH[:,k] = results.ESH[:,k] / np.max(results.ESH[:,k])
-        
-        Source_Error = np.zeros(self.nx)
-
-        # Compute Source Error
-        if self.compute_errors:
-            if self.debrief > 1:
-                print(self.prompt, 'Computing Source Error')
-            # Test Mass Balance
-            # The relationship, 2 dGammaxH2/dx - 2 SH2 + SH + SP + 2 nHp x Nuloss = 0, should be satisfied.
-            dGammaxH2dx = np.zeros((self.nx-1))
-            SH_p = np.zeros(self.nx-1)
-            for k in range(0, self.nx-1):
-                dGammaxH2dx[k] = (results.GammaxH2[k+1] - results.GammaxH2[k]) / (self.mesh.x[k+1] - self.mesh.x[k])
-            for k in range(0, self.nx-1):
-                SH_p[k] = 0.5*(results.SH[k+1] + results.SP[k+1] + 2*self.NuLoss[k+1]*results.nHP[k+1] - 2*SH2[k+1] + results.SH[k] + results.SP[k] + 2*self.NuLoss[k]*results.nHP[k] - 2*SH2[k])
-            max_source = np.max(np.array([results.SH, 2*SH2]))
-            for k in range(0, self.nx - 1):
-                Source_Error[k] = np.abs(2*dGammaxH2dx[k] + SH_p[k]) / np.max(np.abs(np.array([2*dGammaxH2dx[k], SH_p[k], max_source])))
-            if self.debrief > 0:
-                print(self.prompt, 'Maximum Normalized Source_error =', np.max(Source_Error))
-
-        
-        return results
+        return nFC, Eave, Emax, Emin
 
 
 
@@ -1268,7 +1274,7 @@ class KineticH2():
     def _compute_alpha_cx(self, nHP, THP):
         if self.debrief > 1:
             print(self.prompt, 'Computing Alpha_CX')
-        # Set Maxwellian Molecular Ion Distrobution Function (assumed to be drifting with ion velocity, vxi)
+        # Set Maxwellian Molecular Ion Distribution Function (assumed to be drifting with ion velocity, vxi)
         vx_shift = self.vxi
         Tmaxwell = THP
         mol = 2
@@ -1433,7 +1439,7 @@ class KineticH2():
         Gk = np.zeros((self.nvr,self.nvx,self.nx))
 
         for k in range(0, self.nx-1):
-            for j in self.vx_pos: # double check some of the ranges in for statements I might have some typos
+            for j in self.vx_pos:
                 denom = 2*self.mesh.vx[j] + (self.mesh.x[k+1] - self.mesh.x[k])*alpha_c[:,j,k+1]
                 Ak[:,j,k] = (2*self.mesh.vx[j] - (self.mesh.x[k+1] - self.mesh.x[k])*alpha_c[:,j,k]) / denom
                 Bk[:,j,k] = (self.mesh.x[k+1] - self.mesh.x[k]) / denom

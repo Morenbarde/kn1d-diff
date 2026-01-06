@@ -1,3 +1,5 @@
+from dataclasses import dataclass, asdict
+
 from KN1DPy.kn1d import kn1d
 from scipy.io import readsav
 import numpy as np
@@ -35,7 +37,7 @@ print()
 output = open('Results/output.txt', 'w')
 sys.stdout = output
 
-for key, value in results.items():
+for key, value in asdict(results).items():
     print(key)
     print(value)
     print()
