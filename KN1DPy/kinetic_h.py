@@ -295,9 +295,7 @@ class KineticH():
 
         # Override settings for debug
         if debug > 0:
-            #plot = np.max(plot, 1)
             self.debrief = np.maximum(self.debrief, 1)
-            pause = 1
 
 
         # --- Initialize Inputs ---
@@ -353,14 +351,15 @@ class KineticH():
         self.Internal.MH_H_sum = m_sums.H_H
 
 
-        # --- Compute remaining moments ---
+        # --- Compute Results ---
 
         results = self._compile_results(fH, nH, fSH, gamma_wall, alpha_c, Beta_CX_sum, collision_freqs, m_sums, recomb)
 
         if compute_errors:
             self._compute_final_errors(results, Beta_CX_sum, fH, m_sums, alpha_c, collision_freqs, debug)
 
-        # NOTE Add plotting once program is working
+        
+        # --- Save input Variables ---
 
         self.Input.fH2_s = fH2
         self.Input.fSH_s = fSH
@@ -414,8 +413,6 @@ class KineticH():
             for k in range(self.nx):
                 NHG[k,0] = np.sum(self.dvr_volume*(fHG[:,:,k] @ self.dvx))
 
-            # NOTE Add plotting once program is working
-
             #	Set total atomic neutral distribution function to first flight generation
             fH = np.copy(fHG)
             nH = NHG[:,0]
@@ -425,19 +422,17 @@ class KineticH():
 
             fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen = self._run_generations(fH, nH, fHG, NHG, meq_coeffs, collision_freqs, fH_iterate, truncate, max_gen)
 
-            
-            # --- End Iteration ---
-            
-            # NOTE Add plotting once program is working
-
             # Compute H density profile
             for k in range(0, self.nx):
                 nH[k] = np.sum(self.dvr_volume*(fH[:,:,k] @ self.dvx))
 
-            if fH_iterate:
 
+            # --- End Iteration ---
+
+            if fH_iterate:
                 # Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
                 # If Delta_nHs is less than 10*truncate then stop iterating fH
+
                 self.Internal.Delta_nHs = np.max(np.abs(nH_input - nH))/np.max(nH)
                 if self.Internal.Delta_nHs <= 10*truncate:
                     break

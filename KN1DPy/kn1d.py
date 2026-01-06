@@ -275,7 +275,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients, debrief=Hdebrief, compute_errors=compute_errors)
     
-    kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, SH2, debrief=H2debrief)
+    kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, SH2,
+                            compute_h_source=True, ni_correct=True, truncate=truncate, max_gen=max_gen, 
+                            compute_errors=compute_errors, debrief=H2debrief, debug=H2debug)
 
 
     #   Entry point for fH_fH2 iteration : iterates through solving fh and fh2 until they satisfy boltzmans equation
@@ -297,18 +299,24 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
         # print("fHM", fHM.shape)
 
         # Compute fH2 using Kinetic_H2
-        H2compute_errors = compute_errors and H2debrief # is this accurate, how can it be equal to both? - GG 2/15
+        
         
         # print("fH2", fH2)
         # print("shape", fH2.shape)
         # input()
-        kh2_results = kinetic_h2.run_procedure(
-                fHM, SH2, fH2, nHP, THP,
-                truncate=truncate, max_gen=max_gen, compute_h_source=True, ni_correct=True,
-                compute_errors=H2compute_errors, plot=H2plot,debug=H2debug,pause=H2pause)
+        kh2_results = kinetic_h2.run_procedure(fHM, SH2, fH2, nHP, THP)
         
-        fH2, nHP, THP, nH2, GammaxH2, VxH2, pH2, TH2, qxH2, qxH2_total, Sloss, \
-            QH2, RxH2, QH2_total, AlbedoH2, WallH2, fSH, SH, SP, SHP, NuE, NuDis, ESH, Eaxis = kh2_results
+        fH2 = kh2_results.fH2
+        nHP = kh2_results.nHP
+        THP = kh2_results.THP
+        nH2 = kh2_results.nH2
+        GammaxH2 = kh2_results.GammaxH2
+        TH2 = kh2_results.TH2
+        qxH2_total = kh2_results.qxH2_total
+        AlbedoH2 = kh2_results.AlbedoH2
+        fSH = kh2_results.fSH
+        SH = kh2_results.SH
+        SP = kh2_results.SP
 
         # print("fH2", fH2.T)
         # print("nHP", nHP)
@@ -432,8 +440,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
             if debrief:
                 print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
         
-        Delta_nH2 = np.abs(nH2 - nH2s)
-        nDelta_nH2 = np.max(Delta_nH2/np.max(nH2))
+        Delta_nH2 = np.abs(kh2_results.nH2 - nH2s)
+        nDelta_nH2 = np.max(Delta_nH2/np.max(kh2_results.nH2))
     
     # fH_fH2_done code section  
 
@@ -450,7 +458,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # Store Outputs
     output_file = 'Results/output'
     print(prompt, "Saving files to", output_file+".npz")
-    np.savez(output_file, xH2=kh2_mesh.x, nH2=nH2, GammaxH2=GammaxH2, TH2=TH2, qxH2_total=qxH2_total, nHP=nHP, THP=THP, SH=SH, SP=SP,
+    np.savez(output_file, xH2=kh2_mesh.x, nH2=kh2_results.nH2, GammaxH2=GammaxH2, TH2=TH2, qxH2_total=qxH2_total, nHP=nHP, THP=THP, SH=SH, SP=SP,
              xH=kh_mesh.x, nH=nH, GammaxH=GammaxH, TH=TH, qxH_total=qxH_total, NetHSource=NetHSource, Sion=Sion, QH_total=QH_total, SideWallH=SideWallH, Lyman=Lyman, Balmer=Balmer)
     
 
@@ -459,7 +467,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia, \
     # NOTE turn results into dataclass
     results = {}
     results["xH2"] = kh2_mesh.x
-    results["nH2"] = nH2
+    results["nH2"] = kh2_results.nH2
     results["GammaxH2"] = GammaxH2
     results["TH2"] = TH2
     results["qxH2_total"] = qxH2_total
