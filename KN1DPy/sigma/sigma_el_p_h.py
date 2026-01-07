@@ -14,22 +14,34 @@ from ..utils import poly
 # Gwendolyn Galleher
 def sigma_el_p_h(E):
     E = np.array([E])
-    _E = E.astype(float)
+    E = E.astype(float)
     # ensures that 0.001e0 < E < 1.01e5
-    _E = np.maximum(_E, 0.001e0)
-    _E = np.minimum(_E, 1.01e5)
+    E = np.clip(E, 0.001, 1.01e5)
     
-    result = _E ; result= np.zeros(result.shape)
+    result = np.zeros_like(E)
 
-    ilow = np.argwhere(_E < 10.0)
-    if np.size(ilow) > 0:  
-        a = np.array([-3.233966e1, -1.126918e-1, 5.287706e-3, -2.445017e-3, -1.044156e-3, 8.419691e-5, 3.824773e-5])
-        for i in ilow: 
-            result[tuple(i)] = np.exp(poly(np.log(_E[tuple(i)]), a)) * 1e-4
+    logE = np.log(E)
 
-    ihigh = np.argwhere(_E > 10.0)
-    if np.size(ihigh) > 0:
-        a = np.array([-3.231141e1, -1.386002e-1])
-        for j in ihigh:
-            result[tuple(j)] = np.exp(poly(np.log(_E[tuple(j)]), a)) * 1e-4
+    low = E < 10.0
+    high = ~low
+
+    if np.any(low):
+        a_low = np.array([
+            -3.233966e1,
+            -1.126918e-1,
+            5.287706e-3,
+            -2.445017e-3,
+            -1.044156e-3,
+            8.419691e-5,
+            3.824773e-5
+        ])
+        result[low] = np.exp(poly(logE[low], a_low)) * 1e-4
+
+    if np.any(high):
+        a_high = np.array([
+            -3.231141e1,
+            -1.386002e-1
+        ])
+        result[high] = np.exp(poly(logE[high], a_high)) * 1e-4
+
     return result

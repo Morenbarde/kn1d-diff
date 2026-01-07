@@ -20,13 +20,13 @@ def sigmav_cx_h0(T,E):
     E = np.array(E)
 
     if T.size != E.size:
-	      raise Exception("number of elements of T and E are different!")
-
+          raise Exception("number of elements of T and E are different!")
+    
     alpha = np.zeros((9,9))
 
-    alpha[:,0:3] = [[-1.829079581680e+01,	    1.640252721210e-01,	  3.364564509137e-02],
+    alpha[:,0:3] = [[-1.829079581680e+01,     1.640252721210e-01,     3.364564509137e-02],
                     [ 2.169137615703e-01,    -1.106722014459e-01,    -1.382158680424e-03],
-                    [ 4.307131243894e-02,		  8.948693624917e-03,    -1.209480567154e-02],
+                    [ 4.307131243894e-02,     8.948693624917e-03,    -1.209480567154e-02],
                     [-5.754895093075e-04,     6.062141761233e-03,     1.075907881928e-03],
                     [-1.552077120204e-03,    -1.210431587568e-03,     8.297212635856e-04],
                     [-1.876800283030e-04,    -4.052878751584e-05,    -1.907025662962e-04],
@@ -66,7 +66,8 @@ def sigmav_cx_h0(T,E):
 
     result = np.zeros(E2.shape)
     for i in range(9):
+        Ei = alogE**i
         for j in range(9):
-            result = result+alpha[j,i]*(alogE**i)*(alogT**j)
+            result = result+alpha[j,i]*(Ei)*(alogT**j)
     
     return (np.e**result)*1e-6

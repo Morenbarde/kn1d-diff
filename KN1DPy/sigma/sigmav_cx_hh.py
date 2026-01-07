@@ -66,8 +66,9 @@ def sigmav_cx_hh(T,E):
 
   result = np.zeros(E2.shape)
   for n in range(9):
+    En = alogE**n
     for m in range(9):
       #using alpha[m,n] instead of alpha[n,m] since alpha is reversed
-      result = result + alpha[m,n]*(alogE**n)*(alogT**m)
+      result = result + alpha[m,n]*(En)*(alogT**m)
 
   return np.exp(result)*1e-6

@@ -723,36 +723,32 @@ class KineticH():
         if self.debrief > 1:
             print(self.prompt+'Computing v_v2, v_v, vr2_vx2, and vx_vx')
 
-        #	v_v2=(v-v_prime)^2 at each double velocity space mesh point, including theta angle
-        self.Internal.v_v2 = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx,self.ntheta))
+        vr = self.mesh.vr
+        vx = self.mesh.vx
+        cos_theta = self.cos_theta
 
-        #	vr2_vx2=0.125* [ vr2 + vr2_prime - 2*vr*vr_prime*cos(theta) - 2*(vx-vx_prime)^2 ]
-        #		at each double velocity space mesh point, including theta angle
-        self.Internal.vr2_vx2 = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx,self.ntheta))
-        for m in range(self.ntheta):
-            for l in range(self.nvx):
-                for k in range(self.nvr):
-                    for i in range(self.nvr):
-                        v_starter = self.mesh.vr[i]**2 + self.mesh.vr[k]**2 - 2*self.mesh.vr[i]*self.mesh.vr[k]*self.cos_theta[m]
-                        self.Internal.v_v2[i,:,k,l,m] = v_starter + (self.mesh.vx[:] - self.mesh.vx[l])**2
-                        self.Internal.vr2_vx2[i,:,k,l,m] = v_starter - 2*(self.mesh.vx[:] - self.mesh.vx[l])**2
+        v_starter = vr[:,None,None]**2 + vr[None,:,None]**2 - 2*vr[:,None,None]*vr[None,:,None]*cos_theta[None,None,:]
+        vx_diff = (vx[:, None] - vx[None, :])
+        vx_diff2 = vx_diff**2
+
+        # v_v2=(v-v_prime)^2 at each double velocity space mesh point, including theta angle
+        # self.Internal.v_v2.shape = (nvr,nvx,nvr,nvx,ntheta))
+        self.Internal.v_v2 = v_starter[:,None,:,None,:] + vx_diff2[None,:,None,:,None]
+
+        # vr2_vx2=0.125* [ vr2 + vr2_prime - 2*vr*vr_prime*cos(theta) - 2*(vx-vx_prime)^2 ]
+        #   at each double velocity space mesh point, including theta angle
+        # self.Internal.vr2_vx2.shape = (nvr,nvx,nvr,nvx,ntheta)
+        self.Internal.vr2_vx2 = v_starter[:,None,:,None,:] - 2*vx_diff2[None,:,None,:,None]
 
         #	v_v=|v-v_prime| at each double velocity space mesh point, including theta angle
         self.Internal.v_v = np.sqrt(self.Internal.v_v2)
 
-        #	vx_vx=(vx-vx_prime) at each double velocity space mesh point
-        self.Internal.vx_vx = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx))
-        for j in range(self.nvx):
-            for l in range(self.nvx):
-                self.Internal.vx_vx[:,j,:,l] = self.mesh.vx[j] - self.mesh.vx[l]
+        # vx_vx=(vx-vx_prime) at each double velocity space mesh point
+        # self.Internal.vx_vx.shape = (nvr,nvx,nvr,nvx))
+        self.Internal.vx_vx = np.tile(vx_diff[None,:,None,:], (self.nvr,1,self.nvr,1))
 
         #	Set Vr'2pidVr'*dVx' for each double velocity space mesh point
-
-        self.Internal.Vr2pidVrdVx = np.zeros((self.nvr,self.nvx,self.nvr,self.nvx))
-        for k in range(self.nvr):
-            self.Internal.Vr2pidVrdVx[:,:,k,:] = self.dvr_vol[k]
-        for l in range(self.nvx):
-            self.Internal.Vr2pidVrdVx[:,:,:,l] = self.Internal.Vr2pidVrdVx[:,:,:,l]*self.dvx[l]
+        self.Internal.Vr2pidVrdVx = np.tile(self.dvr_vol[None,None,:,None]*self.dvx[None,None,None,:], (self.nvr,self.nvx,1,1))
 
         return
     
