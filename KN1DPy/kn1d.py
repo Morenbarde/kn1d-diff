@@ -7,11 +7,10 @@ from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d
 from .interp_fvrvxx import interp_fvrvxx
+from .johnson_hinnov import Johnson_Hinnov
 from .kinetic_mesh import KineticMesh
 from .kinetic_h import KineticH
 from .kinetic_h2 import KineticH2
-from .jh_related.lyman_alpha import lyman_alpha
-from .jh_related.balmer_alpha import balmer_alpha
 
 from .common import constants as CONST
 from .common.JH_Coef import JH_Coef
@@ -160,6 +159,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # Generates JH_Coef class, Used in place of IDL version's JH_Coef Common block
     # NOTE Turn all JH stuff into a class later
     jh_coefficients = JH_Coef()
+    jh = Johnson_Hinnov()
 
     kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh_coeffs = jh_coefficients, fctr=fctr)
 
@@ -384,10 +384,12 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     
     # --- Compute Lyman and Balmer Alpha ---
- 
-    # NOTE These are not functioning yet
-    Lyman = 0
-    Balmer = 0
+
+    Lyman = jh.lyman_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
+    print("lyman", Lyman)
+    Balmer = jh.balmer_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
+    print("balmer", Balmer)
+    input()
     # Lyman = lyman_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
     # Balmer = balmer_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
 

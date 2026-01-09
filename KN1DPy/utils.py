@@ -2,12 +2,20 @@
 
 import json
 from typing import Any
+import os
 
 from numpy.typing import NDArray
 import numpy as np
-from scipy.interpolate import interp1d, RegularGridInterpolator
+from scipy import interpolate
 from scipy.io import readsav
 import netCDF4 as nc
+
+# --- File Paths ---
+
+def get_local_directory(file_const):
+    dir_path = os.path.dirname(os.path.realpath(file_const))
+    return dir_path
+
 
 # --- Json Files ---
 
@@ -19,8 +27,8 @@ def get_json(file_path:str) -> dict[str, Any]:
     
 def get_config() -> dict[str, Any]:
     ''' Lazy function to load config file '''
-    
-    return get_json('config.json')
+
+    return get_json('./config.json')
 
 
 # --- Printing ---
@@ -99,13 +107,25 @@ def interp_1d(funx: NDArray, funy: NDArray, x: NDArray, kind: str = 'linear', ax
         copy: bool = True, bounds_error: Any | None = None, fill_value: float = np.nan, assume_sorted: bool = False):
     ''' Wrapper function for creating a scipy 1d interpolation function and run it on an array '''    
 
-    interpfunc = interp1d(funx, funy, kind=kind, axis=axis, copy=copy, bounds_error=bounds_error, fill_value=fill_value, assume_sorted=assume_sorted)
+    interpfunc = interpolate.interp1d(funx, funy, kind=kind, axis=axis, copy=copy, bounds_error=bounds_error, fill_value=fill_value, assume_sorted=assume_sorted)
     return interpfunc(x)
 
 def path_interp_2d(p, px, py, x, y):
-    interp = RegularGridInterpolator((px, py), p, method='linear')
+    interp = interpolate.RegularGridInterpolator((px, py), p, method='linear')
     points = np.column_stack([x, y])
     return interp(points)
+
+def bs2dr(x, y, kx_ord, ky_ord, xknot, yknot, bscoef):
+    '''
+    IDL bs2dr translation equivalent
+    '''
+    result = interpolate._dfitpack.bispeu(
+                yknot, xknot, 
+                bscoef,
+                kx_ord-1, ky_ord-1,
+                y, x
+            )[0]
+    return result
 
 
 # --- Table Searching ---

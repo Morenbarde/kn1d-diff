@@ -129,14 +129,6 @@ class KineticH2():
     atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
     '''
 
-    # Internal Debug switches
-    CI_Test = True
-    Do_Alpha_CX_Test = False
-
-    # Internal Tolerances 
-    DeltaVx_tol = .01
-    Wpp_tol = .001
-
     # Theta-prime Coordinate
     ntheta = 5 # use 5 theta mesh points for theta integration
     dtheta = np.ones(ntheta) / ntheta
@@ -197,6 +189,14 @@ class KineticH2():
 
         col = self.config['collisions']
         self.COLLISIONS = KH2Collisions(col['H2_H_EL'], col['H2_H2_EL'], col['H2_P_EL'], col['H2_P_CX'], col['SIMPLE_CX'])
+
+        # Internal Tolerances
+        self.DeltaVx_tol = self.config['kinetic_h2']['dvx_tolerance']
+        self.Wpp_tol = self.config['kinetic_h2']['wpp_tolerance']
+
+        # Internal Debug switches
+        self.CI_Test = self.config['kinetic_h2']['ci_test']
+        self.Do_Alpha_CX_Test = self.config['kinetic_h2']['alpha_cx_test']
 
         # Run Settings
         self.sawada = sawada
