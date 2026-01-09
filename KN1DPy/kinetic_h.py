@@ -784,7 +784,8 @@ class KineticH():
             else:
                 # Option (A): Compute charge exchange source using fH and vr x sigma x v_v at each velocity mesh point
                 for k in range(self.nx):
-                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*(self.Internal.SIG_CX @ fH[:,:,k])
+                    Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
+                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
 
         return Beta_CX
     
@@ -1188,14 +1189,14 @@ class KineticH():
             for k in range(self.nx):
                 self.Internal.Alpha_CX[:,:,k] = self.Internal.Alpha_CX[:,:,k]*self.Internal.ni[k]
 
-        else: # NOTE Not Tested Yet
+        else:
             # Option (A): Compute SigmaV_CX from sigma directly via SIG_CX
             self.Internal.Alpha_CX = np.zeros((self.nvr,self.nvx,self.nx))
             for k in range(self.nx):
                 Work = (self.Internal.fi_hat[:,:,k]*self.Internal.ni[k]).reshape((self.nvr*self.nvx), order='F')
                 self.Internal.Alpha_CX[:,:,k] = (self.Internal.SIG_CX @ Work).reshape(self.Internal.Alpha_CX[:,:,k].shape, order='F')
             
-            if self.Do_Alpha_CX_Test:
+            if self.Do_Alpha_CX_Test: # NOTE Not tested/implemented
                 Alpha_CX_Test = sigmav_cx_h0(self.Internal.Ti_mu, self.Internal.ErelH_P) / self.vth
                 for k in range(self.nx):
                     Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*self.Internal.ni[k]
