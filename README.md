@@ -7,6 +7,8 @@ Contact: njbrown@wm.edu
 This translation is still in development and not fully tested. Certain functionality and accuracy may still be missing.
 
 ## Requirements
+This translation was developed in python 3.12.3. 
+
 All dependencies are located in requirements.txt. To install, run the following in the terminal:
 ```
 pip install -r requirements.txt

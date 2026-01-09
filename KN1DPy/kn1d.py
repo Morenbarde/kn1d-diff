@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import interpolate
 from dataclasses import dataclass
+import os
 
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
@@ -397,9 +398,13 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- Store Results ---
 
     # Store Outputs
-    output_file = 'Results/output'
-    print(prompt, "Saving files to", output_file+".npz")
-    np.savez(output_file,
+    output_dir = 'Results/'
+    output_file = 'output'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    output_path = output_dir+output_file
+    print(prompt, "Saving files to", output_path+".npz")
+    np.savez(output_path,
              xH2=kh2_mesh.x,
              nH2=kh2_results.nH2,
              GammaxH2=kh2_results.GammaxH2,
@@ -422,7 +427,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
              Lyman=Lyman,
              Balmer=Balmer,
              GammaHLim=GammaHLim)
-            # NOTE ADD gammaHLim
 
 
     # Format Results into Dataclass
