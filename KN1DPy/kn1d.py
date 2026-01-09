@@ -380,16 +380,16 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- End Iteration ---
 
     #NOTE Add gammaHLim
-    gammaHLim = 0
+    gamma_h2 = np.interp(kh_mesh.x, kh2_mesh.x, kh2_results.GammaxH2)
+    gam = 2*gamma_h2 + kh_results.GammaxH
+    GammaHLim = interp_1d(kh_mesh.x, gam, xlimiter)
+
 
     
     # --- Compute Lyman and Balmer Alpha ---
 
     Lyman = jh.lyman_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
-    print("lyman", Lyman)
     Balmer = jh.balmer_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
-    print("balmer", Balmer)
-    input()
     # Lyman = lyman_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
     # Balmer = balmer_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
 
@@ -420,7 +420,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
              QH_total=kh_results.QH_total,
              SideWallH=kh_results.SideWallH,
              Lyman=Lyman,
-             Balmer=Balmer)
+             Balmer=Balmer,
+             GammaHLim=GammaHLim)
             # NOTE ADD gammaHLim
 
 
@@ -447,6 +448,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
                           Lyman,
                           Balmer,
 
-                          gammaHLim)
+                          GammaHLim)
 
     return results
