@@ -9,10 +9,9 @@ from .sigma.sigmav_h1s_h1s_hh import sigmav_h1s_h1s_hh
 from .sigma.sigmav_h1s_h2s_hh import sigmav_h1s_h2s_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
-from .jh_related.jhs_coef import jhs_coef
+from .johnson_hinnov import Johnson_Hinnov
 
 from .common import constants as CONST
-from .common.JH_Coef import JH_Coef
 
 
 class KineticMesh:
@@ -52,7 +51,7 @@ class KineticMesh:
             Te          : NDArray, 
             n           : NDArray, 
             PipeDia     : NDArray,
-            jh_coeffs   : JH_Coef = None,
+            jh          : Johnson_Hinnov = None,
             E0          : NDArray = np.array([0.0]), 
             fctr        : float   = 1.0):
 
@@ -122,11 +121,9 @@ class KineticMesh:
             if ion_rate_option == 'collrad':
                 ioniz_rate = collrad_sigmav_ion_h0(nfine, Tefine)
             elif ion_rate_option == 'jh':
-                #NOTE not working yet
-                #Checks that the JH_Coef class has been passed into the function before calling jhs_coef
-                if (jh_coeffs == None):
-                    raise Exception("kinetic_h_mesh generated using JH, but no JH coefficients given")
-                ioniz_rate = jhs_coef(nfine, Tefine, jh_coeffs, no_null = True)
+                if (jh == None):
+                    jh = Johnson_Hinnov()
+                ioniz_rate = jh.jhs_coef(nfine, Tefine, no_null = True)
             else:
                 ioniz_rate = sigmav_ion_h0(Tefine)
             react_rate = nfine*(ioniz_rate + sigmav_cx_h0(Tifine, np.full(xfine.shape, minE0))) + gamma_wall

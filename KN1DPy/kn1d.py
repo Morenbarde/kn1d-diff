@@ -14,7 +14,6 @@ from .kinetic_h import KineticH
 from .kinetic_h2 import KineticH2
 
 from .common import constants as CONST
-from .common.JH_Coef import JH_Coef
 
 
 @dataclass
@@ -53,9 +52,9 @@ class KN1DResults():
 
 def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
          truncate = 1.0e-3, max_gen = 50,
-         error = 0, compute_errors = 0, plot = 0, debug = 0, debrief = 0, pause = 0,
-         Hplot = 0, Hdebug = 0, Hdebrief = 0, Hpause = 0,
-         H2plot = 0, H2debug = 0, H2debrief = 0, H2pause = 0, interp_debug = 0) -> dict:
+         compute_errors = 0, debrief = 0,
+         Hdebug = 0, Hdebrief = 0,
+         H2debug = 0, H2debrief = 0, interp_debug = 0) -> dict:
     '''
     Computes the molecular and atomic neutral profiles for inputted profiles
     of Ti(x), Te(x), n(x), and molecular neutral pressure, GaugeH2, at the boundary using
@@ -157,12 +156,11 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     fctr = 0.3
     if GaugeH2 > 30.0 :
         fctr = fctr * 30 / GaugeH2
-    # Generates JH_Coef class, Used in place of IDL version's JH_Coef Common block
-    # NOTE Turn all JH stuff into a class later
-    jh_coefficients = JH_Coef()
+
+    # Generates Johnson_Hinnov class, Used in place of IDL version's JH_Coef Common block
     jh = Johnson_Hinnov()
 
-    kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh_coeffs = jh_coefficients, fctr=fctr)
+    kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh=jh, fctr=fctr)
 
 
     # --- Initialize variables ---
@@ -267,7 +265,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     GammaxHBC = 0
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
-    kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh_coeffs=jh_coefficients,
+    kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh=jh,
                          ni_correct=True, truncate=truncate, max_gen=max_gen, 
                          compute_errors=compute_errors, debrief=Hdebrief, debug=Hdebug)
     

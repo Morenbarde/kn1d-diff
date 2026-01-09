@@ -8,9 +8,8 @@ from .create_shifted_maxwellian import create_shifted_maxwellian
 from .kinetic_mesh import KineticMesh
 
 from .sigma.collrad_sigmav_ion_h0 import collrad_sigmav_ion_h0
-from .jh_related.jhs_coef import jhs_coef
+from .johnson_hinnov import Johnson_Hinnov
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
-from .jh_related.jhalpha_coef import jhalpha_coef
 from .sigma.sigmav_rec_h1s import sigmav_rec_h1s
 from .sigma.sigma_cx_h0 import sigma_cx_h0
 from .sigma.sigma_el_h_h import sigma_el_h_h
@@ -19,7 +18,6 @@ from .sigma.sigma_el_p_h import sigma_el_p_h
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 
 from .common import constants as CONST
-from .common.JH_Coef import JH_Coef
 from .common.Kinetic_H import *
 
 
@@ -125,7 +123,7 @@ class KineticH():
     prompt = 'Kinetic_H => '
 
 
-    def __init__(self, mesh: KineticMesh, mu: int, vxi: NDArray, fHBC: NDArray, GammaxHBC: float, jh_coeffs: JH_Coef = None,
+    def __init__(self, mesh: KineticMesh, mu: int, vxi: NDArray, fHBC: NDArray, GammaxHBC: float, jh: Johnson_Hinnov = None,
                  recomb: bool = True, ni_correct: bool = False, truncate: float = 1e-4, max_gen: int = 50, 
                  compute_errors: bool = False, debrief: int = 0, debug: int = 0):
         '''
@@ -237,7 +235,11 @@ class KineticH():
         self.Output = Kinetic_H_Output(self.nx)
         self.H2_Moments = Kinetic_H_H2_Moments()
         self.Errors = Kinetic_H_Errors()
-        self.JH_Coefficients = jh_coeffs
+
+        # Setup Johnson-Hinov
+        self.jh = jh
+        if (jh == None) and (self.ion_rate_option == "jh"):
+            self.jh = Johnson_Hinnov()
 
 
         self._test_init_parameters()
@@ -934,13 +936,13 @@ class KineticH():
         if self.ion_rate_option == "collrad":
             self.Internal.sigv[:,1] = collrad_sigmav_ion_h0(self.mesh.ne, self.mesh.Te) # from COLLRAD code (DEGAS-2)
         elif self.ion_rate_option == "jh":
-            self.Internal.sigv[:,1] = jhs_coef(self.mesh.ne, self.mesh.Te, self.JH_Coefficients, no_null=True) # Johnson-Hinnov, limited Te range; fixed JHS_coef capitalization #NOTE Not tested yet
+            self.Internal.sigv[:,1] = self.jh.jhs_coef(self.mesh.ne, self.mesh.Te, no_null=True) # Johnson-Hinnov, limited Te range
         else:
             self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV #NOTE Not Tested Yet
                 
         #	Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
         if self.ion_rate_option == "jh":
-            self.Internal.sigv[:,2] = jhalpha_coef(self.mesh.ne, self.mesh.Te, self.JH_Coefficients, no_null=True)
+            self.Internal.sigv[:,2] = self.jh.jhalpha_coef(self.mesh.ne, self.mesh.Te, no_null=True)
         else:
             self.Internal.sigv[:,2] = sigmav_rec_h1s(self.mesh.Te)
 

@@ -209,27 +209,3 @@ class Kinetic_H2_H_Moments:
         string += "    TH2: " + str(self.TH) + "\n"
 
         return string
-    
-
-# Collection of Common Blocks used in Kinetic_H
-class Kinetic_H2_Common:
-
-    def __init__(self, output : Kinetic_H2_Output = None, errors : Kinetic_H2_Errors = None,
-                 input : Kinetic_H2_Input = None, internal : Kinetic_H2_Internal = None, moments : Kinetic_H2_H_Moments = None):
-        
-        self.Output = output if output else Kinetic_H2_Output()
-        self.Errors = errors if errors else Kinetic_H2_Errors()
-        self.Input = input if input else Kinetic_H2_Input()
-        self.Internal = internal if internal else Kinetic_H2_Internal()
-        self.Moments = moments if moments else Kinetic_H2_H_Moments()
-
-    #Setup string conversion for printing
-    def __str__(self):
-        string = "Kinetic_H2 Common Blocks:\n\n"
-        string += str(self.Output) + "\n"
-        string += str(self.Errors) + "\n"
-        string += str(self.Input) + "\n"
-        string += str(self.Internal) + "\n"
-        string += str(self.Moments) + "\n"
-
-        return string
