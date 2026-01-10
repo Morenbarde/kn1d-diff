@@ -927,12 +927,12 @@ class KineticH():
 
         self._debrief_msg('Computing sigv', 1)
 
-        #	Compute sigmav rates for each reaction with option to use rates
-        #	from CR model of Johnson-Hinnov
+        # Compute sigmav rates for each reaction with option to use rates
+        # from CR model of Johnson-Hinnov
 
         self.Internal.sigv = np.zeros((self.nx,3))
 
-        #	Reaction R1:  e + H -> e + H(+) + e   (ionization)
+        # Reaction R1:  e + H -> e + H(+) + e   (ionization)
         if self.ion_rate_option == "collrad":
             self.Internal.sigv[:,1] = collrad_sigmav_ion_h0(self.mesh.ne, self.mesh.Te) # from COLLRAD code (DEGAS-2)
         elif self.ion_rate_option == "jh":
@@ -940,16 +940,16 @@ class KineticH():
         else:
             self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV #NOTE Not Tested Yet
                 
-        #	Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
+        # Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
         if self.ion_rate_option == "jh":
             self.Internal.sigv[:,2] = self.jh.jhalpha_coef(self.mesh.ne, self.mesh.Te, no_null=True)
         else:
             self.Internal.sigv[:,2] = sigmav_rec_h1s(self.mesh.Te)
 
-        #	H ionization rate (normalized by vth) = reaction 1
+        # H ionization rate (normalized by vth) = reaction 1
         self.Internal.alpha_ion = (self.mesh.ne*self.Internal.sigv[:,1]) / self.vth
 
-        #	Recombination rate (normalized by vth) = reaction 2
+        # Recombination rate (normalized by vth) = reaction 2
         self.Internal.Rec = (self.mesh.ne*self.Internal.sigv[:,2]) / self.vth
 
         return
@@ -972,27 +972,27 @@ class KineticH():
         vx_diff2 = vx_diff**2
 
         # v_v2=(v-v_prime)^2 at each double velocity space mesh point, including theta angle
-        # self.Internal.v_v2.shape = (nvr,nvx,nvr,nvx,ntheta))
-        # v_v2[i,j,k,l,m] = v_starter[i,k,m] + (vx[j] - vx[l])**2
+        #   self.Internal.v_v2.shape = (nvr,nvx,nvr,nvx,ntheta))
+        #   v_v2[i,j,k,l,m] = v_starter[i,k,m] + (vx[j] - vx[l])**2
         self.Internal.v_v2 = v_starter[:,None,:,None,:] + vx_diff2[None,:,None,:,None]
 
         # vr2_vx2=0.125* [ vr2 + vr2_prime - 2*vr*vr_prime*cos(theta) - 2*(vx-vx_prime)^2 ]
-        #   at each double velocity space mesh point, including theta angle
-        # self.Internal.vr2_vx2.shape = (nvr,nvx,nvr,nvx,ntheta)
-        # vr2_vx2[i,j,k,l,m] = v_starter[i,k,m] + 2*(vx[j] - vx[l])**2
+        # at each double velocity space mesh point, including theta angle
+        #   self.Internal.vr2_vx2.shape = (nvr,nvx,nvr,nvx,ntheta)
+        #   vr2_vx2[i,j,k,l,m] = v_starter[i,k,m] + 2*(vx[j] - vx[l])**2
         self.Internal.vr2_vx2 = v_starter[:,None,:,None,:] - 2*vx_diff2[None,:,None,:,None]
 
         #	v_v=|v-v_prime| at each double velocity space mesh point, including theta angle
         self.Internal.v_v = np.sqrt(self.Internal.v_v2)
 
         # vx_vx=(vx-vx_prime) at each double velocity space mesh point
-        # self.Internal.vx_vx.shape = (nvr,nvx,nvr,nvx))
-        # vr_vx[:,j,:,l] = (vx[j] - vx[l])
+        #   self.Internal.vx_vx.shape = (nvr,nvx,nvr,nvx))
+        #   vr_vx[:,j,:,l] = (vx[j] - vx[l])
         self.Internal.vx_vx = np.tile(vx_diff[None,:,None,:], (self.nvr,1,self.nvr,1))
 
         # Set Vr'2pidVr'*dVx' for each double velocity space mesh point
-        # self.Internal.Vr2pidVrdVx.shape = (nvr,nvx,nvr,nvx)
-        # Vr2pidVrdVx[i,j,k,l] = dvr_vol[k] * dvx[l], repeated over i,j
+        #   self.Internal.Vr2pidVrdVx.shape = (nvr,nvx,nvr,nvx)
+        #   Vr2pidVrdVx[i,j,k,l] = dvr_vol[k] * dvx[l], repeated over i,j
         self.Internal.Vr2pidVrdVx = np.tile(self.dvr_vol[None,None,:,None]*self.dvx[None,None,None,:], (self.nvr,self.nvx,1,1))
 
         return
