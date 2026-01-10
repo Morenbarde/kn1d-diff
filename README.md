@@ -29,9 +29,10 @@ The file config.json is used to handle several settings
 
 - mesh_size - sets the size of the mesh generated for the kinetic_h calculations
 - ion_rate - sets the method with which kinetic_h will perform ionization rate calculation
-    - 'collrad' for collrad ionization
-    - 'jh' for johnson-hinov ionization
-    - otherwise KN1DPy will use the Janev coefficents
+    - 'collrad' to use collrad ionization
+    - 'jh' to use johnson-hinov ionization
+    - 'janev' to use janev coefficients
+    - KN1DPy will throw an exception if this value is not set to one of these three
 
 
 ### Kinetic_H2

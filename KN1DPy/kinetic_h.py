@@ -170,6 +170,7 @@ class KineticH():
         
         col = self.config['collisions']
         self.COLLISIONS = KHCollisions(col['H2_H_EL'], col['H_H_EL'], col['H_P_EL'], col['H_P_CX'], col['SIMPLE_CX'])
+        
         self.ion_rate_option = self.config['kinetic_h']['ion_rate']
 
         # Internal Tolerances
@@ -938,7 +939,7 @@ class KineticH():
         elif self.ion_rate_option == "jh":
             self.Internal.sigv[:,1] = self.jh.jhs_coef(self.mesh.ne, self.mesh.Te, no_null=True) # Johnson-Hinnov, limited Te range
         else:
-            self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV #NOTE Not Tested Yet
+            self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV
                 
         # Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
         if self.ion_rate_option == "jh":
