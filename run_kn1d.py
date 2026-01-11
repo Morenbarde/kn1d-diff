@@ -15,9 +15,9 @@ standard_out = sys.stdout
 
 ##Input
 
-data_file = './sav_files/kn1d_test_inputs.sav'
-# data_file = '../kn1d/savfiles/kn1d_test_inputs.sav'
+# data_file = './sav_files/kn1d_test_inputs.sav'
 # data_file = './sav_files/1090904018_950to1050.sav'
+data_file = './sav_files/1090904029_950to1050_towall.sav'
 print("Loading file: "  + data_file)
 sav_data = readsav(data_file)
 

@@ -2,7 +2,7 @@ import numpy as np
 
 def sigmav_cx_hh(T,E):
     '''
-    Returns maxwellian averaged <sigma V) for charge exchange of molecular
+    Computes maxwellian averaged <sigma V) for charge exchange of molecular
     hydrogen. Coefficients are taken from 
     
         Janev, "Elementary Processes in Hydrogen-Helium Plasmas",

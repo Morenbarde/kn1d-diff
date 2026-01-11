@@ -4,7 +4,7 @@ from ..utils import poly
 
 def sigmav_h1s_h1s_hh(Te):
     '''
-    Returns maxwellian averaged <sigma V) for electron impact
+    Computes maxwellian averaged <sigma V) for electron impact
     dissociation of molecular hydrogen resulting in two H atoms in
     the 1s state. Coefficients are taken from 
     

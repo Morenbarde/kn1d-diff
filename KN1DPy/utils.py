@@ -91,9 +91,7 @@ def poly(x, c):
             Value of the polynomial evaluated at x, array of values if x is an array
     '''
 
-    # NOTE Clean/Remove Type Checking, currently messing with test script
-    if type(x) == list:
-        x = np.array(x)
+    x = np.asarray(x)
     n = len(c)-1
     y = c[n]
     for i in range(n-1, -1, -1):

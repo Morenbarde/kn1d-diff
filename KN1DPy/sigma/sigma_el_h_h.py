@@ -4,7 +4,7 @@ from ..utils import poly
 
 def sigma_el_h_h(E, vis = False):
     '''
-    Returns momentum transfer cross section for elastic collisions of H onto H
+    Computes momentum transfer cross section for elastic collisions of H onto H
     for specified energy of H. Data are taken from 
 
         Janev, "Atomic and Molecular Processes in Fusion Edge Plasmas", Chapter 11 - 
