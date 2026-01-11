@@ -27,4 +27,4 @@ def sigmav_ion_hh(Te):
   Te=np.minimum(Te,2.01e4) 
   # print("result", np.exp(poly(np.log(Te),b))*1e-6)
   # input()
-  return np.e**(poly(np.log(Te),b))*1e-6
+  return np.exp(poly(np.log(Te),b))*1e-6

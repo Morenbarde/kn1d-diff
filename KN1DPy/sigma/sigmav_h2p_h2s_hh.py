@@ -32,4 +32,4 @@ def sigmav_h2p_h2s_hh(Te):
         -2.036079507592e-6]
     Te = np.maximum(Te, 0.1) #makes sure 0.1 < Te < 2.01e4
     Te = np.minimum(Te, 2.01e4)
-    return np.e**(poly(np.log(Te), b))*1e-6
+    return np.exp(poly(np.log(Te), b))*1e-6

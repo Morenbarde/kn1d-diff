@@ -32,4 +32,4 @@ def sigmav_p_h1s_hp(Te):
         -1.247521040900e-6]
     Te = np.maximum(Te, 0.1) #makes sure 0.1 < Te < 2.01e4
     Te = np.minimum(Te, 2.01e4)
-    return np.e**(poly(np.log(Te), b))*1e-6
+    return np.exp(poly(np.log(Te), b))*1e-6
