@@ -1,32 +1,39 @@
 import numpy as np
 
-#   Returns maxwellian averaged <sigma V) for charge exchange of atomic 
-#       hydrogen. Coefficients are taken
-#       from Janev, "Elementary Processes in Hydrogen-Helium Plasmas",
-#       Springer-Verlag, 1987, p.272.
+def sigmav_cx_h0(T, E):
+    '''
+    Computes maxwellian averaged <sigma V) for charge exchange of atomic 
+    hydrogen. Coefficients are taken from 
+    
+        Janev, "Elementary Processes in Hydrogen-Helium Plasmas",
+        Springer-Verlag, 1987, p.272.
 
-def sigmav_cx_h0(T,E):
+    Parameters
+    ----------
+    T : ndarray or float
+        ion [neutral] temperature (eV)
+    E : ndarray or float
+        neutral [ion] mono-energy (eV)
 
-    #	Input:
-    #		T	- List, np.array(*) or float, ion [neutral] temperature (eV)
-    #		E	- List, np.array(*) or float, neutral [ion] mono-energy (eV)
-
-    #	Output:
-    #		returns <sigma V> for 0.1 < Te < 2e4 and 0.1 < E < 2e4 
-    #		Units: m^3/s
+    Returns
+    -------
+        ndarray
+            Sigma V for 0.1 < Te < 2e4 and 0.1 < E < 2e4 (m^3/s)
+    '''
 
     # Convert T and E to np.array if not already
-    T = np.array(T)
-    E = np.array(E)
+    T = np.asarray(T)
+    E = np.asarray(E)
 
     if T.size != E.size:
-	      raise Exception("number of elements of T and E are different!")
-
+          raise Exception("number of elements of T and E are different!")
+    
     alpha = np.zeros((9,9))
 
-    alpha[:,0:3] = [[-1.829079581680e+01,	    1.640252721210e-01,	  3.364564509137e-02],
+    # Alpha indexing is reversed to match idl format
+    alpha[:,0:3] = [[-1.829079581680e+01,     1.640252721210e-01,     3.364564509137e-02],
                     [ 2.169137615703e-01,    -1.106722014459e-01,    -1.382158680424e-03],
-                    [ 4.307131243894e-02,		  8.948693624917e-03,    -1.209480567154e-02],
+                    [ 4.307131243894e-02,     8.948693624917e-03,    -1.209480567154e-02],
                     [-5.754895093075e-04,     6.062141761233e-03,     1.075907881928e-03],
                     [-1.552077120204e-03,    -1.210431587568e-03,     8.297212635856e-04],
                     [-1.876800283030e-04,    -4.052878751584e-05,    -1.907025662962e-04],
@@ -54,19 +61,18 @@ def sigmav_cx_h0(T,E):
                     [-1.446756795654e-10,     7.143183138281e-11,    -3.989884105603e-12],
                     [ 2.739558475782e-11,    -1.693040208927e-12,     6.388219930167e-14]]
 
-    #   Limits values to >= 0.1 and <= 2.01e4
+    # Limits values to >= 0.1 and <= 2.01e4
+    E = np.clip(E, 0.1, 2.01e4)
+    T = np.clip(T, 0.1, 2.01e4)
 
-    E2 = np.maximum(E, 0.1)
-    E2 = np.minimum(E2, 2.01e4)
-    T2 = np.maximum(T, 0.1)
-    T2 = np.minimum(T2, 2.01e4)
+    alogE = np.log(E)
+    alogT = np.log(T)
 
-    alogE = np.log(E2)
-    alogT = np.log(T2)
-
-    result = np.zeros(E2.shape)
+    result = np.zeros(E.shape)
     for i in range(9):
+        Ei = alogE**i
         for j in range(9):
-            result = result+alpha[j,i]*(alogE**i)*(alogT**j)
+            # Using alpha[j,i] instead of alpha[i,j] since alpha is reversed
+            result = result + alpha[j,i]*(Ei)*(alogT**j)
     
-    return (np.e**result)*1e-6
+    return np.exp(result)*1e-6

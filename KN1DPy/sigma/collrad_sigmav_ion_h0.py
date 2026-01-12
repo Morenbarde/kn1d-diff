@@ -1,28 +1,33 @@
 import numpy as np 
 from scipy import interpolate
 
-#   Evaluates ionization rate from the collisional-radiative calculations 
-# of the COLLRAD code (D. Stotler, DEGAS 2 user manual, p.24)
-#
-# Input:
-#   N_E - fltarr, electron density (m^-3)
-#   T_E - fltarr, electron temperature (eV)
-# Returns:
-#   Ionization Rate (m^3 s^-1)
-#
-#Gwendolyn Galleher 
 
+def collrad_sigmav_ion_h0(N_e, T_e):
+    '''
+    Evaluates ionization rate from the collisional-radiative calculations 
+    of the COLLRAD code (D. Stotler, DEGAS 2 user manual, p.24)
 
-def collrad_sigmav_ion_h0(N_e, T_e): # removed unused argument p - nh
+    Parameters
+    ----------
+        N_e : ndarray
+            electron density (m^-3)
+        T_e : ndarray
+            electron temperature (eV)
+    Returns
+    -------
+        ndarray
+            Ionization Rate (m^3 s^-1)
+    '''
+    
     if np.size(N_e) != np.size(T_e):
         raise Exception('Number of elements in inputs do not match.')
-    temp = T_e
-    dens = N_e
-    dens = dens/1e6 #convert from m^-3 to cm^-3
+
+    dens = N_e/1e6 #convert from m^-3 to cm^-3
 
     # compute indices for interpolation on sigmav grid:
-    indte = np.maximum(10*(np.log10(temp)+1.2), 0)
+    indte = np.maximum(10*(np.log10(T_e)+1.2), 0)
     indte = np.minimum(indte, 59) 
+
     indne = np.maximum(2*(np.log10(dens)-10), 0)
     indne = np.minimum(indne,14)
 
@@ -208,15 +213,11 @@ def collrad_sigmav_ion_h0(N_e, T_e): # removed unused argument p - nh
          2.06417e-08,  1.89076e-08,  1.73014e-08,  1.58163e-08,  1.44454e-08,  1.31819e-08])
 
     logsigmav = np.log(sigmav)
-    #sigmav_out = np.exp(np.interp(logsigmav, indne, indte))
     xs, ys = logsigmav.shape
 
-    # interpfunc = interpolate.RectBivariateSpline(np.arange(xs), np.arange(ys), logsigmav) #NOTE Better mimics IDL, but not necessarily a better calculation
-    # sigmav_out=np.exp(np.array([interpfunc(indne[i],indte[i])[0][0] for i in range(indne.size)]))
     interpfunc = interpolate.RectBivariateSpline(np.arange(xs), np.arange(ys), logsigmav, kx=1, ky=1)
     sigmav_out = np.exp(np.diagonal(interpfunc(indne, indte)))
+    
     # convert from cm^3 to m^3 
     sigmav_out = sigmav_out/1e6
-    # print("sigmav_out", sigmav_out.T)
-    # input()
     return sigmav_out
