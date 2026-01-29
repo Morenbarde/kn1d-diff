@@ -15,6 +15,7 @@ def rel_mse(pred, observed, eps=1e-8):
 
 torch.set_default_dtype(torch.float64)
 np.set_printoptions(linewidth=150)
+np.set_printoptions(formatter={'float_kind': '{:.5e}'.format})
 
 num_iters = 200
 # patience = 40
