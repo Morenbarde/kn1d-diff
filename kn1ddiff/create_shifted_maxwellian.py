@@ -158,7 +158,7 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
 # NOTE Look at PlasmaPy, specifically plasmapy.formulary.distribution.Maxwellian_velocity_2D
 # NOTE Adjust Docstring for accuracy
-def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
+def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
     # NOTE
     # Need to differentiate Tmaxwell, vx_shift,
     # Do NOT Need to differentiate mu, mol, Tnorm
@@ -208,28 +208,45 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         scheme is employed - similar to that used in Interp_fVrVxX. See compensate_distribution()
     '''
 
-    maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
+    dtype = Tmaxwell.dtype
+    device = Tmaxwell.device
+
+    # maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
     vth = np.sqrt(2*CONST.Q*Tnorm / (mu*CONST.H_MASS)) #Thermal Velocity
 
     #--- Generate Velocity Differentials ---
-    vdiff = VSpace_Differentials(vr, vx)
+    vdiff = VSpace_Differentials(vr.cpu().numpy(), vx.cpu().numpy())
+    dvx = torch.from_numpy(vdiff.dvx)
+    dvr_vol = torch.from_numpy(vdiff.dvr_vol)
 
-    target_energy = np.zeros((vx_shift.size))
-    for k in range(vx_shift.size):
+
+    nvr = vr.numel()
+    nvx = vx.numel()
+    nk = vx_shift.numel()
+
+    maxwell = torch.zeros((nvr, nvx, nk), dtype=dtype, device=device)
+
+    for k in range(nk):
         if Tmaxwell[k] <= 0:
             continue
 
-        arg = -((vr[:, np.newaxis]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
-        arg = np.where(np.logical_and((-80 < arg), (arg < 0.0)), arg, -80)
-        maxwell[:,:,k] = np.exp(arg)
+        arg = -((vr[:, None]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
+        arg = torch.clamp(arg, min=-80.0, max=0.0)
+        f = torch.exp(arg)
 
-        variable = np.matmul(maxwell[:,:,k], vdiff.dvx)
-        maxwell[:,:,k] = maxwell[:,:,k] / np.nansum(vdiff.dvr_vol*variable)
+        variable = f @ dvx
+
+        f = f / torch.nansum(dvr_vol*variable)
 
         # Target energy density
         target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
-    
-        maxwell[:,:,k], _ = compensate_distribution(maxwell[:,:,k], vdiff, vr, vx, vth, vx_shift[k], target_energy)
-        maxwell[:,:,k] /= np.sum(vdiff.dvr_vol*(np.matmul(maxwell[:,:,k], vdiff.dvx)))
+
+        with torch.no_grad():
+            compensated_f_np, _ = compensate_distribution(f.cpu().numpy(), vdiff, vr.cpu().numpy(), vx.cpu().numpy(), vth.cpu().numpy(), vx_shift.cpu().numpy()[k], target_energy.cpu().numpy())
+            compensated_f = torch.from_numpy(compensated_f_np).to(f.device)
+
+        f = f + (compensated_f - f).detach()
+
+        maxwell[:,:,k] = f / torch.sum(dvr_vol*(f @ dvx))
 
     return maxwell
