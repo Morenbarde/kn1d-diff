@@ -167,8 +167,8 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
                 vrvx_scalar = (TA2*(target_vx - vx_moment) - TA1*(target_energy - energy_moment)) / denom
                 vth_scalar = (target_vx - vx_moment - TB1[ib]*vrvx_scalar) / TA1
                 
-            # do_break = (vth_scalar*sign[ia] > 0) and (vrvx_scalar*sign[ib] > 0)
-                #End While Loops
+        #     do_break = (vth_scalar*sign[ia] > 0) and (vrvx_scalar*sign[ib] > 0)
+        #         # End While Loops
         #     if do_break:
         #         break
         # if do_break:

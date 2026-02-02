@@ -226,14 +226,4 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
         maxwell[:,:,k], _ = compensate_distribution(maxwell[:,:,k], vdiff, vr, vx, vth, vx_shift[k], target_energy)
         maxwell[:,:,k] /= np.sum(vdiff.dvr_vol*(np.matmul(maxwell[:,:,k], vdiff.dvx)))
 
-    # print(Tmaxwell)
-    # print(vx_shift)
-    # input()
-    # print(maxwell)
-    # input()
-    # file = 'in_out2.npz'
-    # print("Saving to file: " + file)
-    # np.savez("test_autodiff/shift_maxwell/"+file, vr=vr, vx=vx, Tmaxwell=Tmaxwell, vx_shift=vx_shift, mu=mu, mol=mol, Tnorm=Tnorm, maxwell=maxwell)
-    # input()
-
     return maxwell

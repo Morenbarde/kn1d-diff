@@ -157,13 +157,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     if GaugeH2 > 15.0:
         fctr = fctr*15 / GaugeH2
 
-    
-
-
-
     kh2_mesh = KineticMesh('h2', mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
-
- 
     
     # Determine optimized vr, vx grid for kinetic_h (atoms, A)
     fctr = 0.3
@@ -278,21 +272,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     GammaxHBC = 0
     fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
-
-    file = 'kinetic_h_in.npz'
-    print("Saving to file: " + file)
-    np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=mu, vxiA=vxiA, fHBC=fHBC, GammaxHBC=GammaxHBC)
-    input()
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh=jh,
                          ni_correct=True, truncate=truncate, max_gen=max_gen, 
                          compute_errors=compute_errors, debrief=Hdebrief, debug=Hdebug)
-    file = 'kinetic_h_params.npz'
-    print("Saving to file: " + file)
-    np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=kinetic_h.mu, vxi=kinetic_h.vxi, fHBC=kinetic_h.fHBC, 
-             GammaxHBC=kinetic_h.GammaxHBC, nvr=kinetic_h.nvr, nvx=kinetic_h.nvx, nx=kinetic_h.nx, vx_neg=kinetic_h.vx_neg,
-             vx_pos=kinetic_h.vx_pos, vx_zero=kinetic_h.vx_zero, vth=kinetic_h.vth, vr2_2vx2_2D=kinetic_h.vr2_2vx2_2D,
-             dvr_vol=kinetic_h.dvr_vol, dvx=kinetic_h.dvx, fHBC_input=kinetic_h.fHBC_input)
-    input()
     
     kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, SH2,
                             compute_h_source=True, ni_correct=True, truncate=truncate, max_gen=max_gen, 

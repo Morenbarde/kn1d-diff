@@ -3,17 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from kn1ddiff.create_shifted_maxwellian import *
-
-
-def generate_compare_plot(dir, title, x, y, true_x, true_y, xlabel="", ylabel=""):
-    plt.plot(x, y, color = 'blue', marker='x', markersize=3, markeredgecolor='cyan', label="Optimized")
-    plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=3, markeredgecolor='red', label="True", ls=":")
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.legend()
-    plt.savefig(dir + title + '.png', dpi=300)
-    plt.clf()
+from kn1ddiff.test.utils import *
 
 
 
@@ -81,6 +71,7 @@ if __name__ == "__main__":
 
         # Compute Loss
         loss = torch.nn.functional.mse_loss(maxwell, maxwell_old)
+        # loss = rel_L2_torch(maxwell, maxwell_old)
 
 
         # Backprop
@@ -135,12 +126,14 @@ if __name__ == "__main__":
     print("Calculated Tmaxwell")
     print(opt_tmax)
     print("Tmaxwell Loss: ", tmax_loss)
+    print("Tmaxwell Relative L2: ", rel_L2_np(opt_tmax, true_tmax))
     print()
     print("True vx_shift")
     print(true_vxshift)
     print("Calculated vx_shift")
     print(opt_vxshift)
     print("vx_shift Loss: ", vxshift_loss)
+    print("Tmaxwell Relative L2: ", rel_L2_np(opt_vxshift, true_vxshift))
 
     x = range(opt_tmax.size)
     generate_compare_plot(dir, "Tmaxwell", x, opt_tmax, x, true_tmax)
@@ -155,6 +148,7 @@ if __name__ == "__main__":
     print("True Maxwell Sum:       ", np.sum(true_maxwell))
     print("Calculated Maxwell Sum: ", np.sum(opt_maxwell))
     print("Maxwell Loss: ", max_loss)
+    print("Tmaxwell Relative L2: ", rel_L2_np(opt_maxwell, true_maxwell))
 
 
 
