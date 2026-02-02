@@ -210,9 +210,9 @@ class KineticH():
         self.nvx = self.mesh.vx.numel()
         self.nx = self.mesh.x.numel()
 
-        self.vx_neg = np.nonzero(self.mesh.vx < 0)[0]
-        self.vx_pos = np.nonzero(self.mesh.vx > 0)[0]
-        self.vx_zero = np.nonzero(self.mesh.vx == 0)[0]
+        self.vx_neg = torch.nonzero(self.mesh.vx < 0, as_tuple=True)[0]
+        self.vx_pos = torch.nonzero(self.mesh.vx > 0, as_tuple=True)[0]
+        self.vx_zero = torch.nonzero(self.mesh.vx == 0, as_tuple=True)[0]
 
 
         # --- Internal Variables ---
@@ -220,12 +220,12 @@ class KineticH():
         self.vth = np.sqrt((2*CONST.Q*self.mesh.Tnorm) / (self.mu*CONST.H_MASS))
 
         # Vr^2-2*Vx^2
-        self.vr2_2vx2_2D = np.asarray([(vr**2) - 2*(self.mesh.vx**2) for vr in self.mesh.vr])
+        self.vr2_2vx2_2D = torch.from_numpy(np.asarray([(vr**2) - 2*(self.mesh.vx**2) for vr in self.mesh.vr]))
 
         # Differential Values
-        differential = VSpace_Differentials(self.mesh.vr, self.mesh.vx)
-        self.dvr_vol = differential.dvr_vol
-        self.dvx = differential.dvx
+        differential = VSpace_Differentials(self.mesh.vr.cpu().numpy(), self.mesh.vx.cpu().numpy())
+        self.dvr_vol = torch.from_numpy(differential.dvr_vol)
+        self.dvx = torch.from_numpy(differential.dvx)
 
         # FHBC_Input
         self._init_fhbc_input()
@@ -244,14 +244,14 @@ class KineticH():
             self.jh = Johnson_Hinnov()
 
 
-        self._test_init_parameters()
+        #self._test_init_parameters()
 
         # Initial Computations
         # Some may not be used depending on inputs
-        self._init_static_internals()
+        # self._init_static_internals()
 
-        if self.compute_errors:
-            self._compute_vbar_error()
+        # if self.compute_errors:
+        #     self._compute_vbar_error()
 
         return
     
@@ -855,7 +855,7 @@ class KineticH():
         Computes fH2BC_input, used to scale molecular distribution function (fH) to desired flux
         '''
 
-        self.fHBC_input = np.zeros(self.fHBC.shape)
+        self.fHBC_input = torch.zeros(self.fHBC.shape)
         self.fHBC_input[:,self.vx_pos] = self.fHBC[:,self.vx_pos]
         gamma_input = 1.0
         if abs(self.GammaxHBC) > 0:
