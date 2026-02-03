@@ -248,7 +248,7 @@ class KineticH():
 
         # Initial Computations
         # Some may not be used depending on inputs
-        # self._init_static_internals()
+        self._init_static_internals()
 
         # if self.compute_errors:
         #     self._compute_vbar_error()
@@ -873,12 +873,12 @@ class KineticH():
 
         self._init_grid()
         self._init_protons()
-        self._init_sigv()
-        self._init_v_v2()
-        self._init_sig_cx()
-        self._init_sig_h_h()
-        self._init_sig_h_h2()
-        self._init_sig_h_p()
+        # self._init_sigv()
+        # self._init_v_v2()
+        # self._init_sig_cx()
+        # self._init_sig_h_h()
+        # self._init_sig_h_h2()
+        # self._init_sig_h_p()
 
         return
 
@@ -891,13 +891,13 @@ class KineticH():
         self._debrief_msg('Computing vr2vx2, vr2vx_vxi2, ErelH_P', 1)
 
         # Magnitude of total normalized v^2 at each mesh point
-        self.Internal.vr2vx2 = np.zeros((self.nvr,self.nvx,self.nx))
+        self.Internal.vr2vx2 = torch.zeros((self.nvr,self.nvx,self.nx))
         for i in range(self.nvr):
             for k in range(self.nx):
                 self.Internal.vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
 
         # Magnitude of total normalized (v-vxi)^2 at each mesh point
-        self.Internal.vr2vx_vxi2 = np.zeros((self.nvr,self.nvx,self.nx))
+        self.Internal.vr2vx_vxi2 = torch.zeros((self.nvr,self.nvx,self.nx))
         for i in range(self.nvr):
             for k in range(self.nx):
                 self.Internal.vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/self.vth)**2
@@ -905,7 +905,7 @@ class KineticH():
         # Atomic hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.ErelH_P = (0.5*CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2)) / CONST.Q
         # sigmav_cx does not handle neutral energies below 0.1 eV or above above 20 keV
-        self.Internal.ErelH_P = np.clip(self.Internal.ErelH_P, 0.1, 2.0e4)
+        self.Internal.ErelH_P = torch.clamp(self.Internal.ErelH_P, 0.1, 2.0e4)
 
         return
 
@@ -914,7 +914,7 @@ class KineticH():
 
         # Ti/mu at each mesh point
         self._debrief_msg('Computing Ti/mu at each mesh point', 1)
-        self.Internal.Ti_mu = np.zeros((self.nvr,self.nvx,self.nx))
+        self.Internal.Ti_mu = torch.zeros((self.nvr,self.nvx,self.nx))
         for k in range(self.nx):
             self.Internal.Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
 

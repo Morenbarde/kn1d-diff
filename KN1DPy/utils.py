@@ -30,6 +30,16 @@ def get_config() -> dict[str, Any]:
 
     return get_json('./config.json')
 
+def make_json_compatible(data: dict):
+    for key, value in data.items():
+        if isinstance(value, np.ndarray):
+            data[key] = value.tolist()
+    return data
+
+def sav_to_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+
 
 # --- Printing ---
 

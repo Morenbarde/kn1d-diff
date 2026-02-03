@@ -6,7 +6,7 @@ import os
 
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
-from .utils import sval, interp_1d, get_config
+from .utils import sval, interp_1d, get_config, make_json_compatible, sav_to_json
 from .interp_fvrvxx import interp_fvrvxx
 from .johnson_hinnov import Johnson_Hinnov
 from .kinetic_mesh import KineticMesh
@@ -292,6 +292,39 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
              GammaxHBC=kinetic_h.GammaxHBC, nvr=kinetic_h.nvr, nvx=kinetic_h.nvx, nx=kinetic_h.nx, vx_neg=kinetic_h.vx_neg,
              vx_pos=kinetic_h.vx_pos, vx_zero=kinetic_h.vx_zero, vth=kinetic_h.vth, vr2_2vx2_2D=kinetic_h.vr2_2vx2_2D,
              dvr_vol=kinetic_h.dvr_vol, dvx=kinetic_h.dvx, fHBC_input=kinetic_h.fHBC_input)
+    input()
+
+    file = 'kinetic_h_internal.json'
+    data = kinetic_h.Internal
+    print("Saving to file: " + file)
+    sav_data = {'vr2vx2' : data.vr2vx2,
+                'vr2vx_vxi2' : data.vr2vx_vxi2,
+                'fi_hat' : data.fi_hat,
+                'ErelH_P' : data.ErelH_P,
+                'Ti_mu' : data.Ti_mu,
+                'ni' : data.ni,
+                'sigv' : data.sigv,
+                'alpha_ion' : data.alpha_ion,
+                'v_v2' : data.v_v2,
+                'v_v' : data.v_v,
+                'vr2_vx2' : data.vr2_vx2,
+                'vx_vx' : data.vx_vx,
+
+                'Vr2pidVrdVx' : data.Vr2pidVrdVx,
+                'SIG_CX' : data.SIG_CX,
+                'SIG_H_H' : data.SIG_H_H,
+                'SIG_H_H2' : data.SIG_H_H2,
+                'SIG_H_P' : data.SIG_H_P,
+                'Alpha_CX' : data.Alpha_CX,
+                'Alpha_H_H2' : data.Alpha_H_H2,
+                'Alpha_H_P' : data.Alpha_H_P,
+                'MH_H_sum' : data.MH_H_sum,
+                'Delta_nHs' : data.Delta_nHs,
+                'Sn' : data.Sn,
+                'Rec' : data.Rec}
+    
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json("kn1ddiff/test/init_kinetic_h/"+file, sav_data)
     input()
     
     kinetic_h2 = KineticH2(kh2_mesh, mu, vxiM, fh2BC, GammaxH2BC, NuLoss, SH2,
