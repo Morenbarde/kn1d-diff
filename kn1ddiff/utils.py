@@ -45,6 +45,18 @@ def sval(s,length=None):
   return str(s).strip()[:length]
 
 
+# --- Torch Wrappers ---
+
+# Source - https://stackoverflow.com/a/63964246
+# Posted by jodag, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-02-04, License - CC BY-SA 4.0
+def torch_reshape_fortran(x, shape):
+    if len(x.shape) > 0:
+        x = x.permute(*reversed(range(len(x.shape))))
+    return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
+
+
+
 # --- Bounding  ---
 
 class Bound:

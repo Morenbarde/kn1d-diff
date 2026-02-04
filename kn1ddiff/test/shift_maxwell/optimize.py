@@ -10,6 +10,7 @@ from kn1ddiff.test.utils import *
 
 dir = "kn1ddiff/test/shift_maxwell/"
 data_file = "in_out2.npz"
+generate_gif = True
 num_iters = 500
 
 
@@ -66,6 +67,10 @@ if __name__ == "__main__":
     )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_iters)
 
+    # Init Gif Generator
+    tmax_gifgen = GIF_Generator(num_iters, dir+"Tmax_Images/", "tmax", Tmaxwell, fps=10, frequency=5)
+    vx_shift_gifgen = GIF_Generator(num_iters, dir+"VxShift_Images/", "vx_shift", vx_shift, fps=10, frequency=5)
+
     # Capture Best Epoch
     loss_list = []
     best_loss = np.inf
@@ -105,6 +110,10 @@ if __name__ == "__main__":
             f"loss: {loss.item():<10.6e} | "
             f"learning rate: {optimizer.param_groups[0]['lr']:.2e}"
         )
+
+        if generate_gif:
+            tmax_gifgen.update(tmax, epoch)
+            vx_shift_gifgen.update(shift, epoch)
 
 
     # --- Convert to numpy for analysis ---
@@ -154,13 +163,6 @@ if __name__ == "__main__":
     print("vx_shift Loss: ", vxshift_loss)
     print("vx_shift Relative L2: ", rel_L2_np(opt_vxshift, true_vxshift))
 
-    x = range(opt_tmax.size)
-    generate_compare_plot(dir, "Tmaxwell", x, opt_tmax, x, true_tmax)
-    x = range(opt_vxshift.size)
-    generate_compare_plot(dir, "vx_shift", x, opt_vxshift, x, true_vxshift)
-
-    generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="MSE Loss")
-
     input()
 
     # print(maxwell_old[0])
@@ -170,6 +172,21 @@ if __name__ == "__main__":
     print("Calculated Maxwell Sum: ", np.sum(opt_maxwell))
     print("Maxwell Loss: ", max_loss)
     print("Maxwell Relative L2: ", rel_L2_np(opt_maxwell, true_maxwell))
+    input()
+
+
+
+    print("Generating Images and Gifs")
+
+    x = range(opt_tmax.size)
+    generate_compare_plot(dir, "Tmaxwell", x, opt_tmax, x, true_tmax)
+    x = range(opt_vxshift.size)
+    generate_compare_plot(dir, "vx_shift", x, opt_vxshift, x, true_vxshift)
+
+    generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="MSE Loss")
+
+    tmax_gifgen.generate_gif()
+    vx_shift_gifgen.generate_gif()
 
 
 

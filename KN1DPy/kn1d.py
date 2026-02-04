@@ -322,7 +322,6 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     #             'Delta_nHs' : data.Delta_nHs,
     #             'Sn' : data.Sn,
     #             'Rec' : data.Rec}
-    
     # sav_data = make_json_compatible(sav_data)
     # sav_to_json("kn1ddiff/test/init_kinetic_h/"+file, sav_data)
     # input()

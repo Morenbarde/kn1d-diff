@@ -29,7 +29,7 @@ for key, value in kh_par.items():
     # print("Source Type: ", type(value))
     # print("Type: ", type(getattr(kinetic_h, key)))
     result = np.allclose(value, getattr(kinetic_h, key))
-    print("        Param is close:", result)
+    print("                Param is close:", result)
 
 input()
 
@@ -43,8 +43,7 @@ for key, value in kh_internal.items():
         result = attr is value
     else:
         result = np.allclose(value, attr)
-    print("        Param is close:", result)
+    print("                Param is close:", result)
 
-print(rel_L2_np(np.asarray(kinetic_h.Internal.fi_hat), np.asarray(kh_internal["fi_hat"])))
-# print(np.asarray(kinetic_h.Internal.fi_hat)[0,0,:])
-# print(np.asarray(kh_internal["fi_hat"])[0,0,:])
+# print(rel_L2_np(np.asarray(kinetic_h.Internal.fi_hat), np.asarray(kh_internal["fi_hat"])))
+# print(type(kinetic_h.Internal.SIG_CX))
