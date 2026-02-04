@@ -16,7 +16,7 @@ kh_par = np.load(dir+"kinetic_h_params.npz")
 with open(dir+"kinetic_h_internal.json", 'r') as config:
     kh_internal = json.load(config)
 
-print(kh_par["vth"])
+# print(kh_par["vth"])
 
 
 mesh1 = KineticMesh('h', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], param_type='torch')
@@ -46,5 +46,5 @@ for key, value in kh_internal.items():
     print("        Param is close:", result)
 
 print(rel_L2_np(np.asarray(kinetic_h.Internal.fi_hat), np.asarray(kh_internal["fi_hat"])))
-print(np.asarray(kinetic_h.Internal.fi_hat)[0,0,:])
-print(np.asarray(kh_internal["fi_hat"])[0,0,:])
+# print(np.asarray(kinetic_h.Internal.fi_hat)[0,0,:])
+# print(np.asarray(kh_internal["fi_hat"])[0,0,:])

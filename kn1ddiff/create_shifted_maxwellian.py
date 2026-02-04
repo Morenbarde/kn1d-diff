@@ -275,7 +275,7 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
         target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
 
         with torch.no_grad():
-            compensated_f, _ = compensate_distribution(f.detach(), vdiff, vr, vx, vth, vx_shift[k], target_energy)
+            compensated_f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
 
         f = f + (compensated_f - f).detach()
 
