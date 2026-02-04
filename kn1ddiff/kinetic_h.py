@@ -811,7 +811,7 @@ class KineticH():
                 VxHG[k] = self.vth*torch.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
                 vr2vx2_ran2 = (self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxHG[k]/self.vth)**2)
                 THG[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*torch.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
-
+            # return VxHG
             if self.COLLISIONS.H_H_EL:
 
                 self._debrief_msg('Computing MH_H', 1)

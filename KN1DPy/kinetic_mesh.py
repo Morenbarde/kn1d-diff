@@ -54,6 +54,11 @@ class KineticMesh:
             jh          : Johnson_Hinnov = None,
             E0          : NDArray = np.array([0.0]), 
             fctr        : float   = 1.0):
+        
+        # file = mesh_type+'_mesh_in.npz'
+        # print("Saving to file: " + file)
+        # np.savez("kn1ddiff/test/mh_values/"+file, mu=mu, x=x, Ti=Ti, Te=Te, n=n, PipeDia=PipeDia, E0=E0, fctr=fctr)
+        # input()
 
         print("generating kinetic_" + mesh_type + "_mesh")
 

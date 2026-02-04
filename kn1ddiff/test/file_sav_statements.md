@@ -3,7 +3,10 @@ This file saves various statement used to caputur inputs/outputs/parameters from
 
 ### Kinetic_H_Mesh inputs
 ```
-
+file = 'h_mesh_in.npz'
+print("Saving to file: " + file)
+np.savez("kn1ddiff/test/mh_values/"+file, mu=mu, x=x, Ti=Ti, Te=Te, n=n, PipeDia=PipeDia, E0=E0, fctr=fctr)
+input()
 ```
 
 

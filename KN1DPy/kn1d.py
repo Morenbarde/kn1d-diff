@@ -281,7 +281,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     # file = 'kinetic_h_in.npz'
     # print("Saving to file: " + file)
-    # np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=mu, vxiA=vxiA, fHBC=fHBC, GammaxHBC=GammaxHBC)
+    # np.savez("kn1ddiff/test/mh_values/"+file, mu=mu, vxiA=vxiA, fHBC=fHBC, GammaxHBC=GammaxHBC)
     # input()
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh=jh,
                          ni_correct=True, truncate=truncate, max_gen=max_gen, 
