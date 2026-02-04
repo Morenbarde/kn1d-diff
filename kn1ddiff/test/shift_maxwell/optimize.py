@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from kn1ddiff.create_shifted_maxwellian import *
+from KN1DPy.create_shifted_maxwellian import create_shifted_maxwellian as csm
 from kn1ddiff.test.utils import *
 
 
@@ -44,9 +45,12 @@ if __name__ == "__main__":
     maxwell_old = torch.from_numpy(data["maxwell"])
     with torch.no_grad():
         maxwell_old2 = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm)
+        maxwell_old3 = csm(data["vr"], data["vx"], data["Tmaxwell"], data["vx_shift"], data["mu"], data["mol"], data["Tnorm"])
 
-    # print(torch.nn.functional.mse_loss(maxwell_old, maxwell_old2).item())
-    # input()
+    print(rel_L2_torch(maxwell_old2, maxwell_old3).item())
+    # for i in range(vx_shift.numel()):
+    #     print(rel_L2_torch(maxwell_old2[:,:,i], maxwell_old3[:,:,i]).item())
+    input()
 
 
     # --- Test Optimization ---
