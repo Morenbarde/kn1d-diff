@@ -799,18 +799,18 @@ class KineticH():
         Compute collision distributions using Eqs. (3.6)-(3.8)
         '''
         
-        MH_H = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_P = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
-        VxHG = np.zeros(self.nx)
-        THG = np.zeros(self.nx)
+        MH_H = torch.zeros((self.nvr,self.nvx,self.nx))
+        MH_P = torch.zeros((self.nvr,self.nvx,self.nx))
+        MH_H2 = torch.zeros((self.nvr,self.nvx,self.nx))
+        VxHG = torch.zeros(self.nx)
+        THG = torch.zeros(self.nx)
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
 
             # Compute VxHG, THG
             for k in range(0, self.nx):
-                VxHG[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
+                VxHG[k] = self.vth*torch.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
                 vr2vx2_ran2 = (self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxHG[k]/self.vth)**2)
-                THG[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*np.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
+                THG[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*torch.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
 
             if self.COLLISIONS.H_H_EL:
 

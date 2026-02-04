@@ -1,13 +1,13 @@
 This file saves various statement used to caputur inputs/outputs/parameters from various kn1d functions
 
 
-Kinetic_H_Mesh inputs
+### Kinetic_H_Mesh inputs
 ```
 
 ```
 
 
-Kinetic_H inputs
+### Kinetic_H inputs
 ```
 file = 'kinetic_h_in.npz'
 print("Saving to file: " + file)
@@ -15,7 +15,7 @@ np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=mu, vxiA=vxiA, fHBC=fHBC, Gamm
 input()
 ```
 
-Kinetic_H parameters excluding common blocks
+### Kinetic_H parameters excluding common blocks
 ```
 file = 'kinetic_h_params.npz'
 print("Saving to file: " + file)
@@ -27,7 +27,7 @@ input()
 ```
 
 
-Kinetic_H Internal Block
+### Kinetic_H Internal Block
 ```
 file = 'kinetic_h_internal.json'
 data = kinetic_h.Internal
@@ -60,5 +60,24 @@ sav_data = {'vr2vx2' : data.vr2vx2,
 
 sav_data = make_json_compatible(sav_data)
 sav_to_json("kn1ddiff/test/init_kinetic_h/"+file, sav_data)
+input()
+```
+
+
+### MH_value input/output
+```
+file = 'mh_in_out1.json'
+print("Saving to file: " + file)
+sav_data = {'fH' : fHG,
+            'nH' : NHG[:,igen-1],
+            'TH2_Moment' : self.H2_Moments.TH2,
+            'VxH2_Moment' : self.H2_Moments.VxH2,
+
+            'MH_H' : m_vals.H_H,
+            'MH_P' : m_vals.H_P,
+            'MH_H2' : m_vals.H_H2}
+
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
 input()
 ```

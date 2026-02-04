@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from .utils import sval, get_config
+from .utils import *
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .kinetic_mesh import KineticMesh
@@ -500,7 +500,24 @@ class KineticH():
             Beta_CX_sum += Beta_CX
 
             # Elastic collision maxwellians
+
             m_vals = self._compute_mh_values(fHG, NHG[:,igen-1])
+
+            # file = 'mh_in_out1.json'
+            # print("Saving to file: " + file)
+            # sav_data = {'fH' : fHG,
+            #             'nH' : NHG[:,igen-1],
+            #             'TH2_Moment' : self.H2_Moments.TH2,
+            #             'VxH2_Moment' : self.H2_Moments.VxH2,
+
+            #             'MH_H' : m_vals.H_H,
+            #             'MH_P' : m_vals.H_P,
+            #             'MH_H2' : m_vals.H_H2}
+
+            # sav_data = make_json_compatible(sav_data)
+            # sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
+            # input()
+
             m_sums.H_H += m_vals.H_H
             m_sums.H_P += m_vals.H_P
             m_sums.H_H2 += m_vals.H_H2
