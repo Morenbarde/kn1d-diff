@@ -215,15 +215,15 @@ def create_shifted_maxwellian(vr,vx,Tmaxwell,vx_shift,mu,mol,Tnorm):
 
         arg = -((vr[:, np.newaxis]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
         arg = np.where(np.logical_and((-80 < arg), (arg < 0.0)), arg, -80)
-        maxwell[:,:,k] = np.exp(arg)
+        f = np.exp(arg)
 
-        variable = np.matmul(maxwell[:,:,k], vdiff.dvx)
-        maxwell[:,:,k] = maxwell[:,:,k] / np.nansum(vdiff.dvr_vol*variable)
+        f = f / np.nansum(vdiff.dvr_vol*(f @ vdiff.dvx))
 
         # Target energy density
         target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
     
-        maxwell[:,:,k], _ = compensate_distribution(maxwell[:,:,k], vdiff, vr, vx, vth, vx_shift[k], target_energy)
-        maxwell[:,:,k] /= np.sum(vdiff.dvr_vol*(np.matmul(maxwell[:,:,k], vdiff.dvx)))
+        f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
+        
+        maxwell[:,:,k] = f / np.sum(vdiff.dvr_vol*(np.matmul(f, vdiff.dvx)))
 
     return maxwell

@@ -800,32 +800,22 @@ class KineticH():
         '''
         # print("Inside:", fH[:,0,0])
         
-        VxHG = torch.zeros(self.nx, device=fH.device, dtype=fH.dtype)
-        THG = torch.zeros(self.nx, device=fH.device, dtype=fH.dtype)
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
 
-            vx = self.mesh.vx                      # (Nvx,)
-            vr = self.mesh.vr                      # (Nvr,)
-            vx_dvx = vx * self.dvx                 # (Nvx,)
-            vr2 = vr[:, None]**2                   # (Nvr, 1)
-            THG_prefactor = (self.mu * CONST.H_MASS) * (self.vth**2) / (3 * CONST.Q)
+            vx = self.mesh.vx              # (Nvx,)
+            vr = self.mesh.vr              # (Nvr,)
 
-            # Compute VxHG
-            # (Nvr, Nvx, nx)
-            integrand_vx = fH * vx_dvx[None, :, None]
-            # sum over vr and vx → (nx,)
-            VxHG = self.vth * torch.sum(integrand_vx * self.dvr_vol[:, None, None], dim=(0, 1)) / nH
+            # --- VxHG ---
+            # fH: (Nvr, Nvx, nx)
 
-            # Compute THG
-            # (1, Nvx, nx)
-            vx_shift2 = (vx[None, :, None] - VxHG[None, None, :] / self.vth) ** 2
-            # (Nvr, Nvx, nx)
-            vr2vx2 = vr2[:, None, :] + vx_shift2
+            weights = self.dvr_vol[:, None, None] * self.dvx[None, :, None]
+            VxHG = (self.vth * torch.sum(fH * vx[None, :, None] * weights, dim=(0, 1)) / nH)
 
+            # --- THG ---
+            vr2vx2_ran2 = vr[:, None, None]**2 + (vx[None, :, None] - VxHG[None, None, :] / self.vth)**2
 
-            integrand_T = vr2vx2 * fH * self.dvx[None, :, None]
-
-            THG = THG_prefactor * torch.sum(integrand_T * self.dvr_vol[:, None, None], dim=(0, 1)) / nH
+            THG_factor = (self.mu * CONST.H_MASS) * self.vth**2 / (3 * CONST.Q)
+            THG = THG_factor * torch.sum(vr2vx2_ran2 * fH * weights, dim=(0, 1)) / nH
 
 
             if self.COLLISIONS.H_H_EL:

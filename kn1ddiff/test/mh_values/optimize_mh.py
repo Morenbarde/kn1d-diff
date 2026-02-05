@@ -11,7 +11,7 @@ from kn1ddiff.test.utils import *
 dir = "kn1ddiff/test/mh_values/"
 data_file = "mh_in_out1.json"
 generate_gif = True
-num_iters = 500
+num_iters = 50
 
 
 if __name__ == "__main__":
@@ -66,9 +66,9 @@ if __name__ == "__main__":
     kinetic_h.H2_Moments.TH2 = true_TH2_mom
     m_vals = kinetic_h._compute_mh_values(true_fH, true_nH)
     # output1, output2 = kinetic_h._compute_mh_values(true_fH, true_nH)
-    # print(np.allclose(m_vals.H_H, true_mh_h), np.allclose(m_vals.H_P, true_mh_p), np.allclose(m_vals.H_H2, true_mh_h2))
-    # print(rel_L2_torch(m_vals.H_H, true_mh_h), rel_L2_torch(m_vals.H_P, true_mh_p), rel_L2_torch(m_vals.H_H2, true_mh_h2))
-    # input()
+    print(np.allclose(m_vals.H_H, true_mh_h), np.allclose(m_vals.H_P, true_mh_p), np.allclose(m_vals.H_H2, true_mh_h2))
+    print(rel_L2_torch(m_vals.H_H, true_mh_h), rel_L2_torch(m_vals.H_P, true_mh_p), rel_L2_torch(m_vals.H_H2, true_mh_h2))
+    input()
 
 
     # --- Test Optimization ---
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     initial_TH2_mom = torch.nn.Parameter(torch.randn_like(true_TH2_mom))
     initial_VxH2_mom = torch.nn.Parameter(torch.randn_like(true_VxH2_mom))
 
-    optimizer = torch.optim.Adam([initial_fH, initial_nH], lr=1e-0)
+    optimizer = torch.optim.Adam([initial_fH, initial_nH], lr=1e-1)
     # optimizer = torch.optim.SGD([initial_fH, initial_nH, initial_TH2_mom, initial_VxH2_mom], lr=2e-1, momentum=1)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
