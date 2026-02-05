@@ -106,8 +106,8 @@ idl_results.update(readsav(idl_H2_file))
 # Gather Run Data
 run_name = input("Run Name: ")
 
-python_runtime = float(input("Python Runtime: "))
-idl_runtime = float(input("IDL Runtime: "))
+python_runtime = 1 #float(input("Python Runtime: "))
+idl_runtime = 1 #float(input("IDL Runtime: "))
 
 
 python_dict = {}

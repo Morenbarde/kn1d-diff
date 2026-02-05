@@ -503,20 +503,20 @@ class KineticH():
 
             m_vals = self._compute_mh_values(fHG, NHG[:,igen-1])
 
-            file = 'mh_in_out1.json'
-            print("Saving to file: " + file)
-            sav_data = {'fH' : fHG,
-                        'nH' : NHG[:,igen-1],
-                        'TH2_Moment' : self.H2_Moments.TH2,
-                        'VxH2_Moment' : self.H2_Moments.VxH2,
+            # file = 'mh_in_out1.json'
+            # print("Saving to file: " + file)
+            # sav_data = {'fH' : fHG,
+            #             'nH' : NHG[:,igen-1],
+            #             'TH2_Moment' : self.H2_Moments.TH2,
+            #             'VxH2_Moment' : self.H2_Moments.VxH2,
 
-                        'MH_H' : m_vals.H_H,
-                        'MH_P' : m_vals.H_P,
-                        'MH_H2' : m_vals.H_H2}
+            #             'MH_H' : m_vals.H_H,
+            #             'MH_P' : m_vals.H_P,
+            #             'MH_H2' : m_vals.H_H2}
 
-            sav_data = make_json_compatible(sav_data)
-            sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
-            input()
+            # sav_data = make_json_compatible(sav_data)
+            # sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
+            # input()
 
             m_sums.H_H += m_vals.H_H
             m_sums.H_P += m_vals.H_P
@@ -815,25 +815,49 @@ class KineticH():
         Compute collision distributions using Eqs. (3.6)-(3.8)
         '''
         
-        MH_H = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_P = np.zeros((self.nvr,self.nvx,self.nx))
-        MH_H2 = np.zeros((self.nvr,self.nvx,self.nx))
         VxHG = np.zeros(self.nx)
         THG = np.zeros(self.nx)
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
+            
+            vx = self.mesh.vx                      # (Nvx,)
+            vr = self.mesh.vr                      # (Nvr,)
+            vx_dvx = vx * self.dvx                 # (Nvx,)
+            vr2 = vr[:, None]**2                   # (Nvr, 1)
+            THG_prefactor = (self.mu * CONST.H_MASS) * (self.vth**2) / (3 * CONST.Q)
+
+            # Compute VxHG
+            # (Nvr, Nvx, nx)
+            integrand_vx = fH * vx_dvx[None, :, None]
+            # sum over vr and vx → (nx,)
+            VxHG = self.vth * np.sum(integrand_vx * self.dvr_vol[:, None, None], axis=(0, 1)) / nH
+
+            # Compute THG
+            # (1, Nvx, nx)
+            vx_shift2 = (vx[None, :, None] - VxHG[None, None, :] / self.vth) ** 2
+            # (Nvr, Nvx, nx)
+            vr2vx2 = vr2[:, None, :] + vx_shift2
+
+
+            integrand_T = vr2vx2 * fH * self.dvx[None, :, None]
+
+            THG = THG_prefactor * np.sum(integrand_T * self.dvr_vol[:, None, None], axis=(0, 1)) / nH
+
+
+
 
             # Compute VxHG, THG
-            for k in range(0, self.nx):
-                VxHG[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
-                vr2vx2_ran2 = (self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxHG[k]/self.vth)**2)
-                THG[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*np.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
-
+            # for k in range(0, self.nx):
+            #     # VxHG[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ vx_dvx)) / (nH[k])
+            #     vr2vx2_ran2 = (vr2 + (vx[None, :] - VxHG[k]/self.vth)**2)
+            #     THG[k] = THG_prefactor*np.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (nH[k])
+            # print("VxHG", VxHG)
+            # print("THG", THG)
             if self.COLLISIONS.H_H_EL:
 
                 self._debrief_msg('Computing MH_H', 1)
 
                 # Compute MH_H
-                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, THG, VxHG, self.mu, 1, self.mesh.Tnorm)
+                Maxwell = create_shifted_maxwellian(vr, vx, THG, VxHG, self.mu, 1, self.mesh.Tnorm)
                 MH_H = Maxwell*nH
 
             if self.COLLISIONS.H_P_EL:
@@ -843,7 +867,7 @@ class KineticH():
                 # Compute MH_P 
                 vx_shift = (VxHG + self.vxi) / 2
                 Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
-                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
+                Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_P = Maxwell*nH
 
             if self.COLLISIONS.H2_H_EL:
@@ -853,7 +877,7 @@ class KineticH():
                 # Compute MH_H2
                 vx_shift = (VxHG + 2*self.H2_Moments.VxH2) / 3
                 Tmaxwell = THG + (4/9)*(self.H2_Moments.TH2 - THG + 2*self.mu*CONST.H_MASS*((self.H2_Moments.VxH2 - VxHG)**2) / (6*CONST.Q))
-                Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
+                Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_H2 = Maxwell*nH
         
         return CollisionType(MH_H, MH_P, MH_H2)

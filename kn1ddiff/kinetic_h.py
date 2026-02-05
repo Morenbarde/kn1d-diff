@@ -798,20 +798,36 @@ class KineticH():
         '''
         Compute collision distributions using Eqs. (3.6)-(3.8)
         '''
+        # print("Inside:", fH[:,0,0])
         
-        MH_H = torch.zeros((self.nvr,self.nvx,self.nx))
-        MH_P = torch.zeros((self.nvr,self.nvx,self.nx))
-        MH_H2 = torch.zeros((self.nvr,self.nvx,self.nx))
-        VxHG = torch.zeros(self.nx)
-        THG = torch.zeros(self.nx)
+        VxHG = torch.zeros(self.nx, device=fH.device, dtype=fH.dtype)
+        THG = torch.zeros(self.nx, device=fH.device, dtype=fH.dtype)
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
 
-            # Compute VxHG, THG
-            for k in range(0, self.nx):
-                VxHG[k] = self.vth*torch.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / nH[k]
-                vr2vx2_ran2 = (self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxHG[k]/self.vth)**2)
-                THG[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*torch.sum(self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k])
-            # return VxHG
+            vx = self.mesh.vx                      # (Nvx,)
+            vr = self.mesh.vr                      # (Nvr,)
+            vx_dvx = vx * self.dvx                 # (Nvx,)
+            vr2 = vr[:, None]**2                   # (Nvr, 1)
+            THG_prefactor = (self.mu * CONST.H_MASS) * (self.vth**2) / (3 * CONST.Q)
+
+            # Compute VxHG
+            # (Nvr, Nvx, nx)
+            integrand_vx = fH * vx_dvx[None, :, None]
+            # sum over vr and vx → (nx,)
+            VxHG = self.vth * torch.sum(integrand_vx * self.dvr_vol[:, None, None], dim=(0, 1)) / nH
+
+            # Compute THG
+            # (1, Nvx, nx)
+            vx_shift2 = (vx[None, :, None] - VxHG[None, None, :] / self.vth) ** 2
+            # (Nvr, Nvx, nx)
+            vr2vx2 = vr2[:, None, :] + vx_shift2
+
+
+            integrand_T = vr2vx2 * fH * self.dvx[None, :, None]
+
+            THG = THG_prefactor * torch.sum(integrand_T * self.dvr_vol[:, None, None], dim=(0, 1)) / nH
+
+
             if self.COLLISIONS.H_H_EL:
 
                 self._debrief_msg('Computing MH_H', 1)
