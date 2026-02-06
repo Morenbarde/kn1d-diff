@@ -808,14 +808,16 @@ class KineticH():
             # --- VxHG ---
             # fH: (Nvr, Nvx, nx)
 
+            nh_safe = nH.detach() + 1e-12
             weights = self.dvr_vol[:, None, None] * self.dvx[None, :, None]
-            VxHG = (self.vth * torch.sum(fH * vx[None, :, None] * weights, dim=(0, 1)) / nH)
+            VxHG = self.vth * torch.sum(fH * vx[None, :, None] * weights, dim=(0, 1)) / nh_safe
 
             # --- THG ---
             vr2vx2_ran2 = vr[:, None, None]**2 + (vx[None, :, None] - VxHG[None, None, :] / self.vth)**2
 
             THG_factor = (self.mu * CONST.H_MASS) * self.vth**2 / (3 * CONST.Q)
-            THG = THG_factor * torch.sum(vr2vx2_ran2 * fH * weights, dim=(0, 1)) / nH
+            THG = THG_factor * torch.sum(vr2vx2_ran2 * fH * weights, dim=(0, 1)) / nh_safe
+
 
 
             if self.COLLISIONS.H_H_EL:

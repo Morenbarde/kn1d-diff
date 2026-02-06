@@ -8,6 +8,7 @@ def generate_compare_plot(dir, title, x, y, true_x, true_y, xlabel="", ylabel=""
     check_and_generate_dir(dir)
     plt.plot(x, y, color = 'blue', marker='x', markersize=3, markeredgecolor='cyan', label="Optimized")
     plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=3, markeredgecolor='red', label="True", ls=":")
+    plt.yscale('log')
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
