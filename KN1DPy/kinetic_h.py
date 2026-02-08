@@ -173,6 +173,10 @@ class KineticH():
         
         self.ion_rate_option = self.config['kinetic_h']['ion_rate']
 
+        # Fixed Iteration Counts
+        self.iteration_count = self.config['kinetic_h']["fixed_iterations"]
+        self.generation_count = self.config['kinetic_h']["fixed_generations"]
+
         # Internal Tolerances
         self.DeltaVx_tol = self.config['kinetic_h']['dvx_tolerance']
         self.Wpp_tol = self.config['kinetic_h']['wpp_tolerance']
@@ -397,7 +401,8 @@ class KineticH():
         # Begin Iteration
         fHG = np.zeros((nvr,nvx,nx))
         NHG = np.zeros((nx,self.max_gen+1))
-        while True:
+        # while True:
+        for _ in range(self.iteration_count):
 
             nH_input = np.copy(nH)
 
@@ -450,8 +455,8 @@ class KineticH():
                 # If Delta_nHs is less than 10*truncate then stop iterating fH
 
                 self.Internal.Delta_nHs = np.max(np.abs(nH_input - nH)) / np.max(nH)
-                if self.Internal.Delta_nHs <= 10*self.truncate:
-                    break
+                # if self.Internal.Delta_nHs <= 10*self.truncate:
+                #     break
 
 
         # --- Update Last Generation ---
@@ -485,7 +490,8 @@ class KineticH():
             fH_generations = True
 
         igen = 0
-        while True:
+        # while True:
+        for _ in range(self.generation_count):
 
             if igen >= self.max_gen or (not fH_generations):
                 self._debrief_msg('Completed '+sval(self.max_gen)+' generations. Returning present solution...', 0)
@@ -524,11 +530,11 @@ class KineticH():
 
             # Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
             # and decide if another generation should be computed
-            Delta_nHG = np.max(NHG[:,igen] / np.max(nH))
-            if (Delta_nHG < self.truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
-                # If fH 'seed' is being iterated, then do another generation until the 'generation error'
-                # is less than 0.003 times the 'seed error' or is less than TRUNCATE
-                break
+            # Delta_nHG = np.max(NHG[:,igen] / np.max(nH))
+            # if (Delta_nHG < self.truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
+            #     # If fH 'seed' is being iterated, then do another generation until the 'generation error'
+            #     # is less than 0.003 times the 'seed error' or is less than TRUNCATE
+            #     break
 
         return fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen
     
@@ -855,20 +861,20 @@ class KineticH():
                 Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_H2 = Maxwell*nH
 
-            file = 'mh_in_out1.json'
-            print("Saving to file: " + file)
-            sav_data = {'fH' : fH,
-                        'nH' : nH,
-                        'TH2_Moment' : self.H2_Moments.TH2,
-                        'VxH2_Moment' : self.H2_Moments.VxH2,
+            # file = 'mh_in_out1.json'
+            # print("Saving to file: " + file)
+            # sav_data = {'fH' : fH,
+            #             'nH' : nH,
+            #             'TH2_Moment' : self.H2_Moments.TH2,
+            #             'VxH2_Moment' : self.H2_Moments.VxH2,
 
-                        'MH_H' : MH_H,
-                        'MH_P' : MH_P,
-                        'MH_H2' : MH_H2}
+            #             'MH_H' : MH_H,
+            #             'MH_P' : MH_P,
+            #             'MH_H2' : MH_H2}
 
-            sav_data = make_json_compatible(sav_data)
-            sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
-            input()
+            # sav_data = make_json_compatible(sav_data)
+            # sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
+            # input()
         
         return CollisionType(MH_H, MH_P, MH_H2)
 

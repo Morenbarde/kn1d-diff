@@ -6,6 +6,17 @@ from PIL import Image
 
 def generate_compare_plot(dir, title, x, y, true_x, true_y, xlabel="", ylabel="", x_range = None, y_range = None):
     check_and_generate_dir(dir)
+    
+    # Adjust types if necessary
+    if type(x) == torch.Tensor:
+        x = x.cpu().detach().numpy()
+    if type(y) == torch.Tensor:
+        y = y.cpu().detach().numpy()
+    if type(true_x) == torch.Tensor:
+        true_x = true_x.cpu().detach().numpy()
+    if type(true_y) == torch.Tensor:
+        true_y = true_y.cpu().detach().numpy()
+
     plt.plot(x, y, color = 'blue', marker='x', markersize=3, markeredgecolor='cyan', label="Optimized")
     plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=3, markeredgecolor='red', label="True", ls=":")
     plt.yscale('log')
@@ -25,6 +36,16 @@ def generate_loss_plot(dir, title, loss, xlabel="", ylabel=""):
     check_and_generate_dir(dir)
     plt.plot(range(len(loss)), loss, color = 'purple')
     plt.yscale('log')
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.savefig(dir + title + '.png', dpi=300)
+    plt.clf()
+
+def generate_lr_plot(dir, title, lr, xlabel="", ylabel=""):
+    check_and_generate_dir(dir)
+    plt.plot(range(len(lr)), lr, color = 'teal')
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)

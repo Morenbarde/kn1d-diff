@@ -190,6 +190,10 @@ class KineticH2():
         col = self.config['collisions']
         self.COLLISIONS = KH2Collisions(col['H2_H_EL'], col['H2_H2_EL'], col['H2_P_EL'], col['H2_P_CX'], col['SIMPLE_CX'])
 
+        # Fixed Iteration Counts
+        self.iteration_count = self.config['kinetic_h2']["fixed_iterations"]
+        self.generation_count = self.config['kinetic_h2']["fixed_generations"]
+
         # Internal Tolerances
         self.DeltaVx_tol = self.config['kinetic_h2']['dvx_tolerance']
         self.Wpp_tol = self.config['kinetic_h2']['wpp_tolerance']
@@ -434,7 +438,8 @@ class KineticH2():
         # Begin Iteration
         fH2G = np.zeros((nvr,nvx,nx))
         NH2G = np.zeros((nx,self.max_gen+1))
-        while True:
+        # while True:
+        for _ in range(self.iteration_count):
 
             nH_input = np.copy(nH2)
 
@@ -499,8 +504,8 @@ class KineticH2():
                 # If Delta_nH2s is greater than 10*truncate then iterate fH2
 
                 self.Internal.Delta_nH2s = np.max(np.abs(nH_input - nH2)) / np.max(nH2)
-                if self.Internal.Delta_nH2s <= 10*self.truncate:
-                    break
+                # if self.Internal.Delta_nH2s <= 10*self.truncate:
+                #     break
         
         
         # --- Update Last Generation ---
@@ -535,7 +540,8 @@ class KineticH2():
         m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
         
         igen = 0
-        while True:
+        # while True:
+        for _ in range(self.generation_count):
 
             if igen >= self.max_gen or (not fH2_iterate): 
                 self._debrief_msg('Completed '+sval(self.max_gen)+' generations. Returning present solution...', 0)
@@ -577,11 +583,11 @@ class KineticH2():
 
             # Compute 'generation error': Delta_nH2G=max(NH2G(*,igen)/max(nH2))
             # and decide if another generation should be computed
-            Delta_nH2G = np.max(NH2G[:,igen] / np.max(nH2))
-            if (Delta_nH2G < self.truncate) or (fH2_iterate and (Delta_nH2G < 0.003*self.Internal.Delta_nH2s)):
-                # If fH2 'seed' is being iterated, then do another generation until the 'generation error'
-                # is less than 0.003 times the 'seed error' or is less than TRUNCATE
-                break
+            # Delta_nH2G = np.max(NH2G[:,igen] / np.max(nH2))
+            # if (Delta_nH2G < self.truncate) or (fH2_iterate and (Delta_nH2G < 0.003*self.Internal.Delta_nH2s)):
+            #     # If fH2 'seed' is being iterated, then do another generation until the 'generation error'
+            #     # is less than 0.003 times the 'seed error' or is less than TRUNCATE
+            #     break
 
         return fH2, nH2, fH2G, NH2G, Swall_sum, Beta_CX_sum, m_sums, igen
     

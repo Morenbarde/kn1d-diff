@@ -11,7 +11,18 @@ from kn1ddiff.test.utils import *
 dir = "kn1ddiff/test/mh_values/"
 data_file = "mh_in_out1.json"
 generate_gif = True
-num_iters = 5000
+num_iters = 200
+epsilon = 10e-10
+
+OPTIMIZE_FH = False
+OPTIMIZE_NH = True
+INITIAL_LR = 2e-1
+LR_CYCLE = 100
+MIN_LR = 1e-6
+CLIP_NORM = 1e0
+
+GIF_FPS = 10
+GIF_FREQ = 10
 
 
 if __name__ == "__main__":
@@ -72,97 +83,102 @@ if __name__ == "__main__":
 
 
     # --- Test Optimization ---
-    initial_fH = torch.nn.Parameter(torch.randn_like(true_fH))
-    initial_nH = torch.nn.Parameter(torch.randn_like(true_nH))
+    # initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True))
+    initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
+    initial_nH = torch.nn.Parameter(torch.randn_like(true_nH, requires_grad=True))
+    # initial_nH = torch.nn.Parameter(torch.zeros_like(true_nH, requires_grad=True))
     initial_TH2_mom = torch.nn.Parameter(torch.randn_like(true_TH2_mom))
     initial_VxH2_mom = torch.nn.Parameter(torch.randn_like(true_VxH2_mom))
 
-    optimizer = torch.optim.Adam([initial_fH, initial_nH], lr=2e-1, betas=(0.9,  0.99))
-    # optimizer = torch.optim.SGD([initial_fH, initial_nH], lr=2e-1, momentum=1)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        factor=0.1,
-        patience=20,
-        min_lr=1e-6
-    )
+
+    parameters = []
+    if OPTIMIZE_FH:
+        parameters.append(initial_fH)
+    if OPTIMIZE_NH:
+        parameters.append(initial_nH)
+
+    optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9,  0.99))
+
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer,
+    #     factor=0.1,
+    #     patience=50,
+    #     min_lr=1e-5
+    # )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_iters)
 
-    loss_fun = lambda pred, true : torch.nn.functional.mse_loss(pred, true)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=LR_CYCLE,
+        # T_mult=1,
+        # eta_min=MIN_LR,
+    )
+
+
+    # loss_fun = lambda pred, true : torch.nn.functional.mse_loss(pred, true)
     # loss_fun = lambda p, t: torch.mean((p - t)**2 / (t**2 + 1e-12))
     # loss_fun = lambda pred, true : rel_L2_torch(pred, true)
     # loss_fun = lambda pred, true : torch.mean(
     #         (torch.log(torch.abs(pred) + 1e-12)
     #     - torch.log(torch.abs(true) + 1e-12))**2
     #     )
+    # loss_fun = lambda pred, true : ((torch.log(pred + epsilon) - torch.log(true + epsilon))**2).mean()
+
+    def symmetric_log(x):
+        return torch.sign(x) * torch.log1p(torch.abs(x))
+    loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
 
 
 
     # Init Gif Generator
-    fh_gifgen = GIF_Generator(num_iters, dir+"fH_Images/", "fH", true_fH[0,0,:], fps=10, frequency=5)
-    nh_gifgen = GIF_Generator(num_iters, dir+"nH_Images/", "nH", true_nH, fps=10, frequency=5)
+    fh_gifgen = GIF_Generator(num_iters, dir+"fH_Images/", "fH", true_fH[0,0,:], fps=GIF_FPS, frequency=GIF_FREQ)
+    nh_gifgen = GIF_Generator(num_iters, dir+"nH_Images/", "nH", true_nH, fps=GIF_FPS, frequency=GIF_FREQ)
 
     # Capture Best Epoch
     loss_list = []
+    lr_list = []
     best_loss = np.inf
     best_epoch = 0
     kinetic_h.H2_Moments.VxH2 = true_VxH2_mom
     kinetic_h.H2_Moments.TH2 = true_TH2_mom
     for epoch in range(num_iters):
-        # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
-        # fH = 1e18 * torch.nn.functional.tanh(initial_fH)
 
-        # fH = 1e19 * torch.sigmoid(initial_fH)
-        # print("FH", fH[:,0,0])
-        # fH = true_fH
-        nH = 1e17 * torch.sigmoid(initial_nH)
-        # nH = 1e17 * torch.nn.functional.softplus(initial_nH)
-        # nH = true_nH
+        if OPTIMIZE_FH:
+            # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
+            fH = 1e19*torch.nn.functional.tanh(initial_fH)
+            # fH = 1e19 * torch.sigmoid(initial_fH)
+        else:
+            fH = true_fH
 
-        # Enforce positivity
-        # fH_pos = torch.nn.functional.softplus(initial_fH)
-
-        # # Cheap surrogate normalization (L1 in velocity space)
-        # norm = torch.mean(fH_pos, dim=(0,1), keepdim=True) + 1e-12
-
-        # fH = nH[None, None, :] * fH_pos / norm
-
-        # fH = torch.tanh(initial_fH) / (
-        #     torch.mean(torch.abs(torch.tanh(initial_fH)), dim=(0,1), keepdim=True) + 1e-12
-        # )
-        fH = true_fH
+        if OPTIMIZE_NH:
+            nH = 1e17 * torch.sigmoid(initial_nH)
+        else:
+            nH = true_nH
 
     
         m_vals = kinetic_h._compute_mh_values(fH, nH)
 
-        # print(
-        #     torch.isnan(m_vals.H_H).any().item(),
-        #     torch.isnan(true_mh_h).any().item(),
-        #     (m_vals.H_H <= 0).any().item(),
-        #     (true_mh_h < 0).any().item(),
-        #     (true_mh_p < 0).any().item(),
-        #     (true_mh_h2 < 0).any().item()
-        # )
         # Compute Loss
         loss1 = loss_fun(m_vals.H_H, true_mh_h)
         loss2 = loss_fun(m_vals.H_P, true_mh_p)
         loss3 = loss_fun(m_vals.H_H2, true_mh_h2)
         loss = loss1 + loss2 + loss3
-        # loss = loss + 1e-3 * torch.mean((nH - true_nH)**2 / (true_nH**2 + 1e-12))
 
         # Backprop
         optimizer.zero_grad()
         loss.backward()
 
         # Clip Gradient
-        torch.nn.utils.clip_grad_norm_([initial_fH, initial_nH], max_norm=1e3)
-        # torch.nn.utils.clip_grad_norm_([initial_fH, initial_nH, initial_TH2_mom, initial_VxH2_mom], max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_([initial_fH, initial_nH], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
-        scheduler.step(loss)
+        # scheduler.step(loss)
+        scheduler.step()
 
         # Save Best Epoch
         loss_list.append(loss.item())
+        lr_list.append(scheduler.get_last_lr())
         if loss.item() < best_loss:
             best_loss = loss.item()
             best_inputs = [fH.detach().cpu(), nH.detach().cpu()]
@@ -172,7 +188,8 @@ if __name__ == "__main__":
         print(
             f"epoch: {epoch:<5} | "
             f"loss: {loss.item():<10.6e} | "
-            f"learning rate: {optimizer.param_groups[0]['lr']:.2e}"
+            # f"learning rate: {optimizer.param_groups[0]['lr']:.2e}"
+            f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
         )
 
         # print("FH_2", fH[:,0,0])
@@ -198,12 +215,14 @@ if __name__ == "__main__":
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
 
-    print("fH Loss: ", fH_loss)
-    print("fH Relative L2: ", rel_L2_torch(opt_fH, true_fH))
-    print()
-    print("nH Loss: ", nH_loss)
-    print("nH Relative L2: ", rel_L2_torch(opt_nH, true_nH))
-    print()
+    if OPTIMIZE_FH:
+        print("fH Loss: ", fH_loss)
+        print("fH Relative L2: ", rel_L2_torch(opt_fH, true_fH))
+        print()
+    if OPTIMIZE_NH:
+        print("nH Loss: ", nH_loss)
+        print("nH Relative L2: ", rel_L2_torch(opt_nH, true_nH))
+        print()
     # print("TH2 Loss: ", TH2_loss)
     # print("TH2 Relative L2: ", rel_L2_torch(opt_TH2, true_TH2_mom))
     # print()
@@ -230,16 +249,19 @@ if __name__ == "__main__":
     print("Generating Images and Gifs")
 
     x = range(opt_fH[0,0,:].numel())
-    generate_compare_plot(dir, "fH", x, opt_fH[0,0,:].numpy(), x, true_fH[0,0,:].numpy())
+    generate_compare_plot(dir, "fH", x, opt_fH[0,0,:], x, true_fH[0,0,:])
     x = range(opt_nH.numel())
-    generate_compare_plot(dir, "nH", x, opt_nH.numpy(), x, true_nH.numpy())
+    generate_compare_plot(dir, "nH", x, opt_nH, x, true_nH)
     # x = range(opt_TH2.size)
     # generate_compare_plot(dir, "TH2", x, opt_TH2, x, true_TH2_mom)
     # x = range(opt_VxH2.size)
     # generate_compare_plot(dir, "VxH2", x, opt_VxH2, x, true_VxH2_mom)
 
-    generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="MSE Loss")
+    generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
+    generate_lr_plot(dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
 
     if generate_gif:
-        fh_gifgen.generate_gif()
-        nh_gifgen.generate_gif()
+        if OPTIMIZE_FH:
+            fh_gifgen.generate_gif()
+        if OPTIMIZE_NH:
+            nh_gifgen.generate_gif()

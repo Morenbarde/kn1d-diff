@@ -147,7 +147,7 @@ if __name__ == "__main__":
     print(np.min(true_vxshift), np.max(true_vxshift))
     print("Calculated vx_shift range")
     print(np.min(opt_vxshift), np.max(opt_vxshift))
-    input()
+    # input()
 
     print("True Tmaxwell")
     print(true_tmax)
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     print("vx_shift Loss: ", vxshift_loss)
     print("vx_shift Relative L2: ", rel_L2_np(opt_vxshift, true_vxshift))
 
-    input()
+    # input()
 
     # print(maxwell_old[0])
     # print(maxwell[0])
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     print("Calculated Maxwell Sum: ", np.sum(opt_maxwell))
     print("Maxwell Loss: ", max_loss)
     print("Maxwell Relative L2: ", rel_L2_np(opt_maxwell, true_maxwell))
-    input()
+    # input()
 
 
 

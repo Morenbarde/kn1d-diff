@@ -144,7 +144,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- Validate Config Options ---
     
     valid_ion_rates = ['collrad', 'jh', 'janev']
-    ion_rate_option = get_config()['kinetic_h']['ion_rate']
+    settings = get_config()
+    ion_rate_option = settings['kinetic_h']['ion_rate']
     if ion_rate_option not in valid_ion_rates:
         raise Exception(prompt+"Invalid Ionization Rate Option used: '"+ion_rate_option+"', check config.json")
 
@@ -289,7 +290,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     iter = 0
     EH_hist = np.array([0.0])
     SI_hist = np.array([0.0])
-    while True:
+    # while True:
+    for _ in range(settings["iteration_count"]):
         # Iterates through solving fh and fh2 until they satisfy boltzmans equation
 
         iter += 1
@@ -379,9 +381,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         if debrief: 
             print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
 
-        if nDelta_nH2 <= truncate:
-            # Stop Iteration
-            break
+        # if nDelta_nH2 <= truncate:
+        #     # Stop Iteration
+        #     break
     
     # --- End Iteration ---
 
