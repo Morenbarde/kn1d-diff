@@ -51,6 +51,9 @@ def sval(s,length=None):
 # Posted by jodag, modified by community. See post 'Timeline' for change history
 # Retrieved 2026-02-04, License - CC BY-SA 4.0
 def torch_reshape_fortran(x, shape):
+    if type(shape) == int:
+        # 1D output: flatten in Fortran order
+        return x.t().contiguous().view(shape)
     if len(x.shape) > 0:
         x = x.permute(*reversed(range(len(x.shape))))
     return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))

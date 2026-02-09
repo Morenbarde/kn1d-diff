@@ -19,7 +19,7 @@ def generate_compare_plot(dir, title, x, y, true_x, true_y, xlabel="", ylabel=""
 
     plt.plot(x, y, color = 'blue', marker='x', markersize=3, markeredgecolor='cyan', label="Optimized")
     plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=3, markeredgecolor='red', label="True", ls=":")
-    plt.yscale('log')
+    # plt.yscale('log')
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -112,8 +112,10 @@ class GIF_Generator():
 
     def _generate_images(self):
         x = range(self.data_size)
-        ymin = min(np.min(self.data[-1]), np.min(self.true_val))
-        ymax = max(np.max(self.data[-1]), np.max(self.true_val))
+        # ymin = min(np.min(self.data[-1]), np.min(self.true_val))
+        # ymax = max(np.max(self.data[-1]), np.max(self.true_val))
+        ymin = np.min(self.true_val)
+        ymax = np.max(self.true_val)
         data_range = ymax-ymin
         ymin = ymin-0.05*data_range
         ymax = ymax+0.05*data_range

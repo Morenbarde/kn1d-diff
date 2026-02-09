@@ -84,3 +84,22 @@ sav_data = make_json_compatible(sav_data)
 sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
 input()
 ```
+
+
+### Beta_CX input/output
+```
+file = 'beta_cx_in_out.json'
+print("Saving to file: " + file)
+sav_data = {'fH' : fH,
+            
+            'fi_hat' : self.Internal.fi_hat,
+            'Alpha_CX' : self.Internal.Alpha_CX,
+            'ni' : self.Internal.ni,
+            'SIG_CX' : self.Internal.SIG_CX,
+
+            'Beta_CX' : Beta_CX}
+
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/beta_cx/"+file, sav_data)
+input()
+```

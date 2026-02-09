@@ -14,10 +14,10 @@ generate_gif = True
 num_iters = 200
 epsilon = 10e-10
 
-OPTIMIZE_FH = False
-OPTIMIZE_NH = True
-INITIAL_LR = 2e-1
-LR_CYCLE = 100
+OPTIMIZE_FH = True
+OPTIMIZE_NH = False
+INITIAL_LR = 2e-4
+LR_CYCLE = 50
 MIN_LR = 1e-6
 CLIP_NORM = 1e0
 

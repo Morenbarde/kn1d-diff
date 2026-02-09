@@ -486,17 +486,17 @@ class KineticH():
         Beta_CX_sum = np.zeros((nvr,nvx,nx))
         m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
 
-        fH_generations = False
-        if fH_iterate or self.COLLISIONS.H_P_CX: 
-            fH_generations = True
+        # fH_generations = False
+        # if fH_iterate or self.COLLISIONS.H_P_CX: 
+        #     fH_generations = True
 
         igen = 0
         # while True:
         for _ in range(self.generation_count):
 
-            if igen >= self.max_gen or (not fH_generations):
-                self._debrief_msg('Completed '+sval(self.max_gen)+' generations. Returning present solution...', 0)
-                break
+            # if igen >= self.max_gen or (not fH_generations):
+            #     self._debrief_msg('Completed '+sval(self.max_gen)+' generations. Returning present solution...', 0)
+            #     break
             igen += 1
             self._debrief_msg('Computing atomic neutral generation#'+sval(igen), 0)
 
@@ -782,7 +782,7 @@ class KineticH():
         Compute charge exchange source (beta_cx) with Eq. (3.11a) or (3.11b)
         '''
 
-        Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
+        Beta_CX = torch.zeros((self.nvr,self.nvx,self.nx))
         if self.COLLISIONS.H_P_CX:
             
             self._debrief_msg('Computing Beta_CX', 1)
@@ -790,12 +790,13 @@ class KineticH():
             if self.COLLISIONS.SIMPLE_CX:
                 # Option (B): Compute charge exchange source with assumption that CX source neutrals have ion distribution function
                 for k in range(self.nx):
-                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*torch.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
             else:
                 # Option (A): Compute charge exchange source using fH and vr x sigma x v_v at each velocity mesh point
                 for k in range(self.nx):
-                    Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
-                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
+                    Work = torch_reshape_fortran(fH[:,:,k], (self.nvr*self.nvx))
+                    sig_work = torch_reshape_fortran((self.Internal.SIG_CX @ Work), (self.nvr,self.nvx))
+                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*sig_work
 
         return Beta_CX
     
