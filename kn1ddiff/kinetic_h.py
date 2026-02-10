@@ -401,7 +401,7 @@ class KineticH():
 
         # Begin Iteration
         fHG = np.zeros((nvr,nvx,nx))
-        NHG = np.zeros((nx,self.max_gen+1))
+        NHG = np.zeros((nx,self.generation_count+1))
         # while True:
         for _ in range(self.iteration_count):
 
@@ -483,8 +483,8 @@ class KineticH():
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
 
-        Beta_CX_sum = np.zeros((nvr,nvx,nx))
-        m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
+        Beta_CX_sum = torch.zeros((nvr,nvx,nx))
+        m_sums = CollisionType(torch.zeros((nvr,nvx,nx)), torch.zeros((nvr,nvx,nx)), torch.zeros((nvr,nvx,nx)))
 
         # fH_generations = False
         # if fH_iterate or self.COLLISIONS.H_P_CX: 
@@ -504,13 +504,13 @@ class KineticH():
             # Compute Beta_CX from previous generation
             Beta_CX = self._compute_beta_cx(fHG)
             # Sum charge exchange source over all generations
-            Beta_CX_sum += Beta_CX
+            Beta_CX_sum = Beta_CX_sum + Beta_CX
 
             # Elastic collision maxwellians
             m_vals = self._compute_mh_values(fHG, NHG[:,igen-1])
-            m_sums.H_H += m_vals.H_H
-            m_sums.H_P += m_vals.H_P
-            m_sums.H_H2 += m_vals.H_H2
+            m_sums.H_H = m_sums.H_H + m_vals.H_H
+            m_sums.H_P = m_sums.H_P + m_vals.H_P
+            m_sums.H_H2 = m_sums.H_H2 + m_vals.H_H2
             
             # Compute next generation molecular distribution
             OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
@@ -520,12 +520,12 @@ class KineticH():
             for k in range(nx-1, 0, -1):
                 fHG[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fHG[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
             for k in range(nx):
-                NHG[k,igen] = np.sum(self.dvr_vol*(fHG[:,:,k] @ self.dvx))
+                NHG[k,igen] = torch.sum(self.dvr_vol*(fHG[:,:,k] @ self.dvx))
 
 
             # Add result to total neutral distribution function
-            fH += fHG
-            nH += NHG[:,igen]
+            fH = fH + fHG
+            nH = nH + NHG[:,igen]
 
             # Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
             # and decide if another generation should be computed

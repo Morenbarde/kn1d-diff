@@ -103,3 +103,49 @@ sav_data = make_json_compatible(sav_data)
 sav_to_json("kn1ddiff/test/beta_cx/"+file, sav_data)
 input()
 ```
+
+
+
+### KH_Generations input/output
+```
+file = 'kh_gens_in.json'
+print("Saving to file: " + file)
+sav_data = {'fH' : fH,
+            'nH' : nH,
+            'fHG' : fHG,
+            'NHG' : NHG,
+            'A' : meq_coeffs.A,
+            'B' : meq_coeffs.B,
+            'C' : meq_coeffs.C,
+            'D' : meq_coeffs.D,
+            'CF_H_H' : collision_freqs.H_H,
+            'CF_H_P' : collision_freqs.H_P,
+            'CF_H_H2' : collision_freqs.H_H2,
+            
+            'TH2_Moment' : self.H2_Moments.TH2,
+            'VxH2_Moment' : self.H2_Moments.VxH2,
+            'fi_hat' : self.Internal.fi_hat,
+            'Alpha_CX' : self.Internal.Alpha_CX,
+            'ni' : self.Internal.ni,
+            'SIG_CX' : self.Internal.SIG_CX
+            }
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+input()
+
+file = 'kh_gens_out.json'
+print("Saving to file: " + file)
+sav_data = {'fH' : fH,
+            'nH' : nH,
+            'fHG' : fHG,
+            'NHG' : NHG,
+            'Beta_CX_sum' : Beta_CX_sum,
+            'Msum_H_H' : m_sums.H_H,
+            'Msum_H_P' : m_sums.H_P,
+            'Msum_H_H2' : m_sums.H_H2
+            }
+
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+input()
+```

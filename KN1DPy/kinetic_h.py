@@ -400,7 +400,7 @@ class KineticH():
 
         # Begin Iteration
         fHG = np.zeros((nvr,nvx,nx))
-        NHG = np.zeros((nx,self.max_gen+1))
+        NHG = np.zeros((nx,self.generation_count+1))
         # while True:
         for _ in range(self.iteration_count):
 
@@ -435,7 +435,7 @@ class KineticH():
 
             # Set total atomic neutral distribution function to first flight generation
             fH = np.copy(fHG)
-            nH = NHG[:,0]
+            nH = np.copy(NHG[:,0])
 
 
             # --- Iterative Generations ---
@@ -478,6 +478,31 @@ class KineticH():
         '''
         Iterate through and compute generations of collision
         '''
+
+        # file = 'kh_gens_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'nH' : nH,
+        #             'fHG' : fHG,
+        #             'NHG' : NHG,
+        #             'A' : meq_coeffs.A,
+        #             'B' : meq_coeffs.B,
+        #             'C' : meq_coeffs.C,
+        #             'D' : meq_coeffs.D,
+        #             'CF_H_H' : collision_freqs.H_H,
+        #             'CF_H_P' : collision_freqs.H_P,
+        #             'CF_H_H2' : collision_freqs.H_H2,
+                    
+        #             'TH2_Moment' : self.H2_Moments.TH2,
+        #             'VxH2_Moment' : self.H2_Moments.VxH2,
+        #             'fi_hat' : self.Internal.fi_hat,
+        #             'Alpha_CX' : self.Internal.Alpha_CX,
+        #             'ni' : self.Internal.ni,
+        #             'SIG_CX' : self.Internal.SIG_CX
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        # input()
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
@@ -535,6 +560,23 @@ class KineticH():
             #     # If fH 'seed' is being iterated, then do another generation until the 'generation error'
             #     # is less than 0.003 times the 'seed error' or is less than TRUNCATE
             #     break
+
+
+        # file = 'kh_gens_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'nH' : nH,
+        #             'fHG' : fHG,
+        #             'NHG' : NHG,
+        #             'Beta_CX_sum' : Beta_CX_sum,
+        #             'Msum_H_H' : m_sums.H_H,
+        #             'Msum_H_P' : m_sums.H_P,
+        #             'Msum_H_H2' : m_sums.H_H2
+        #             }
+
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        # input()
 
         return fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen
     
@@ -798,20 +840,20 @@ class KineticH():
                     Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
                     Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
 
-        file = 'beta_cx_in_out.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH,
+        # file = 'beta_cx_in_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
                     
-                    'fi_hat' : self.Internal.fi_hat,
-                    'Alpha_CX' : self.Internal.Alpha_CX,
-                    'ni' : self.Internal.ni,
-                    'SIG_CX' : self.Internal.SIG_CX,
+        #             'fi_hat' : self.Internal.fi_hat,
+        #             'Alpha_CX' : self.Internal.Alpha_CX,
+        #             'ni' : self.Internal.ni,
+        #             'SIG_CX' : self.Internal.SIG_CX,
 
-                    'Beta_CX' : Beta_CX}
+        #             'Beta_CX' : Beta_CX}
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/beta_cx/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/beta_cx/"+file, sav_data)
+        # input()
 
         return Beta_CX
     
@@ -876,20 +918,7 @@ class KineticH():
                 Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_H2 = Maxwell*nH
 
-            # file = 'mh_in_out1.json'
-            # print("Saving to file: " + file)
-            # sav_data = {'fH' : fH,
-            #             'nH' : nH,
-            #             'TH2_Moment' : self.H2_Moments.TH2,
-            #             'VxH2_Moment' : self.H2_Moments.VxH2,
-
-            #             'MH_H' : MH_H,
-            #             'MH_P' : MH_P,
-            #             'MH_H2' : MH_H2}
-
-            # sav_data = make_json_compatible(sav_data)
-            # sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
-            # input()
+            
         
         return CollisionType(MH_H, MH_P, MH_H2)
 

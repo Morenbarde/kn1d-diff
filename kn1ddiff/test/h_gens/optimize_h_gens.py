@@ -3,26 +3,34 @@ import numpy as np
 import json
 
 from kn1ddiff.kinetic_mesh import *
-from kn1ddiff.kinetic_h import KineticH
+from kn1ddiff.kinetic_h import *
 from kn1ddiff.test.utils import *
 
 
 
 dir = "kn1ddiff/test/h_gens/"
-data_file = "h_gens_in_out.json"
-num_iters = 200
-epsilon = 10e-10
+in_file = "kh_gens_in.json"
+out_file = "kh_gens_out.json"
 
-OPTIMIZE_FH = False
+# Constants
+EPSILON = 10e-10
+
+# Optimization Choices
+OPTIMIZE_FH = True
 OPTIMIZE_NH = True
+OPTIMIZE_FHG = True
+OPTIMIZE_NHG = True
+OPTIMIZE_MESH_COEF = True
+OPTIMIZE_COLLISION = True
 
 # Learning Rate Parameters
-INITIAL_LR = 2e-1
-LR_CYCLE = 100
+INITIAL_LR = 1e-1
+LR_CYCLE = 50
 MIN_LR = 1e-6
 
 # Iteration Parameters
-CLIP_NORM = 1e0
+NUM_ITERS = 200
+CLIP_NORM = 1e-1
 
 # Gif parameters
 GENERATE_GIF = True
@@ -41,68 +49,113 @@ if __name__ == "__main__":
     torch.set_default_dtype(torch.float64)
 
 
-    # --- Set up Kinetic_H ---
+    # --- Load Inputs and Outputs ---
+    with open(dir+in_file, 'r') as f:
+        in_data = json.load(f)
+    with open(dir+out_file, 'r') as f:
+        out_data = json.load(f)
+
     mesh_input = np.load(dir+"h_mesh_in.npz")
     kh_in = np.load(dir+"kinetic_h_in.npz")
 
+    # Fixed
+
+    # Gradient
+    truein_fH = torch.asarray(in_data["fH"])
+    print("fH Range: ", torch.max(truein_fH), torch.min(truein_fH))
+    truein_nH = torch.asarray(in_data["nH"])
+    print("nH Range: ", torch.max(truein_nH), torch.min(truein_nH))
+    truein_fHG = torch.asarray(in_data["fHG"])
+    print("fHG Range: ", torch.max(truein_fHG), torch.min(truein_fHG))
+    truein_NHG = torch.asarray(in_data["NHG"])
+    print("NHG Range: ", torch.max(truein_NHG), torch.min(truein_NHG))
+    truein_A = torch.asarray(in_data["A"])
+    print("A Range: ", torch.max(truein_A), torch.min(truein_A))
+    truein_B = torch.asarray(in_data["B"])
+    print("B Range: ", torch.max(truein_B), torch.min(truein_B))
+    truein_C = torch.asarray(in_data["C"])
+    print("C Range: ", torch.max(truein_C), torch.min(truein_C))
+    truein_D = torch.asarray(in_data["D"])
+    print("D Range: ", torch.max(truein_D), torch.min(truein_D))
+    truein_CF_H_H = torch.asarray(in_data["CF_H_H"])
+    print("CF_H_H Range: ", torch.max(truein_CF_H_H), torch.min(truein_CF_H_H))
+    truein_CF_H_P = torch.asarray(in_data["CF_H_P"])
+    print("CF_H_P Range: ", torch.max(truein_CF_H_P), torch.min(truein_CF_H_P))
+    truein_CF_H_H2 = torch.asarray(in_data["CF_H_H2"])
+    print("CF_H_H2 Range: ", torch.max(truein_CF_H_H2), torch.min(truein_CF_H_H2))
+    # input()
+    truein_meq_coeffs = MeshEqCoefficients(truein_A, truein_B, truein_C, truein_D, 0, 0)
+    truein_collision_freqs = CollisionType(truein_CF_H_H, truein_CF_H_P, truein_CF_H_H2)
+
+
+    # Desired Outputs
+    
+    trueout_fH = torch.asarray(out_data["fH"])
+    trueout_nH = torch.asarray(out_data["nH"])
+    trueout_fHG = torch.asarray(out_data["fHG"])
+    trueout_NHG = torch.asarray(out_data["NHG"])
+    trueout_Beta_CX_sum = torch.asarray(out_data["Beta_CX_sum"])
+    trueout_Msum_H_H = torch.asarray(out_data["Msum_H_H"])
+    trueout_Msum_H_P = torch.asarray(out_data["Msum_H_P"])
+    trueout_Msum_H_H2 = torch.asarray(out_data["Msum_H_H2"])
+
+    x = range(len(truein_NHG[:,0]))
+    generate_compare_plot(dir, "NHG_in", x, truein_NHG[:,0], x, trueout_NHG[:,0])
+
+
+    # --- Set up Kinetic_H ---
+    
     h_mesh = KineticMesh('h', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], param_type='torch')
     kinetic_h = KineticH(h_mesh, torch.from_numpy(kh_in["mu"]), torch.from_numpy(kh_in["vxiA"]), torch.from_numpy(kh_in["fHBC"]), torch.from_numpy(kh_in["GammaxHBC"]), 
                         ni_correct=True, truncate=1.0e-3, max_gen=100, 
                         compute_errors=True, debrief=True, debug=False)
 
-
-    # --- Load Inputs and Outputs ---
-    with open(dir+data_file, 'r') as f:
-        data = json.load(f)
-
-    # Fixed
-
-    # Gradient
-    true_fH = torch.asarray(data["fH"])
-    true_nH = torch.asarray(data["nH"])
-    true_TH2_mom = torch.asarray(data["TH2_Moment"])
-    true_VxH2_mom = torch.asarray(data["VxH2_Moment"])
-    print("fH Range: ", torch.max(true_fH), torch.min(true_fH))
-    # print("fH abs Range", torch.max(torch.abs(true_fH)), torch.min(torch.abs(true_fH)))
-    print("nH Range: ", torch.max(true_nH), torch.min(true_nH))
-    # print("TH2_mom Range: ", torch.max(true_TH2_mom), torch.min(true_TH2_mom))
-    # print("VxH2_mom Range: ", torch.max(true_VxH2_mom), torch.min(true_VxH2_mom))
-    # input()
-
-    # Desired Outputs
-    
-    true_mh_h = torch.asarray(data["MH_H"])
-    true_mh_p = torch.asarray(data["MH_P"])
-    true_mh_h2 = torch.asarray(data["MH_H2"])
+    # kinetic_h internal Data
+    kinetic_h.H2_Moments.TH2 = torch.asarray(in_data['TH2_Moment'])
+    kinetic_h.H2_Moments.VxH2 = torch.asarray(in_data['VxH2_Moment'])
+    kinetic_h.Internal.fi_hat = torch.asarray(in_data['fi_hat'])
+    kinetic_h.Internal.Alpha_CX = torch.asarray(in_data['Alpha_CX'])
+    kinetic_h.Internal.ni = torch.asarray(in_data['ni'])
+    kinetic_h.Internal.SIG_CX = torch.asarray(in_data['SIG_CX'])
 
 
-    # Test input Data
+    # --- Test Input Data
 
-    kinetic_h.H2_Moments.VxH2 = true_VxH2_mom
-    kinetic_h.H2_Moments.TH2 = true_TH2_mom
-    m_vals = kinetic_h._compute_mh_values(true_fH, true_nH)
-    # output1, output2 = kinetic_h._compute_mh_values(true_fH, true_nH)
-    # print(np.allclose(m_vals.H_H, true_mh_h), np.allclose(m_vals.H_P, true_mh_p), np.allclose(m_vals.H_H2, true_mh_h2))
-    # print(rel_L2_torch(m_vals.H_H, true_mh_h), rel_L2_torch(m_vals.H_P, true_mh_p), rel_L2_torch(m_vals.H_H2, true_mh_h2))
-    # input()
+    fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen = kinetic_h._run_generations(truein_fH, truein_nH, truein_fHG, truein_NHG, truein_meq_coeffs, truein_collision_freqs, True)
+    print("fH close: ", np.allclose(fH, trueout_fH))
+    print(rel_L2_torch(fH, trueout_fH))
+    print("nH close: ", np.allclose(nH, trueout_nH))
+    print(rel_L2_torch(nH, trueout_nH))
+    print("fHG close: ", np.allclose(fHG, trueout_fHG))
+    print(rel_L2_torch(fHG, trueout_fHG))
+    print("NHG close: ", np.allclose(NHG, trueout_NHG))
+    print(rel_L2_torch(NHG, trueout_NHG))
+    for i in range(len(NHG[0,:])):
+        x = range(len(NHG[:,0]))
+        generate_compare_plot(dir, "NHG"+str(i), x, NHG[:,i], x, trueout_NHG[:,i])
+    print("Beta_CX_sum close: ", np.allclose(Beta_CX_sum, trueout_Beta_CX_sum))
+    print(rel_L2_torch(Beta_CX_sum, trueout_Beta_CX_sum))
+    print("Msum_H_H close: ", np.allclose(m_sums.H_H, trueout_Msum_H_H))
+    print(rel_L2_torch(m_sums.H_H, trueout_Msum_H_H))
+    print("Msum_H_P close: ", np.allclose(m_sums.H_P, trueout_Msum_H_P))
+    print(rel_L2_torch(m_sums.H_P, trueout_Msum_H_P))
+    print("Msum_H_H2 close: ", np.allclose(m_sums.H_H2, trueout_Msum_H_H2))
+    print(rel_L2_torch(m_sums.H_H2, trueout_Msum_H_H2))
+    input()
 
 
     # --- Test Optimization ---
-    # initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True))
-    initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
-    initial_nH = torch.nn.Parameter(torch.randn_like(true_nH, requires_grad=True))
-    # initial_nH = torch.nn.Parameter(torch.zeros_like(true_nH, requires_grad=True))
-    initial_TH2_mom = torch.nn.Parameter(torch.randn_like(true_TH2_mom))
-    initial_VxH2_mom = torch.nn.Parameter(torch.randn_like(true_VxH2_mom))
-
+    initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True))
+    # initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
 
     parameters = []
     if OPTIMIZE_FH:
         parameters.append(initial_fH)
-    if OPTIMIZE_NH:
-        parameters.append(initial_nH)
 
     optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9,  0.99))
+
+
+    # --- Scheduler Options --- 
 
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     #     optimizer,
@@ -110,7 +163,7 @@ if __name__ == "__main__":
     #     patience=50,
     #     min_lr=1e-5
     # )
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_iters)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_ITERS)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
@@ -120,6 +173,8 @@ if __name__ == "__main__":
     )
 
 
+    # --- Loss Function Options --- 
+
     # loss_fun = lambda pred, true : torch.nn.functional.mse_loss(pred, true)
     # loss_fun = lambda p, t: torch.mean((p - t)**2 / (t**2 + 1e-12))
     # loss_fun = lambda pred, true : rel_L2_torch(pred, true)
@@ -127,7 +182,7 @@ if __name__ == "__main__":
     #         (torch.log(torch.abs(pred) + 1e-12)
     #     - torch.log(torch.abs(true) + 1e-12))**2
     #     )
-    # loss_fun = lambda pred, true : ((torch.log(pred + epsilon) - torch.log(true + epsilon))**2).mean()
+    # loss_fun = lambda pred, true : ((torch.log(pred + EPSILON) - torch.log(true + EPSILON))**2).mean()
 
     def symmetric_log(x):
         return torch.sign(x) * torch.log1p(torch.abs(x))
@@ -135,46 +190,45 @@ if __name__ == "__main__":
 
 
 
+
+
+
+
+
+
+
+    # --- Optimization ---
+
     # Init Gif Generator
-    fh_gifgen = GIF_Generator(num_iters, dir+"fH_Images/", "fH", true_fH[0,0,:], fps=GIF_FPS, frequency=GIF_FREQ)
-    nh_gifgen = GIF_Generator(num_iters, dir+"nH_Images/", "nH", true_nH, fps=GIF_FPS, frequency=GIF_FREQ)
+    fh_gifgen = GIF_Generator(NUM_ITERS, dir+"fH_Images/", "fH", true_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
 
     # Capture Best Epoch
     loss_list = []
     lr_list = []
     best_loss = np.inf
     best_epoch = 0
-    kinetic_h.H2_Moments.VxH2 = true_VxH2_mom
-    kinetic_h.H2_Moments.TH2 = true_TH2_mom
-    for epoch in range(num_iters):
+    for epoch in range(NUM_ITERS):
 
         if OPTIMIZE_FH:
             # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
-            fH = 1e19*torch.nn.functional.tanh(initial_fH)
-            # fH = 1e19 * torch.sigmoid(initial_fH)
+            # fH = 1e19*torch.nn.functional.tanh(initial_fH)
+            fH = 1e19 * torch.sigmoid(initial_fH)
+            # fH = initial_fH
         else:
             fH = true_fH
 
-        if OPTIMIZE_NH:
-            nH = 1e17 * torch.sigmoid(initial_nH)
-        else:
-            nH = true_nH
-
     
-        m_vals = kinetic_h._compute_mh_values(fH, nH)
+        beta_cx = kinetic_h._compute_beta_cx(fH)
 
         # Compute Loss
-        loss1 = loss_fun(m_vals.H_H, true_mh_h)
-        loss2 = loss_fun(m_vals.H_P, true_mh_p)
-        loss3 = loss_fun(m_vals.H_H2, true_mh_h2)
-        loss = loss1 + loss2 + loss3
+        loss = loss_fun(beta_cx, true_beta_cx)
 
         # Backprop
         optimizer.zero_grad()
         loss.backward()
 
         # Clip Gradient
-        torch.nn.utils.clip_grad_norm_([initial_fH, initial_nH], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_([initial_fH], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
@@ -186,8 +240,8 @@ if __name__ == "__main__":
         lr_list.append(scheduler.get_last_lr())
         if loss.item() < best_loss:
             best_loss = loss.item()
-            best_inputs = [fH.detach().cpu(), nH.detach().cpu()]
-            best_pred = [m_vals.H_H.detach().cpu(), m_vals.H_P.detach().cpu(), m_vals.H_H2.detach().cpu()]
+            best_inputs = [fH.detach().cpu()]
+            best_pred = [beta_cx.detach().cpu()]
             best_epoch = epoch
 
         print(
@@ -197,25 +251,26 @@ if __name__ == "__main__":
             f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
         )
 
-        # print("FH_2", fH[:,0,0])
+        # print("FH_2", fH[0,10,:])
         if GENERATE_GIF:
-            fh_gifgen.update(fH[0,0,:], epoch)
-            nh_gifgen.update(nH, epoch)
+            fh_gifgen.update(fH[0,10,:], epoch)
 
 
 
-    # --- Convert to numpy for analysis ---
 
-    opt_fH, opt_nH, opt_TH2, opt_VxH2 = best_inputs[0], best_inputs[1], true_TH2_mom, true_VxH2_mom
-    opt_MH_H, opt_MH_P, opt_MH_H2 = best_pred[0], best_pred[1], best_pred[2]
+
+
+
+
+
+    # --- Analysis ---
+
+    opt_fH = best_inputs[0]
+    opt_beta_cx = best_pred[0]
 
     fH_loss = loss_fun(opt_fH, true_fH).item()
-    nH_loss = loss_fun(opt_nH, true_nH).item()
-    # TH2_loss = loss_fun(opt_TH2, true_TH2_mom).item()
-    # VxH2_loss = loss_fun(opt_VxH2, true_VxH2_mom).item()
-    mh_h_loss = loss_fun(opt_MH_H, true_mh_h).item()
-    mh_p_loss = loss_fun(opt_MH_P, true_mh_p).item()
-    mh_h2_loss = loss_fun(opt_MH_H2, true_mh_h2).item()
+    
+    beta_cx_loss = loss_fun(opt_beta_cx, true_beta_cx).item()
 
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
@@ -224,43 +279,19 @@ if __name__ == "__main__":
         print("fH Loss: ", fH_loss)
         print("fH Relative L2: ", rel_L2_torch(opt_fH, true_fH))
         print()
-    if OPTIMIZE_NH:
-        print("nH Loss: ", nH_loss)
-        print("nH Relative L2: ", rel_L2_torch(opt_nH, true_nH))
-        print()
-    # print("TH2 Loss: ", TH2_loss)
-    # print("TH2 Relative L2: ", rel_L2_torch(opt_TH2, true_TH2_mom))
-    # print()
-    # print("VxH2 Loss: ", VxH2_loss)
-    # print("VxH2 Relative L2: ", rel_L2_torch(opt_VxH2, true_VxH2_mom))
-    # print()
-
-    # input()
 
 
-    print("MH_H Loss: ", mh_h_loss)
-    print("MH_H Relative L2: ", rel_L2_torch(opt_MH_H, true_mh_h))
-    print()
-    print("MH_P Loss: ", mh_p_loss)
-    print("MH_P Relative L2: ", rel_L2_torch(opt_MH_P, true_mh_p))
-    print()
-    print("MH_H2 Loss: ", mh_h2_loss)
-    print("MH_H2 Relative L2: ", rel_L2_torch(opt_MH_H2, true_mh_h2))
-    print()
-    # input()
+    print("Beta_CX Loss: ", beta_cx_loss)
+    print("Beta_CX Relative L2: ", rel_L2_torch(opt_beta_cx, true_beta_cx))
 
 
 
     print("Generating Images and Gifs")
 
-    x = range(opt_fH[0,0,:].numel())
-    generate_compare_plot(dir, "fH", x, opt_fH[0,0,:], x, true_fH[0,0,:])
-    x = range(opt_nH.numel())
-    generate_compare_plot(dir, "nH", x, opt_nH, x, true_nH)
-    # x = range(opt_TH2.size)
-    # generate_compare_plot(dir, "TH2", x, opt_TH2, x, true_TH2_mom)
-    # x = range(opt_VxH2.size)
-    # generate_compare_plot(dir, "VxH2", x, opt_VxH2, x, true_VxH2_mom)
+
+    x = range(opt_fH[0,10,:].numel())
+    for i in range(len(opt_fH[0,:,0])):
+        generate_compare_plot(dir, "fH"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
 
     generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
     generate_lr_plot(dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
@@ -268,5 +299,3 @@ if __name__ == "__main__":
     if GENERATE_GIF:
         if OPTIMIZE_FH:
             fh_gifgen.generate_gif()
-        if OPTIMIZE_NH:
-            nh_gifgen.generate_gif()

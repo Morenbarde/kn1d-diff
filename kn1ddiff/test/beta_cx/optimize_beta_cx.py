@@ -20,7 +20,7 @@ LR_CYCLE = 500
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 2000
+NUM_ITERS = 5000
 CLIP_NORM = 1e-1
 
 # Gif parameters
