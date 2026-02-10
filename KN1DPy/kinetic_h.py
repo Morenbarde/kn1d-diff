@@ -391,16 +391,13 @@ class KineticH():
         terminating when density change is low enough.
         '''
 
-        nvr, nvx, nx = self.nvr, self.nvx, self.nx
-
         #	Set iteration scheme
         fH_iterate = False
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL: 
             fH_iterate = True
 
         # Begin Iteration
-        fHG = np.zeros((nvr,nvx,nx))
-        NHG = np.zeros((nx,self.generation_count+1))
+
         # while True:
         for _ in range(self.iteration_count):
 
@@ -418,33 +415,13 @@ class KineticH():
             meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c)
 
 
-            # --- 0th Generation ---
-                            
-            # Compute first-flight (0th generation) neutral distribution function
-            self._debrief_msg('Computing atomic neutral generation#0', 0)
-
-            fHG[:,self.vx_pos,0] = fH[:,self.vx_pos,0]
-            for k in range(nx-1):
-                fHG[:,self.vx_pos,k+1] = fHG[:,self.vx_pos,k]*meq_coeffs.A[:,self.vx_pos,k] + meq_coeffs.F[:,self.vx_pos,k]
-            for k in range(nx-1,0,-1):
-                fHG[:,self.vx_neg,k-1] = fHG[:,self.vx_neg,k]*meq_coeffs.C[:,self.vx_neg,k] + meq_coeffs.G[:,self.vx_neg,k]
-                    
-            # Compute first-flight neutral density profile
-            for k in range(nx):
-                NHG[k,0] = np.sum(self.dvr_vol*(fHG[:,:,k] @ self.dvx))
-
-            # Set total atomic neutral distribution function to first flight generation
-            fH = np.copy(fHG)
-            nH = np.copy(NHG[:,0])
-
-
             # --- Iterative Generations ---
 
-            fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen = self._run_generations(fH, nH, fHG, NHG, meq_coeffs, collision_freqs, fH_iterate)
+            fH, Beta_CX_sum, m_sums = self._run_generations(fH, meq_coeffs, collision_freqs)
             self.Internal.MH_H_sum = m_sums.H_H
 
             # Compute H density profile
-            for k in range(nx):
+            for k in range(self.nx):
                 nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
 
 
@@ -459,32 +436,17 @@ class KineticH():
                 #     break
 
 
-        # --- Update Last Generation ---
-
-        # Update Beta_CX_sum using last generation
-        Beta_CX = self._compute_beta_cx(fHG)
-        Beta_CX_sum += Beta_CX
-        
-        # Update MH_*_sum using last generation
-        m_vals = self._compute_mh_values(fHG, NHG[:,igen])
-        m_sums.H_H += m_vals.H_H
-        m_sums.H_P += m_vals.H_P
-        m_sums.H_H2 += m_vals.H_H2
-
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
 
-    def _run_generations(self, fH, nH, fHG, NHG, meq_coeffs, collision_freqs, fH_iterate):
+    def _run_generations(self, fH, meq_coeffs, collision_freqs):
         '''
-        Iterate through and compute generations of collision
+        Iterate through and computes generations of collision
         '''
 
         # file = 'kh_gens_in.json'
         # print("Saving to file: " + file)
         # sav_data = {'fH' : fH,
-        #             'nH' : nH,
-        #             'fHG' : fHG,
-        #             'NHG' : NHG,
         #             'A' : meq_coeffs.A,
         #             'B' : meq_coeffs.B,
         #             'C' : meq_coeffs.C,
@@ -507,67 +469,69 @@ class KineticH():
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
 
+        fH_gen = np.zeros((nvr,nvx,nx))
+        fH_total = np.zeros((nvr,nvx,nx))
+        nH_gen = np.zeros((nx))
+
         Beta_CX_sum = np.zeros((nvr,nvx,nx))
         m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
 
-        fH_generations = False
-        if fH_iterate or self.COLLISIONS.H_P_CX: 
-            fH_generations = True
 
-        igen = 0
-        # while True:
-        for _ in range(self.generation_count):
+        for i in range(self.generation_count):
 
-            if igen >= self.max_gen or (not fH_generations):
-                self._debrief_msg('Completed '+sval(self.max_gen)+' generations. Returning present solution...', 0)
-                break
-            igen += 1
-            self._debrief_msg('Computing atomic neutral generation#'+sval(igen), 0)
+            self._debrief_msg('Computing atomic neutral generation#'+sval(i), 0)
 
+            if i == 0:
+                # --- 0th Generation ---
+                            
+                # Compute first-flight (0th generation) neutral distribution function
+                fH_gen[:,vxp,0] = fH[:,vxp,0]
+                for k in range(nx-1):
+                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,vxp,k] + meq_coeffs.F[:,vxp,k]
+                for k in range(nx-1,0,-1):
+                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,vxn,k] + meq_coeffs.G[:,vxn,k]
+
+            else:
+                # --- Iterative Generations ---
+
+                # Compute next generation molecular distribution
+                OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
+                fH_gen[:] = 0
+                for k in range(nx-1):
+                    fH_gen[:,vxp,k+1] = meq_coeffs.A[:,vxp,k]*fH_gen[:,vxp,k] + meq_coeffs.B[:,vxp,k]*(Beta_CX[:,vxp,k+1] + OmegaM[:,vxp,k+1] + Beta_CX[:,vxp,k] + OmegaM[:,vxp,k])
+                for k in range(nx-1, 0, -1):
+                    fH_gen[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fH_gen[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
+
+
+            # --- Update Distribution and Density Profile
+
+            # Add result to total neutral distribution function
+            fH_total += fH_gen
+
+            # Compute Neutral Density profile for generation
+            for k in range(nx):
+                nH_gen[k] = np.sum(self.dvr_vol*(fH_gen[:,:,k] @ self.dvx))
+
+
+            # --- Update Collisions ---
 
             # Compute Beta_CX from previous generation
-            Beta_CX = self._compute_beta_cx(fHG)
+            Beta_CX = self._compute_beta_cx(fH_gen)
             # Sum charge exchange source over all generations
             Beta_CX_sum += Beta_CX
 
             # Elastic collision maxwellians
-
-            m_vals = self._compute_mh_values(fHG, NHG[:,igen-1])
+            m_vals = self._compute_mh_values(fH_gen, nH_gen)
 
             m_sums.H_H += m_vals.H_H
             m_sums.H_P += m_vals.H_P
             m_sums.H_H2 += m_vals.H_H2
             
-            # Compute next generation molecular distribution
-            OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
-            fHG[:] = 0
-            for k in range(nx-1):
-                fHG[:,vxp,k+1] = meq_coeffs.A[:,vxp,k]*fHG[:,vxp,k] + meq_coeffs.B[:,vxp,k]*(Beta_CX[:,vxp,k+1] + OmegaM[:,vxp,k+1] + Beta_CX[:,vxp,k] + OmegaM[:,vxp,k])
-            for k in range(nx-1, 0, -1):
-                fHG[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fHG[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
-            for k in range(nx):
-                NHG[k,igen] = np.sum(self.dvr_vol*(fHG[:,:,k] @ self.dvx))
-
-
-            # Add result to total neutral distribution function
-            fH += fHG
-            nH += NHG[:,igen]
-
-            # Compute 'generation error': Delta_nHG=max(NHG(*,igen)/max(nH))
-            # and decide if another generation should be computed
-            # Delta_nHG = np.max(NHG[:,igen] / np.max(nH))
-            # if (Delta_nHG < self.truncate) or (fH_iterate and (Delta_nHG < 0.003*self.Internal.Delta_nHs)):
-            #     # If fH 'seed' is being iterated, then do another generation until the 'generation error'
-            #     # is less than 0.003 times the 'seed error' or is less than TRUNCATE
-            #     break
 
 
         # file = 'kh_gens_out.json'
         # print("Saving to file: " + file)
         # sav_data = {'fH' : fH,
-        #             'nH' : nH,
-        #             'fHG' : fHG,
-        #             'NHG' : NHG,
         #             'Beta_CX_sum' : Beta_CX_sum,
         #             'Msum_H_H' : m_sums.H_H,
         #             'Msum_H_P' : m_sums.H_P,
@@ -578,7 +542,7 @@ class KineticH():
         # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
         # input()
 
-        return fH, nH, fHG, NHG, Beta_CX_sum, m_sums, igen
+        return fH_total, Beta_CX_sum, m_sums
     
 
     def _compile_results(self, fH, nH, fSH, gamma_wall, alpha_c, Beta_CX_sum, collision_freqs, m_sums):

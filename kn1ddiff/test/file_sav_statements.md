@@ -111,9 +111,6 @@ input()
 file = 'kh_gens_in.json'
 print("Saving to file: " + file)
 sav_data = {'fH' : fH,
-            'nH' : nH,
-            'fHG' : fHG,
-            'NHG' : NHG,
             'A' : meq_coeffs.A,
             'B' : meq_coeffs.B,
             'C' : meq_coeffs.C,
@@ -136,9 +133,6 @@ input()
 file = 'kh_gens_out.json'
 print("Saving to file: " + file)
 sav_data = {'fH' : fH,
-            'nH' : nH,
-            'fHG' : fHG,
-            'NHG' : NHG,
             'Beta_CX_sum' : Beta_CX_sum,
             'Msum_H_H' : m_sums.H_H,
             'Msum_H_P' : m_sums.H_P,
