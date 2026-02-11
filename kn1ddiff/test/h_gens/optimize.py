@@ -17,8 +17,8 @@ EPSILON = 10e-10
 
 # Optimization Choices
 OPTIMIZE_FH = True
-OPTIMIZE_MESH_COEF = False
-OPTIMIZE_COLLISION = False
+OPTIMIZE_MESH_COEF = True
+OPTIMIZE_COLLISION = True
 
 # Learning Rate Parameters
 INITIAL_LR = 1e-0
@@ -26,13 +26,13 @@ LR_CYCLE = 50
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 200
+NUM_ITERS = 50
 CLIP_NORM = 1e-0
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 10
+GIF_FREQ = 5
 
 
 if __name__ == "__main__":
@@ -205,7 +205,21 @@ if __name__ == "__main__":
     # --- Optimization ---
 
     # Init Gif Generator
-    fh_gifgen = GIF_Generator(NUM_ITERS, dir+"fH_Images/", "fH", trueout_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+    if GENERATE_GIF:
+        if OPTIMIZE_FH:
+            fh_gifgen = GIF_Generator(NUM_ITERS, dir+"fH_Images/", "fH", truein_fH[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_MESH_COEF:
+            A_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "A", truein_A[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            B_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "B", truein_B[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            C_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "C", truein_C[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            D_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "D", truein_D[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            F_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "F", truein_F[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            G_gifgen = GIF_Generator(NUM_ITERS, dir+"MEQ_Images/", "G", truein_G[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_COLLISION:
+            H_H_gifgen = GIF_Generator(NUM_ITERS, dir+"Collision_Frequency_Images/", "H_H", truein_CF_H_H, fps=GIF_FPS, frequency=GIF_FREQ)
+            H_P_gifgen = GIF_Generator(NUM_ITERS, dir+"Collision_Frequency_Images/", "H_P", truein_CF_H_P, fps=GIF_FPS, frequency=GIF_FREQ)
+            H_H2_gifgen = GIF_Generator(NUM_ITERS, dir+"Collision_Frequency_Images/", "H_H2", truein_CF_H_H2, fps=GIF_FPS, frequency=GIF_FREQ)
+
 
     # Capture Best Epoch
     loss_list = []
@@ -253,9 +267,6 @@ if __name__ == "__main__":
         # --- Optimize ---
 
         # Compute Loss
-        loss1 = 0
-        loss2 = 0
-        loss3 = 0
         loss1 = loss_fun(fH, trueout_fH)
         loss2 = loss_fun(Beta_CX_sum, trueout_Beta_CX_sum)
         loss3 = loss_fun(m_sums.H_H, trueout_Msum_H_H)
@@ -281,8 +292,24 @@ if __name__ == "__main__":
         lr_list.append(scheduler.get_last_lr())
         if loss.item() < best_loss:
             best_loss = loss.item()
-            # best_inputs = [fH.detach().cpu()]
-            # best_pred = [beta_cx.detach().cpu()]
+            best_inputs = [
+                        fH.detach().cpu(),
+                        MeshEqCoefficients(
+                            mA.detach().cpu(),
+                            mB.detach().cpu(),
+                            mC.detach().cpu(),
+                            mD.detach().cpu(),
+                            mF.detach().cpu(),
+                            mG.detach().cpu()
+                            ),
+                        CollisionType(
+                            cf_hh.detach().cpu(),
+                            cf_hp.detach().cpu(),
+                            cf_hh2.detach().cpu()
+                            )
+                        ]
+            
+            best_pred = [fH.detach().cpu(), Beta_CX_sum.detach().cpu(), CollisionType(m_sums.H_H.detach().cpu(), m_sums.H_P.detach().cpu(), m_sums.H_H2.detach().cpu())]
             best_epoch = epoch
 
         print(
@@ -292,10 +319,21 @@ if __name__ == "__main__":
             f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
         )
 
-        # print("FH_2", fH[0,10,:])
+        # Update Gif data
         if GENERATE_GIF:
-            fh_gifgen.update(fH[0,10,:], epoch)
-
+            if OPTIMIZE_FH:
+                fh_gifgen.update(fH[5,10,:], epoch)
+            if OPTIMIZE_MESH_COEF:
+                A_gifgen.update(mA[5,10,:], epoch)
+                B_gifgen.update(mB[5,10,:], epoch)
+                C_gifgen.update(mC[5,10,:], epoch)
+                D_gifgen.update(mD[5,10,:], epoch)
+                F_gifgen.update(mF[5,10,:], epoch)
+                G_gifgen.update(mG[5,10,:], epoch)
+            if OPTIMIZE_COLLISION:
+                H_H_gifgen.update(cf_hh, epoch)
+                H_P_gifgen.update(cf_hp, epoch)
+                H_H2_gifgen.update(cf_hh2, epoch)
 
 
 
@@ -306,37 +344,119 @@ if __name__ == "__main__":
 
     # --- Analysis ---
 
-    opt_fH = best_inputs[0]
-    opt_beta_cx = best_pred[0]
-
-    fH_loss = loss_fun(opt_fH, true_fH).item()
-    
-    beta_cx_loss = loss_fun(opt_beta_cx, true_beta_cx).item()
+    opt_fH_in, opt_me_coeffs, opt_coll_freq = best_inputs[0], best_inputs[1], best_inputs[2]
+    opt_fH_out, opt_Beta_CX_sum, opt_m_sums = best_pred[0], best_pred[1], best_pred[2]
 
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
 
+    # Optimized Inputs Analysis
     if OPTIMIZE_FH:
-        print("fH Loss: ", fH_loss)
-        print("fH Relative L2: ", rel_L2_torch(opt_fH, true_fH))
+        fH_in_loss = loss_fun(opt_fH_in, truein_fH).item()
+        print("fH Input Loss: ", fH_in_loss)
+        print("fH Input Relative L2: ", rel_L2_torch(opt_fH_in, truein_fH))
         print()
 
+    if OPTIMIZE_MESH_COEF:
+        A_loss = loss_fun(opt_me_coeffs.A, truein_A).item()
+        B_loss = loss_fun(opt_me_coeffs.B, truein_B).item()
+        C_loss = loss_fun(opt_me_coeffs.C, truein_C).item()
+        D_loss = loss_fun(opt_me_coeffs.D, truein_D).item()
+        F_loss = loss_fun(opt_me_coeffs.F, truein_F).item()
+        G_loss = loss_fun(opt_me_coeffs.G, truein_G).item()
+        print("Mesh Coef Loss: ", A_loss, B_loss, C_loss, D_loss, F_loss, G_loss)
+        A_l2 = rel_L2_torch(opt_me_coeffs.A, truein_A).item()
+        B_l2 = rel_L2_torch(opt_me_coeffs.B, truein_B).item()
+        C_l2 = rel_L2_torch(opt_me_coeffs.C, truein_C).item()
+        D_l2 = rel_L2_torch(opt_me_coeffs.D, truein_D).item()
+        F_l2 = rel_L2_torch(opt_me_coeffs.F, truein_F).item()
+        G_l2 = rel_L2_torch(opt_me_coeffs.G, truein_G).item()
+        print("Mesh Coef Relative L2: ", A_l2, B_l2, C_l2, D_l2, F_l2, G_l2)
+        print()
 
-    print("Beta_CX Loss: ", beta_cx_loss)
-    print("Beta_CX Relative L2: ", rel_L2_torch(opt_beta_cx, true_beta_cx))
+    if OPTIMIZE_COLLISION:
+        CF_H_H_loss = rel_L2_torch(opt_coll_freq.H_H, truein_CF_H_H).item()
+        CF_H_P_loss = rel_L2_torch(opt_coll_freq.H_P, truein_CF_H_P).item()
+        CF_H_H2_loss = rel_L2_torch(opt_coll_freq.H_H2, truein_CF_H_H2).item()
+        print("Collision Loss: ", CF_H_H_loss, CF_H_P_loss, CF_H_H2_loss)
+        CF_H_H_l2 = rel_L2_torch(opt_coll_freq.H_H, truein_CF_H_H).item()
+        CF_H_P_l2 = rel_L2_torch(opt_coll_freq.H_P, truein_CF_H_P).item()
+        CF_H_H2_l2 = rel_L2_torch(opt_coll_freq.H_H2, truein_CF_H_H2).item()
+        print("Collision Loss: ", CF_H_H_loss, CF_H_P_loss, CF_H_H2_loss)
+        print()
+
+    # Outputs Analysis
+
+    #fH
+    fH_out_loss = loss_fun(opt_fH_out, trueout_fH).item()
+    print("fH Output Loss: ", fH_out_loss)
+    print("fH Output Relative L2: ", rel_L2_torch(opt_fH_out, trueout_fH))
+    print()
+
+    #beta_cx_sum
+    beta_cx_sum_loss = loss_fun(opt_Beta_CX_sum, trueout_Beta_CX_sum).item()
+    print("Beta_CX_Sum Loss: ", beta_cx_sum_loss)
+    print("Beta_CX_Sum Relative L2: ", rel_L2_torch(opt_Beta_CX_sum, trueout_Beta_CX_sum))
+    print()
+
+    #m_sums
+    msum_H_H_loss = rel_L2_torch(opt_coll_freq.H_H, trueout_Msum_H_H).item()
+    msum_H_P_loss = rel_L2_torch(opt_coll_freq.H_P, trueout_Msum_H_P).item()
+    msum_H_H2_loss = rel_L2_torch(opt_coll_freq.H_H2, trueout_Msum_H_H2).item()
+    print("M_Sum Loss: ", msum_H_H_loss, msum_H_P_loss, msum_H_H2_loss)
+    msum_H_H_l2 = rel_L2_torch(opt_coll_freq.H_H, trueout_Msum_H_H).item()
+    msum_H_P_l2 = rel_L2_torch(opt_coll_freq.H_P, trueout_Msum_H_P).item()
+    msum_H_H2_l2 = rel_L2_torch(opt_coll_freq.H_H2, trueout_Msum_H_H2).item()
+    print("M_Sum Relative L2: ", msum_H_H_loss, msum_H_P_loss, msum_H_H2_loss)
+    print()
 
 
+    # --- Plot Generation --- 
 
     print("Generating Images and Gifs")
 
-
-    x = range(opt_fH[0,10,:].numel())
-    for i in range(len(opt_fH[0,:,0])):
-        generate_compare_plot(dir, "fH"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
-
+    # Runtime Data
     generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
     generate_lr_plot(dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
+
+    # fH
+    x = range(opt_fH_in[5,10,:].numel())
+    for i in range(len(opt_fH_in[5,:,0])):
+        generate_compare_plot(dir+"FH_Results/", "fH"+str(i), x, opt_fH_in[5,i,:], x, truein_fH[5,i,:])
+
+    # MEQ Coeffs
+    x = range(opt_me_coeffs.A[5,10,:].numel())
+    for i in range(len(opt_me_coeffs.A[5,:,0])):
+        generate_compare_plot(dir+"MEQ_Results/", "A"+str(i), x, opt_me_coeffs.A[5,i,:], x, truein_A[5,i,:])
+        generate_compare_plot(dir+"MEQ_Results/", "B"+str(i), x, opt_me_coeffs.B[5,i,:], x, truein_B[5,i,:])
+        generate_compare_plot(dir+"MEQ_Results/", "C"+str(i), x, opt_me_coeffs.C[5,i,:], x, truein_C[5,i,:])
+        generate_compare_plot(dir+"MEQ_Results/", "D"+str(i), x, opt_me_coeffs.D[5,i,:], x, truein_D[5,i,:])
+        generate_compare_plot(dir+"MEQ_Results/", "E"+str(i), x, opt_me_coeffs.F[5,i,:], x, truein_F[5,i,:])
+        generate_compare_plot(dir+"MEQ_Results/", "F"+str(i), x, opt_me_coeffs.G[5,i,:], x, truein_G[5,i,:])
+
+    # Collision Frequencies
+    x = range(opt_coll_freq.H_H.numel())
+    for i in range(opt_coll_freq.H_H.numel()):
+        generate_compare_plot(dir+"Collision_Frequency_Results/", "H_H"+str(i), x, opt_coll_freq.H_H, x, truein_CF_H_H)
+        generate_compare_plot(dir+"Collision_Frequency_Results/", "H_P"+str(i), x, opt_coll_freq.H_P, x, truein_CF_H_P)
+        generate_compare_plot(dir+"Collision_Frequency_Results/", "H_H2"+str(i), x, opt_coll_freq.H_H2, x, truein_CF_H_H2)
+
+    # --- Gif Generation ---
+    if GENERATE_GIF:
+        if OPTIMIZE_FH:
+            fh_gifgen.generate_gif()
 
     if GENERATE_GIF:
         if OPTIMIZE_FH:
             fh_gifgen.generate_gif()
+        if OPTIMIZE_MESH_COEF:
+            A_gifgen.generate_gif()
+            B_gifgen.generate_gif()
+            C_gifgen.generate_gif()
+            D_gifgen.generate_gif()
+            F_gifgen.generate_gif()
+            G_gifgen.generate_gif()
+        if OPTIMIZE_COLLISION:
+            H_H_gifgen.generate_gif()
+            H_P_gifgen.generate_gif()
+            H_H2_gifgen.generate_gif()
