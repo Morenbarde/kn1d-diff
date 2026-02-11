@@ -421,9 +421,9 @@ class KineticH():
             self.Internal.MH_H_sum = m_sums.H_H
 
             # Compute H density profile
-            for k in range(self.nx):
-                nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
-
+            # for k in range(self.nx):
+            #     nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
+            nH = np.einsum('i,ijk,j->k', self.dvr_vol, fH, self.dvx)
 
             # --- End Iteration ---
 
@@ -451,6 +451,8 @@ class KineticH():
         #             'B' : meq_coeffs.B,
         #             'C' : meq_coeffs.C,
         #             'D' : meq_coeffs.D,
+        #             'F' : meq_coeffs.F,
+        #             'G' : meq_coeffs.G,
         #             'CF_H_H' : collision_freqs.H_H,
         #             'CF_H_P' : collision_freqs.H_P,
         #             'CF_H_H2' : collision_freqs.H_H2,
@@ -509,8 +511,9 @@ class KineticH():
             fH_total += fH_gen
 
             # Compute Neutral Density profile for generation
-            for k in range(nx):
-                nH_gen[k] = np.sum(self.dvr_vol*(fH_gen[:,:,k] @ self.dvx))
+            # for k in range(nx):
+            #     nH_gen[k] = np.sum(self.dvr_vol*(fH_gen[:,:,k] @ self.dvx))
+            nH_gen = np.einsum('i,ijk,j->k', self.dvr_vol, fH_gen, self.dvx)
 
 
             # --- Update Collisions ---
@@ -531,7 +534,7 @@ class KineticH():
 
         # file = 'kh_gens_out.json'
         # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH,
+        # sav_data = {'fH' : fH_total,
         #             'Beta_CX_sum' : Beta_CX_sum,
         #             'Msum_H_H' : m_sums.H_H,
         #             'Msum_H_P' : m_sums.H_P,
