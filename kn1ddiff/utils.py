@@ -6,6 +6,7 @@ import os
 
 from numpy.typing import NDArray
 import numpy as np
+import torch
 from scipy import interpolate
 from scipy.io import readsav
 import netCDF4 as nc
@@ -57,6 +58,9 @@ def torch_reshape_fortran(x, shape):
     if len(x.shape) > 0:
         x = x.permute(*reversed(range(len(x.shape))))
     return x.reshape(*reversed(shape)).permute(*reversed(range(len(shape))))
+
+def numpy_to_torch(np_arr, device, dtype):
+    return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
 
 
 

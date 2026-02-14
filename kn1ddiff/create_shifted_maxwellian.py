@@ -3,6 +3,7 @@ import torch
 
 from .make_dvr_dvx import VSpace_Differentials
 from .common import constants as CONST
+from .utils import numpy_to_torch
 
 def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energy, nb = 1, assume_pos = True):
     '''
@@ -40,21 +41,29 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
     
     #NOTE Get nb name checked
 
+    # Infer input data parameters
+    dtype = vth.dtype
+    device = vth.device
+
     nvr = vr.numel()
     nvx = vx.numel()
 
 
     #Differential Values torch conversion, replace later with make_dvr_dvx conversion
-    dvr_vol = torch.from_numpy(vdiff.dvr_vol)
-    dvx = torch.from_numpy(vdiff.dvx)
-    vmag_squared = torch.from_numpy(vdiff.vmag_squared)
-    volume = torch.from_numpy(vdiff.volume)
+    # dvr_vol = numpy_to_torch(vdiff.dvr_vol, device, dtype)
+    # dvx = numpy_to_torch(vdiff.dvx, device, dtype)
+    # vmag_squared = numpy_to_torch(vdiff.vmag_squared, device, dtype)
+    # volume = numpy_to_torch(vdiff.volume, device, dtype)
+    dvr_vol = vdiff.dvr_vol
+    dvx = vdiff.dvx
+    vmag_squared = vdiff.vmag_squared
+    volume = vdiff.volume
 
 
     # vth_diffs = np.zeros((vr.size, vx.size, 2), float)
-    vth_diffs = torch.zeros((nvr, nvx, 2))
+    vth_diffs = torch.zeros((nvr, nvx, 2), dtype=dtype, device=device)
     # vrvx_diffs = np.zeros((vr.size, vx.size, 2), float)
-    vrvx_diffs = torch.zeros((nvr, nvx, 2))
+    vrvx_diffs = torch.zeros((nvr, nvx, 2), dtype=dtype, device=device)
 
     # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
     # vx_moment = vth*np.sum(dvr_vol*np.matmul(f_slice, (vx*dvx))) / nb
@@ -64,7 +73,7 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
     # Compute weighted function from distribution, padded with zeros
     # weighted_dist = np.zeros((vr.size+2, vx.size+2), dtype=np.float64) #NOTE Check with someone if this name is accurate
-    weighted_dist = torch.zeros((nvr+2, nvx+2)) #NOTE Check with someone if this name is accurate
+    weighted_dist = torch.zeros((nvr+2, nvx+2), dtype=dtype, device=device) #NOTE Check with someone if this name is accurate
 
     #Shorthand slices for center of padded distribution
     vr_center = slice(1, nvr+1)
@@ -87,9 +96,12 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
             allow_neg = True
     '''
 
-    vx_dist = weighted_dist*torch.from_numpy(vdiff.vx_dvx)
-    vr_dist = weighted_dist*torch.from_numpy(vdiff.vr_dvr)
-    vth_dist = weighted_dist*torch.from_numpy(vdiff.vth_dvx)
+    # vx_dist = weighted_dist*numpy_to_torch(vdiff.vx_dvx, device, dtype)
+    # vr_dist = weighted_dist*numpy_to_torch(vdiff.vr_dvr, device, dtype)
+    # vth_dist = weighted_dist*numpy_to_torch(vdiff.vth_dvx, device, dtype)
+    vx_dist = weighted_dist*vdiff.vx_dvx
+    vr_dist = weighted_dist*vdiff.vr_dvr
+    vth_dist = weighted_dist*vdiff.vth_dvx
 
     # Compute Ap, Am, Bp, and Bm (0=p 1=m)
 
@@ -136,8 +148,8 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
     # Cycle through 4 possibilies of sign(a_Max),sign(b_Max)
     # TB1 = np.zeros(2, float)
     # TB2 = np.zeros(2, float)
-    TB1 = torch.zeros(2)
-    TB2 = torch.zeros(2)
+    TB1 = torch.zeros(2, dtype=dtype, device=device)
+    TB2 = torch.zeros(2, dtype=dtype, device=device)
     sign = [1,-1]
     
     for ia in range(2):
@@ -243,16 +255,18 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
         scheme is employed - similar to that used in Interp_fVrVxX. See compensate_distribution()
     '''
 
+    # Infer input data parameters
     dtype = Tmaxwell.dtype
     device = Tmaxwell.device
 
     # maxwell = np.zeros((vr.size, vx.size, vx_shift.size), float)
-    vth = np.sqrt(2*CONST.Q*Tnorm / (mu*CONST.H_MASS)) #Thermal Velocity
+    vth = torch.sqrt(2*CONST.Q*Tnorm / (mu*CONST.H_MASS)) #Thermal Velocity
 
     #--- Generate Velocity Differentials ---
-    vdiff = VSpace_Differentials(vr.cpu().numpy(), vx.cpu().numpy())
-    dvx = torch.from_numpy(vdiff.dvx)
-    dvr_vol = torch.from_numpy(vdiff.dvr_vol)
+    # vdiff = VSpace_Differentials(vr.cpu().numpy(), vx.cpu().numpy())
+    vdiff = VSpace_Differentials(vr, vx)
+    dvx = vdiff.dvx #numpy_to_torch(vdiff.dvx, device, dtype)
+    dvr_vol = vdiff.dvr_vol #numpy_to_torch(vdiff.dvr_vol, device, dtype)
 
 
     nvr = vr.numel()

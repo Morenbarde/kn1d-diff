@@ -68,6 +68,13 @@ def rel_L2_torch(pred, act, eps=1e-12):
 
     return num / (den + eps)
 
+# Torch converter
+def numpy_to_torch(np_arr, device, dtype):
+    return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
+
+def torch_to_numpy(torch_tensor):
+    return torch_tensor.cpu().detach().numpy()
+
 
 
 def check_and_generate_dir(dir_path):

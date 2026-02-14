@@ -15,11 +15,9 @@ in_data = np.load(dir+in_data_file)
 out_data = np.load(dir+out_data_file)
 
 
-mesh1 = KineticMesh(mesh_type, in_data["mu"], in_data["x"], in_data["Ti"], in_data["Te"], in_data["n"], in_data["PipeDia"], E0=in_data["E0"], fctr=in_data["fctr"])
-mesh2 = KineticMesh(mesh_type, in_data["mu"], in_data["x"], in_data["Ti"], in_data["Te"], in_data["n"], in_data["PipeDia"], E0=in_data["E0"], fctr=in_data["fctr"], param_type='torch')
+mesh = KineticMesh(mesh_type, in_data["mu"], in_data["x"], in_data["Ti"], in_data["Te"], in_data["n"], in_data["PipeDia"], E0=in_data["E0"], fctr=in_data["fctr"], param_type='torch')
 
 for key, value in out_data.items():
     print("Checking "+key)
-    print("Numpy is close:", np.allclose(value, getattr(mesh1, key)))
-    print("Torch is close:", np.allclose(value, getattr(mesh2, key).numpy()))
+    print("Torch is close:", torch.allclose(value, getattr(mesh, key).cpu()))
 

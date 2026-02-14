@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
+import torch
 
 ''' 
 Authors: Julio Balbin, Carlo Becerra
@@ -35,7 +36,7 @@ class VSpace_Differentials:
             Indices for positive and negative axial velocities.
     '''
     
-    def __init__(self, vr : NDArray, vx : NDArray):
+    def __init__(self, vr : torch.Tensor, vx : torch.Tensor):
 
         '''
         Parameters
@@ -46,12 +47,24 @@ class VSpace_Differentials:
                 Array of axial velocities.
         '''
 
-        # --- Calculations for r-dimension ---
-        vr_extend = np.append(vr, 2*vr[-1] - vr[-2])
-        vr_mid = np.concatenate(([0.0], 0.5*(vr_extend + np.roll(vr_extend, -1)))) #midpoints between each value in vr
+        dtype = vr.dtype
+        device = vr.device
 
-        self.vr_right_bound = vr_mid[1:vr.size+1]
-        self.vr_left_bound = np.copy(vr_mid[0:vr.size])
+        nvr = vr.numel()
+        nvx = vx.numel()
+
+        # --- Calculations for r-dimension ---
+        # vr_extend = np.append(vr, 2*vr[-1] - vr[-2])
+        vr_extend = torch.cat([vr, (2*vr[-1] - vr[-2]).unsqueeze(0)])
+        # vr_mid = np.concatenate(([0.0], 0.5*(vr_extend + np.roll(vr_extend, -1)))) #midpoints between each value in vr
+        vr_mid = torch.cat([
+                torch.zeros(1, dtype=dtype, device=device), 
+                 0.5*(vr_extend + torch.roll(vr_extend, -1))
+        ]) #midpoints between each value in vr
+
+        self.vr_right_bound = vr_mid[1:nvr+1]
+        # self.vr_left_bound = np.copy(vr_mid[0:nvr])
+        self.vr_left_bound = torch.clone(vr_mid[0:nvr])
         self.dvr = self.vr_right_bound - self.vr_left_bound
 
         self.dvr_vol = np.pi * (self.vr_right_bound**2 - self.vr_left_bound**2)
@@ -59,36 +72,43 @@ class VSpace_Differentials:
 
 
         # --- Calculations for x-dimension ---
-        vx_extend = np.concatenate(([2*vx[0] - vx[1]], vx, [2*vx[-1] - vx[-2]]))
+        # vx_extend = np.concatenate(([2*vx[0] - vx[1]], vx, [2*vx[-1] - vx[-2]]))
+        vx_extend = torch.concatenate([
+            (2*vx[0] - vx[1]).unsqueeze(0), 
+            vx, 
+            (2*vx[-1] - vx[-2]).unsqueeze(0)
+        ])
 
-        self.vx_right_bound = 0.5*(np.roll(vx_extend, -1) + vx_extend)[1:vx.size+1]
-        self.vx_left_bound =  0.5*(np.roll(vx_extend,  1) + vx_extend)[1:vx.size+1]
+        self.vx_right_bound = 0.5*(torch.roll(vx_extend, -1) + vx_extend)[1:nvx+1]
+        self.vx_left_bound =  0.5*(torch.roll(vx_extend,  1) + vx_extend)[1:nvx+1]
         self.dvx = self.vx_right_bound - self.vx_left_bound
 
 
         # --- volume calculation ---
-        self.volume = self.dvr_vol[:, np.newaxis] * self.dvx
+        self.volume = self.dvr_vol[:, None] * self.dvx
 
 
         # --- compute velocites over differentials ---
-        self.vth_dvx = np.zeros((vr.size+2,vx.size+2))
-        self.vx_dvx  = np.zeros((vr.size+2,vx.size+2))
-        self.vr_dvr  = np.zeros((vr.size+2,vx.size+2))
-        self.vth_dvx[1:vr.size+1, 1:vx.size+1] = 1.0 / self.dvx
-        self.vx_dvx[ 1:vr.size+1, 1:vx.size+1] = vx  / self.dvx
-        self.vr_dvr[ 1:vr.size+1, 1:vx.size+1] = vr[:, np.newaxis] / self.dvr[:, np.newaxis]
+        self.vth_dvx = torch.zeros((nvr+2,nvx+2), dtype=dtype, device=device)
+        self.vx_dvx  = torch.zeros((nvr+2,nvx+2), dtype=dtype, device=device)
+        self.vr_dvr  = torch.zeros((nvr+2,nvx+2), dtype=dtype, device=device)
+        self.vth_dvx[1:nvr+1, 1:nvx+1] = 1.0 / self.dvx
+        self.vx_dvx[ 1:nvr+1, 1:nvx+1] = vx  / self.dvx
+        self.vr_dvr[ 1:nvr+1, 1:nvx+1] = vr[:, None] / self.dvr[:, None]
 
 
         # --- Compute velocity magnitude squared ---
-        self.vmag_squared = vr[:, np.newaxis]**2 + vx**2 
+        self.vmag_squared = vr[:, None]**2 + vx**2 
 
 
         # --- Get positive and negaitve indices from vx
-        pos_vx_indices = np.where(vx>0)[0]
+        # pos_vx_indices = np.where(vx>0)[0]
+        pos_vx_indices = torch.where(vx > 0)[0]
         self.vx_pos_start = int(pos_vx_indices[0])  # First Positive Index
         self.vx_pos_end = int(pos_vx_indices[-1]) # Last Positive Index
  
-        neg_vx_indices = np.where(vx<0)[0]
+        # neg_vx_indices = np.where(vx<0)[0]
+        neg_vx_indices = torch.where(vx<0)[0]
         self.vx_neg_start = int(neg_vx_indices[0])  # First Negative Index
         self.vx_neg_end = int(neg_vx_indices[-1]) # Last Negative Index
 

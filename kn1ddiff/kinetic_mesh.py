@@ -54,8 +54,7 @@ class KineticMesh:
             PipeDia     : NDArray,
             jh          : Johnson_Hinnov = None,
             E0          : NDArray = np.array([0.0]), 
-            fctr        : float   = 1.0,
-            param_type  : str = 'np'):
+            fctr        : float   = 1.0):
 
         print("generating kinetic_" + mesh_type + "_mesh")
 
@@ -168,25 +167,14 @@ class KineticMesh:
 
 
         self.mesh_type : str = mesh_type
-        self.param_type : str = param_type
 
-        if param_type == 'np':
-            self.x : NDArray = xH
-            self.Ti : NDArray = TiH
-            self.Te : NDArray = TeH
-            self.ne : NDArray = neH
-            self.PipeDia : NDArray = PipeDiaH
-            self.vx : NDArray = vx
-            self.vr : NDArray = vr
-
-        elif param_type == 'torch':
-            self.x : torch.Tensor = torch.from_numpy(xH)
-            self.Ti : torch.Tensor = torch.from_numpy(TiH)
-            self.Te : torch.Tensor = torch.from_numpy(TeH)
-            self.ne : torch.Tensor = torch.from_numpy(neH)
-            self.PipeDia : torch.Tensor = torch.from_numpy(PipeDiaH)
-            self.vx : torch.Tensor = torch.from_numpy(vx)
-            self.vr : torch.Tensor = torch.from_numpy(vr)
+        self.x : torch.Tensor = torch.from_numpy(xH)
+        self.Ti : torch.Tensor = torch.from_numpy(TiH)
+        self.Te : torch.Tensor = torch.from_numpy(TeH)
+        self.ne : torch.Tensor = torch.from_numpy(neH)
+        self.PipeDia : torch.Tensor = torch.from_numpy(PipeDiaH)
+        self.vx : torch.Tensor = torch.from_numpy(vx)
+        self.vr : torch.Tensor = torch.from_numpy(vr)
 
         self.Tnorm : float = Tnorm
 

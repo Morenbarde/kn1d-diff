@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import json
+import time
+from datetime import timedelta
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import KineticH
@@ -14,9 +16,9 @@ generate_gif = True
 num_iters = 200
 epsilon = 10e-10
 
-OPTIMIZE_FH = True
-OPTIMIZE_NH = False
-INITIAL_LR = 2e-4
+OPTIMIZE_FH = False
+OPTIMIZE_NH = True
+INITIAL_LR = 2e-1
 LR_CYCLE = 50
 MIN_LR = 1e-6
 CLIP_NORM = 1e0
@@ -141,7 +143,12 @@ if __name__ == "__main__":
     best_epoch = 0
     kinetic_h.H2_Moments.VxH2 = true_VxH2_mom
     kinetic_h.H2_Moments.TH2 = true_TH2_mom
+
+    optim_start = time.time()
+
     for epoch in range(num_iters):
+
+        epoch_start = time.time()
 
         if OPTIMIZE_FH:
             # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
@@ -185,8 +192,11 @@ if __name__ == "__main__":
             best_pred = [m_vals.H_H.detach().cpu(), m_vals.H_P.detach().cpu(), m_vals.H_H2.detach().cpu()]
             best_epoch = epoch
 
+        epoch_runtime = time.time() - epoch_start
+
         print(
             f"epoch: {epoch:<5} | "
+            f"runtime: {epoch_runtime:<8.2} | "
             f"loss: {loss.item():<10.6e} | "
             # f"learning rate: {optimizer.param_groups[0]['lr']:.2e}"
             f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
@@ -197,6 +207,8 @@ if __name__ == "__main__":
             fh_gifgen.update(fH[0,0,:], epoch)
             nh_gifgen.update(nH, epoch)
 
+    optimization_runtime = time.time() - optim_start
+    print(f"Total Optimization Time: {timedelta(seconds=round(optimization_runtime))}")
 
 
     # --- Convert to numpy for analysis ---
