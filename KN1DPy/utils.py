@@ -34,6 +34,8 @@ def make_json_compatible(data: dict):
     for key, value in data.items():
         if isinstance(value, np.ndarray):
             data[key] = value.tolist()
+        if isinstance(value, np.float32) or isinstance(value, np.float64):
+            data[key] = float(value)
     return data
 
 def sav_to_json(filename, data):

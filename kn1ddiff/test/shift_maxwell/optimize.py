@@ -25,7 +25,6 @@ if __name__ == "__main__":
     print("device: ", device)
     # if use_cuda:
     #     torch.cuda.manual_seed(72)
-    device = 'cpu'
 
     # torch.set_default_dtype(torch.float64)
     

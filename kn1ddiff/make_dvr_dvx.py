@@ -104,13 +104,13 @@ class VSpace_Differentials:
         # --- Get positive and negaitve indices from vx
         # pos_vx_indices = np.where(vx>0)[0]
         pos_vx_indices = torch.where(vx > 0)[0]
-        self.vx_pos_start = int(pos_vx_indices[0])  # First Positive Index
-        self.vx_pos_end = int(pos_vx_indices[-1]) # Last Positive Index
+        self.vx_pos_start = pos_vx_indices[0]  # First Positive Index
+        self.vx_pos_end = pos_vx_indices[-1] # Last Positive Index
  
         # neg_vx_indices = np.where(vx<0)[0]
         neg_vx_indices = torch.where(vx<0)[0]
-        self.vx_neg_start = int(neg_vx_indices[0])  # First Negative Index
-        self.vx_neg_end = int(neg_vx_indices[-1]) # Last Negative Index
+        self.vx_neg_start = neg_vx_indices[0] # First Negative Index
+        self.vx_neg_end = neg_vx_indices[-1] # Last Negative Index
 
     
     #Setup string conversion for printing

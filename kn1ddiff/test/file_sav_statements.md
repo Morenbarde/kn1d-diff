@@ -1,11 +1,37 @@
 This file saves various statement used to caputur inputs/outputs/parameters from various kn1d functions
 
 
-### Kinetic_H_Mesh inputs
+### KineticMesh inputs
 ```
-file = 'h_mesh_in.npz'
+file = mesh_type+'_mesh_in.json'
 print("Saving to file: " + file)
-np.savez("kn1ddiff/test/mh_values/"+file, mu=mu, x=x, Ti=Ti, Te=Te, n=n, PipeDia=PipeDia, E0=E0, fctr=fctr)
+sav_data = {"mu" : mu,
+            "x"  : x,
+            "Ti" : Ti,
+            "Te" : Te,
+            "n"  : n,
+            "PipeDia" : PipeDia, 
+            "E0" : E0,
+            "fctr" : fctr}
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/mesh_torch/"+file, sav_data)
+input()
+```
+
+### KineticMesh outputs
+```
+file = mesh_type+'_mesh_out.json'
+print("Saving to file: " + file)
+sav_data = {"x"  : self.x,
+            "Ti" : self.Ti,
+            "Te" : self.Te,
+            "n"  : self.ne,
+            "PipeDia" : self.PipeDia, 
+            "vx" : self.vx,
+            "vr" : self.vr,
+            "Tnorm" : self.Tnorm}
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/mesh_torch/"+file, sav_data)
 input()
 ```
 

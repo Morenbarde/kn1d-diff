@@ -54,7 +54,9 @@ class KineticMesh:
             PipeDia     : NDArray,
             jh          : Johnson_Hinnov = None,
             E0          : NDArray = np.array([0.0]), 
-            fctr        : float   = 1.0):
+            fctr        : float   = 1.0,
+            device      : str = 'cpu',
+            dtype       : torch.dtype = torch.float64):
 
         print("generating kinetic_" + mesh_type + "_mesh")
 
@@ -168,15 +170,15 @@ class KineticMesh:
 
         self.mesh_type : str = mesh_type
 
-        self.x : torch.Tensor = torch.from_numpy(xH)
-        self.Ti : torch.Tensor = torch.from_numpy(TiH)
-        self.Te : torch.Tensor = torch.from_numpy(TeH)
-        self.ne : torch.Tensor = torch.from_numpy(neH)
-        self.PipeDia : torch.Tensor = torch.from_numpy(PipeDiaH)
-        self.vx : torch.Tensor = torch.from_numpy(vx)
-        self.vr : torch.Tensor = torch.from_numpy(vr)
+        self.x : torch.Tensor = torch.from_numpy(xH).to(dtype=dtype, device=device)
+        self.Ti : torch.Tensor = torch.from_numpy(TiH).to(dtype=dtype, device=device)
+        self.Te : torch.Tensor = torch.from_numpy(TeH).to(dtype=dtype, device=device)
+        self.ne : torch.Tensor = torch.from_numpy(neH).to(dtype=dtype, device=device)
+        self.PipeDia : torch.Tensor = torch.from_numpy(PipeDiaH).to(dtype=dtype, device=device)
+        self.vx : torch.Tensor = torch.from_numpy(vx).to(dtype=dtype, device=device)
+        self.vr : torch.Tensor = torch.from_numpy(vr).to(dtype=dtype, device=device)
 
-        self.Tnorm : float = Tnorm
+        self.Tnorm : float = torch.tensor(Tnorm, dtype=dtype, device=device)
 
 
     def create_vr_vx_mesh(self, nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :

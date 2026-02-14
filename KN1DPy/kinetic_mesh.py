@@ -1,7 +1,7 @@
 import numpy as np 
 from numpy.typing import NDArray
 
-from .utils import get_config, interp_1d, reverse
+from .utils import get_config, interp_1d, reverse, sav_to_json, make_json_compatible
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
@@ -55,10 +55,19 @@ class KineticMesh:
             E0          : NDArray = np.array([0.0]), 
             fctr        : float   = 1.0):
         
-        # file = mesh_type+'_mesh_in.npz'
-        # print("Saving to file: " + file)
-        # np.savez("kn1ddiff/test/mh_values/"+file, mu=mu, x=x, Ti=Ti, Te=Te, n=n, PipeDia=PipeDia, E0=E0, fctr=fctr)
-        # input()
+        file = mesh_type+'_mesh_in.json'
+        print("Saving to file: " + file)
+        sav_data = {"mu" : mu,
+                    "x"  : x,
+                    "Ti" : Ti,
+                    "Te" : Te,
+                    "n"  : n,
+                    "PipeDia" : PipeDia, 
+                    "E0" : E0,
+                    "fctr" : fctr}
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/mesh_torch/"+file, sav_data)
+        input()
 
         print("generating kinetic_" + mesh_type + "_mesh")
 
@@ -179,6 +188,20 @@ class KineticMesh:
         self.vx : NDArray = vx
         self.vr : NDArray = vr
         self.Tnorm : float = Tnorm
+
+        file = mesh_type+'_mesh_out.json'
+        print("Saving to file: " + file)
+        sav_data = {"x"  : self.x,
+                    "Ti" : self.Ti,
+                    "Te" : self.Te,
+                    "ne"  : self.ne,
+                    "PipeDia" : self.PipeDia, 
+                    "vx" : self.vx,
+                    "vr" : self.vr,
+                    "Tnorm" : self.Tnorm}
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/mesh_torch/"+file, sav_data)
+        input()
 
 
     def create_vr_vx_mesh(self, nv: int, Ti: NDArray, E0: NDArray = np.array([0.0]), Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :

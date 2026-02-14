@@ -62,6 +62,9 @@ def torch_reshape_fortran(x, shape):
 def numpy_to_torch(np_arr, device, dtype):
     return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
 
+def torch_to_numpy(torch_tensor):
+    return torch_tensor.cpu().detach().numpy()
+
 
 
 # --- Bounding  ---
