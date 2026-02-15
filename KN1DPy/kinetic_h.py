@@ -799,14 +799,23 @@ class KineticH():
 
             if self.COLLISIONS.SIMPLE_CX:
                 # Option (B): Compute charge exchange source with assumption that CX source neutrals have ion distribution function
-                for k in range(self.nx):
-                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+                # for k in range(self.nx):
+                #     Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*np.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+
+                work = np.tensordot(self.Internal.Alpha_CX*fH, self.dvx, axes=(1, 0))
+                work_sum = np.sum((self.dvr_vol[:,None]*work), axis=0)
+                Beta_CX = self.Internal.fi_hat*work_sum
+
             else:
                 # Option (A): Compute charge exchange source using fH and vr x sigma x v_v at each velocity mesh point
-                for k in range(self.nx):
-                    Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
-                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
+                # for k in range(self.nx):
+                #     Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
+                #     Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
 
+                Work = fH.reshape((self.nvr*self.nvx, self.nx), order='F')
+                sig_work = (self.Internal.SIG_CX @ Work).reshape((self.nvr, self.nvx, self.nx), order='F')
+                Beta_CX = self.Internal.ni[None, None, :] * self.Internal.fi_hat * sig_work
+       
         # file = 'beta_cx_in_out.json'
         # print("Saving to file: " + file)
         # sav_data = {'fH' : fH,

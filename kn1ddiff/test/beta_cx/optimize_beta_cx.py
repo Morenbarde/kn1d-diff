@@ -26,13 +26,13 @@ LR_CYCLE = 250
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 1000
+NUM_ITERS = 5000
 CLIP_NORM = 1e-1
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 25
+GIF_FREQ = 250
 
 
 if __name__ == "__main__":
@@ -87,10 +87,10 @@ if __name__ == "__main__":
 
     # --- Test Input Data ---
 
-    # beta_cx = kinetic_h._compute_beta_cx(true_fH)
-    # print(torch.allclose(beta_cx, true_beta_cx))
-    # print(rel_L2_torch(beta_cx, true_beta_cx))
-    # input()
+    beta_cx = kinetic_h._compute_beta_cx(true_fH)
+    print(torch.allclose(beta_cx, true_beta_cx))
+    print(rel_L2_torch(beta_cx, true_beta_cx))
+    input()
 
 
     # --- Test Optimization ---

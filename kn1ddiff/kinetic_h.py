@@ -767,14 +767,23 @@ class KineticH():
 
             if self.COLLISIONS.SIMPLE_CX:
                 # Option (B): Compute charge exchange source with assumption that CX source neutrals have ion distribution function
-                for k in range(self.nx):
-                    Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*torch.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+                # for k in range(self.nx):
+                #     Beta_CX[:,:,k] = self.Internal.fi_hat[:,:,k]*torch.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH[:,:,k]) @ self.dvx))
+
+                work = torch.tensordot(self.Internal.Alpha_CX*fH, self.dvx, dims=([1], [0]))
+                work_sum = torch.sum((self.dvr_vol[:,None]*work), dim=0)
+                Beta_CX = self.Internal.fi_hat*work_sum
+                
             else:
                 # Option (A): Compute charge exchange source using fH and vr x sigma x v_v at each velocity mesh point
-                for k in range(self.nx):
-                    Work = torch_reshape_fortran(fH[:,:,k], (self.nvr*self.nvx))
-                    sig_work = torch_reshape_fortran((self.Internal.SIG_CX @ Work), (self.nvr,self.nvx))
-                    Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*sig_work
+                # for k in range(self.nx):
+                    # Work = torch_reshape_fortran(fH[:,:,k], (self.nvr*self.nvx))
+                    # sig_work = torch_reshape_fortran((self.Internal.SIG_CX @ Work), (self.nvr,self.nvx))
+                    # Beta_CX[:,:,k] = self.Internal.ni[k]*self.Internal.fi_hat[:,:,k]*sig_work
+
+                Work = torch_reshape_fortran(fH, (self.nvr*self.nvx, self.nx))
+                sig_work = torch_reshape_fortran(self.Internal.SIG_CX @ Work, (self.nvr, self.nvx, self.nx))
+                Beta_CX = self.Internal.ni[None, None, :] * self.Internal.fi_hat * sig_work
 
         return Beta_CX
     
