@@ -760,7 +760,7 @@ class KineticH():
         Compute charge exchange source (beta_cx) with Eq. (3.11a) or (3.11b)
         '''
 
-        Beta_CX = torch.zeros((self.nvr,self.nvx,self.nx))
+        Beta_CX = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
         if self.COLLISIONS.H_P_CX:
             
             self._debrief_msg('Computing Beta_CX', 1)

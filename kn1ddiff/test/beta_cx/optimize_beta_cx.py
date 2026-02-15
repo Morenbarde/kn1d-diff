@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import json
+import time
+from datetime import timedelta
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import KineticH
@@ -9,18 +11,22 @@ from kn1ddiff.test.utils import *
 
 
 dir = "kn1ddiff/test/beta_cx/"
+image_dir = dir+"Images/"
 data_file = "beta_cx_in_out.json"
 epsilon = 10e-10
+dtype = torch.float64
+
+USE_CPU = True
 
 OPTIMIZE_FH = True
 
 # Learning Rate Parameters
 INITIAL_LR = 1e-1
-LR_CYCLE = 500
+LR_CYCLE = 250
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 5000
+NUM_ITERS = 1000
 CLIP_NORM = 1e-1
 
 # Gif parameters
@@ -32,58 +38,63 @@ GIF_FREQ = 25
 if __name__ == "__main__":
 
     use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
+    device = torch.device("cuda" if use_cuda and not USE_CPU else "cpu")
     print("device: ", device)
     # if use_cuda:
     #     torch.cuda.manual_seed(72)
 
-    torch.set_default_dtype(torch.float64)
-
-
     # --- Load Inputs and Outputs ---
+
     with open(dir+data_file, 'r') as f:
         data = json.load(f)
-
-    mesh_input = np.load(dir+"h_mesh_in.npz")
-    kh_in = np.load(dir+"kinetic_h_in.npz")
 
     # Fixed
 
     # Gradient
-    true_fH = torch.asarray(data["fH"])
-    print("fH Range: ", torch.max(true_fH), torch.min(true_fH))
-    # print("fH abs Range", torch.max(torch.abs(true_fH)), torch.min(torch.abs(true_fH)))
-    # input()
+    true_fH = torch.tensor(data["fH"], dtype=dtype, device=device)
+    # print("fH Range: ", torch.max(true_fH), torch.min(true_fH))
 
     # Desired Outputs
     
-    true_beta_cx = torch.asarray(data["Beta_CX"])
+    true_beta_cx = torch.asarray(data["Beta_CX"], dtype=dtype, device=device)
 
 
     # --- Set up Kinetic_H ---
+
+    with open(dir+"h_mesh_in.json", 'r') as f:
+        mesh_input = json.load(f)
+    with open(dir+"kinetic_h_in.json", 'r') as f:
+        kh_in = json.load(f)
+
+    for key, value in mesh_input.items():
+        mesh_input[key] = np.asarray(value)
+    for key, value in kh_in.items():
+        kh_in[key] = torch.tensor(value, dtype=dtype, device=device)
     
-    h_mesh = KineticMesh('h', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], param_type='torch')
-    kinetic_h = KineticH(h_mesh, torch.from_numpy(kh_in["mu"]), torch.from_numpy(kh_in["vxiA"]), torch.from_numpy(kh_in["fHBC"]), torch.from_numpy(kh_in["GammaxHBC"]), 
+    mesh = KineticMesh('h', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], device=device, dtype=dtype)
+    
+    kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
                         ni_correct=True, truncate=1.0e-3, max_gen=100, 
-                        compute_errors=True, debrief=True, debug=False)
+                        compute_errors=True, debrief=True, debug=False, 
+                        device=device, dtype=dtype)
 
     # kinetic_h internal Data
-    kinetic_h.Internal.fi_hat = torch.asarray(data['fi_hat'])
-    kinetic_h.Internal.Alpha_CX = torch.asarray(data['Alpha_CX'])
-    kinetic_h.Internal.ni = torch.asarray(data['ni'])
-    kinetic_h.Internal.SIG_CX = torch.asarray(data['SIG_CX'])
+    kinetic_h.Internal.fi_hat = torch.tensor(data['fi_hat'], dtype=dtype, device=device)
+    kinetic_h.Internal.Alpha_CX = torch.tensor(data['Alpha_CX'], dtype=dtype, device=device)
+    kinetic_h.Internal.ni = torch.tensor(data['ni'], dtype=dtype, device=device)
+    kinetic_h.Internal.SIG_CX = torch.tensor(data['SIG_CX'], dtype=dtype, device=device)
 
 
-    # --- Test Input Data
+    # --- Test Input Data ---
 
     # beta_cx = kinetic_h._compute_beta_cx(true_fH)
-    # print(np.allclose(beta_cx, true_beta_cx))
+    # print(torch.allclose(beta_cx, true_beta_cx))
     # print(rel_L2_torch(beta_cx, true_beta_cx))
     # input()
 
 
     # --- Test Optimization ---
-    initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True))
+    initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True, dtype=dtype, device=device))
     # initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
 
     parameters = []
@@ -138,14 +149,19 @@ if __name__ == "__main__":
     # --- Optimization ---
 
     # Init Gif Generator
-    fh_gifgen = GIF_Generator(NUM_ITERS, dir+"fH_Images/", "fH", true_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+    fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH_Images/", "fH", true_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
 
     # Capture Best Epoch
     loss_list = []
     lr_list = []
     best_loss = np.inf
     best_epoch = 0
+
+    optim_start = time.time()
+
     for epoch in range(NUM_ITERS):
+
+        epoch_start = time.time()
 
         if OPTIMIZE_FH:
             # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
@@ -178,14 +194,16 @@ if __name__ == "__main__":
         lr_list.append(scheduler.get_last_lr())
         if loss.item() < best_loss:
             best_loss = loss.item()
-            best_inputs = [fH.detach().cpu()]
-            best_pred = [beta_cx.detach().cpu()]
+            best_inputs = [fH.detach()]
+            best_pred = [beta_cx.detach()]
             best_epoch = epoch
+
+        epoch_runtime = time.time() - epoch_start
 
         print(
             f"epoch: {epoch:<5} | "
+            f"runtime: {epoch_runtime:<8.2} | "
             f"loss: {loss.item():<10.6e} | "
-            # f"learning rate: {optimizer.param_groups[0]['lr']:.2e}"
             f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
         )
 
@@ -193,6 +211,8 @@ if __name__ == "__main__":
         if GENERATE_GIF:
             fh_gifgen.update(fH[0,10,:], epoch)
 
+    optimization_runtime = time.time() - optim_start
+    print(f"Total Optimization Time: {timedelta(seconds=round(optimization_runtime))}")
 
 
 
@@ -229,10 +249,10 @@ if __name__ == "__main__":
 
     x = range(opt_fH[0,10,:].numel())
     for i in range(len(opt_fH[0,:,0])):
-        generate_compare_plot(dir, "fH"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
+        generate_compare_plot(image_dir+"fH_Images/", "fH"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
 
-    generate_loss_plot(dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
-    generate_lr_plot(dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
+    generate_loss_plot(image_dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
+    generate_lr_plot(image_dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
 
     if GENERATE_GIF:
         if OPTIMIZE_FH:
