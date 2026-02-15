@@ -120,6 +120,30 @@ def poly(x, c):
         y = y*x + c[i]
     return y
 
+def poly_torch(x, c):
+    '''
+    Evaluate a polynomial at one or more points, but with pytorch
+
+    Parameters
+    ----------
+        x : float or ndarray
+            Variable/s to evaluate the polynomial at
+        c : ndarray
+            array of polynomial coefficients
+            
+    Returns
+    -------
+        y : float or ndarray
+            Value of the polynomial evaluated at x, array of values if x is an array
+    '''
+
+    x = np.asarray(x)
+    n = len(c)-1
+    y = c[n]
+    for i in range(n-1, -1, -1):
+        y = y*x + c[i]
+    return y
+
 
 # --- Interpolation ---
 

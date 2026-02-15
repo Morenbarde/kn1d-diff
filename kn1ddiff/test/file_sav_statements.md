@@ -25,7 +25,7 @@ print("Saving to file: " + file)
 sav_data = {"x"  : self.x,
             "Ti" : self.Ti,
             "Te" : self.Te,
-            "n"  : self.ne,
+            "ne"  : self.ne,
             "PipeDia" : self.PipeDia, 
             "vx" : self.vx,
             "vr" : self.vr,
@@ -38,20 +38,38 @@ input()
 
 ### Kinetic_H inputs
 ```
-file = 'kinetic_h_in.npz'
+file = 'kinetic_h_in.json'
 print("Saving to file: " + file)
-np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=mu, vxiA=vxiA, fHBC=fHBC, GammaxHBC=GammaxHBC)
+sav_data = {"mu" : mu,
+            "vxi" : vxiA,
+            "fHBC" : fHBC,
+            "GammaxHBC" : GammaxHBC}
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/init_kinetic_h/"+file, sav_data)
 input()
 ```
 
 ### Kinetic_H parameters excluding common blocks
 ```
-file = 'kinetic_h_params.npz'
+file = 'kinetic_h_params.json'
 print("Saving to file: " + file)
-np.savez("kn1ddiff/test/init_kinetic_h/"+file, mu=kinetic_h.mu, vxi=kinetic_h.vxi, fHBC=kinetic_h.fHBC, 
-            GammaxHBC=kinetic_h.GammaxHBC, nvr=kinetic_h.nvr, nvx=kinetic_h.nvx, nx=kinetic_h.nx, vx_neg=kinetic_h.vx_neg,
-            vx_pos=kinetic_h.vx_pos, vx_zero=kinetic_h.vx_zero, vth=kinetic_h.vth, vr2_2vx2_2D=kinetic_h.vr2_2vx2_2D,
-            dvr_vol=kinetic_h.dvr_vol, dvx=kinetic_h.dvx, fHBC_input=kinetic_h.fHBC_input)
+sav_data = {"mu" : kinetic_h.mu, 
+            "vxi" : kinetic_h.vxi, 
+            "fHBC" : kinetic_h.fHBC, 
+            "GammaxHBC" : kinetic_h.GammaxHBC, 
+            "nvr" : kinetic_h.nvr, 
+            "nvx" : kinetic_h.nvx, 
+            "nx" : kinetic_h.nx, 
+            "vx_neg" : kinetic_h.vx_neg,
+            "vx_pos" : kinetic_h.vx_pos, 
+            "vx_zero" : kinetic_h.vx_zero, 
+            "vth" : kinetic_h.vth, 
+            "vr2_2vx2_2D" : kinetic_h.vr2_2vx2_2D,
+            "dvr_vol" : kinetic_h.dvr_vol, 
+            "dvx" : kinetic_h.dvx, 
+            "fHBC_input" : kinetic_h.fHBC_input}
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/init_kinetic_h/"+file, sav_data)
 input()
 ```
 

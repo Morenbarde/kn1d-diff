@@ -66,7 +66,7 @@ def rel_L2_torch(pred, act, eps=1e-12):
     num = torch.linalg.norm(pred - act)
     den = torch.linalg.norm(pred)
 
-    return num / (den + eps)
+    return (num / (den + eps)).item()
 
 # Torch converter
 def numpy_to_torch(np_arr, device, dtype):

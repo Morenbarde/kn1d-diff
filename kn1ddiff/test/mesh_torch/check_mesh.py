@@ -30,8 +30,6 @@ if __name__ == "__main__":
         out_data = json.load(f)
 
     for key, value in in_data.items():
-        # in_data[key] = numpy_to_torch(value, device=device, dtype=dtype)
-        # in_data[key] = torch.tensor(value, device=device, dtype=dtype)
         in_data[key] = np.asarray(value)
 
     out_data_np = {}
@@ -48,7 +46,6 @@ if __name__ == "__main__":
         print("Checking "+key+":")
         print(torch.allclose(value, getattr(mesh, key)))
         print("L2: ", rel_L2_torch(value, getattr(mesh, key)))
-        # input()
 
     print()
 

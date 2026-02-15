@@ -27,7 +27,7 @@ def sigma_cx_h0(E, freeman=False):
         ndarray
             sigma_CX for 0.1 < E < 2e4 (m^-2)
     '''
-                
+    
     E = np.asarray(E)
     if freeman:
         #Set values to minimum .1 and maximum 1e5
