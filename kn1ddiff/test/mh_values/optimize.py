@@ -18,13 +18,13 @@ epsilon = 10e-10
 USE_CPU = True
 dtype = torch.float64
 
-OPTIMIZE_FH = True
+OPTIMIZE_FH = False
 OPTIMIZE_NH = True
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
+INITIAL_LR = 1e-2
 LR_CYCLE = 50
-MIN_LR = 1e-6
+MIN_LR = 1e-7
 
 # Iteration Parameters
 NUM_ITERS = 100
