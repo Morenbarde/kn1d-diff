@@ -30,6 +30,6 @@
         "H_H_EL" : true,
         "H_P_EL" : true,
         "H_P_CX" : true,
-        "SIMPLE_CX" : false
+        "SIMPLE_CX" : true
     }
 }

@@ -16,23 +16,23 @@ data_file = "beta_cx_in_out.json"
 epsilon = 10e-10
 dtype = torch.float64
 
-USE_CPU = True
+USE_CPU = False
 
 OPTIMIZE_FH = True
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
+INITIAL_LR = 1e-3
 LR_CYCLE = 250
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 5000
+NUM_ITERS = 1000
 CLIP_NORM = 1e-1
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 250
+GIF_FREQ = 20
 
 
 if __name__ == "__main__":
@@ -87,14 +87,16 @@ if __name__ == "__main__":
 
     # --- Test Input Data ---
 
-    beta_cx = kinetic_h._compute_beta_cx(true_fH)
-    print(torch.allclose(beta_cx, true_beta_cx))
-    print(rel_L2_torch(beta_cx, true_beta_cx))
-    input()
+    # beta_cx = kinetic_h._compute_beta_cx(true_fH)
+    # print(torch.allclose(beta_cx, true_beta_cx))
+    # print(rel_L2_torch(beta_cx, true_beta_cx))
+    # input()
 
 
     # --- Test Optimization ---
-    initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True, dtype=dtype, device=device))
+    # initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True, dtype=dtype, device=device))
+    initial_sign = torch.sign(true_fH.detach())
+    initial_fH = torch.nn.Parameter(torch.log(torch.abs(0.9*torch.clone(true_fH.detach()))))
     # initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
 
     parameters = []
@@ -165,9 +167,9 @@ if __name__ == "__main__":
 
         if OPTIMIZE_FH:
             # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
-            # fH = 1e19*torch.nn.functional.tanh(initial_fH)
-            fH = 1e19 * torch.sigmoid(initial_fH)
-            # fH = initial_fH
+            # fH = 1e19 * torch.nn.functional.tanh(initial_fH)
+            # fH = 1e19 * torch.sigmoid(initial_fH)
+            fH = initial_sign*torch.exp(initial_fH)
         else:
             fH = true_fH
 
@@ -249,7 +251,7 @@ if __name__ == "__main__":
 
     x = range(opt_fH[0,10,:].numel())
     for i in range(len(opt_fH[0,:,0])):
-        generate_compare_plot(image_dir+"fH_Images/", "fH"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
+        generate_compare_plot(image_dir+"fH_Images/", "fH_slice"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
 
     generate_loss_plot(image_dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
     generate_lr_plot(image_dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")

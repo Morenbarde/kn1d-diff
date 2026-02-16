@@ -894,7 +894,20 @@ class KineticH():
                 Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_H2 = Maxwell*nH
 
-            
+        file = 'mh_in_out.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH,
+                    'nH' : nH,
+                    'TH2_Moment' : self.H2_Moments.TH2,
+                    'VxH2_Moment' : self.H2_Moments.VxH2,
+
+                    'MH_H' : MH_H,
+                    'MH_P' : MH_P,
+                    'MH_H2' : MH_H2}
+
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
+        input()
         
         return CollisionType(MH_H, MH_P, MH_H2)
 

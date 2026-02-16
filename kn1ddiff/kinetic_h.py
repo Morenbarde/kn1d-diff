@@ -802,14 +802,14 @@ class KineticH():
             # --- VxHG ---
             # fH: (Nvr, Nvx, nx)
 
-            nh_safe = nH + 1e-12
+            nh_safe = nH + 1e-8
             weights = self.dvr_vol[:, None, None] * self.dvx[None, :, None]
-            VxHG = self.vth * torch.sum(fH * vx[None, :, None] * weights, dim=(0, 1)) / nh_safe
+            VxHG = self.vth * torch.sum(fH*vx[None, :, None]*weights, dim=(0, 1)) / nh_safe
 
             # --- THG ---
             vr2vx2_ran2 = vr[:, None, None]**2 + (vx[None, :, None] - VxHG[None, None, :] / self.vth)**2
 
-            THG_factor = (self.mu * CONST.H_MASS) * self.vth**2 / (3 * CONST.Q)
+            THG_factor = (self.mu*CONST.H_MASS)*self.vth**2 / (3*CONST.Q)
             THG = THG_factor * torch.sum(vr2vx2_ran2 * fH * weights, dim=(0, 1)) / nh_safe
 
 
@@ -829,6 +829,7 @@ class KineticH():
                 # Compute MH_P 
                 vx_shift = (VxHG + self.vxi) / 2
                 Tmaxwell = THG + (2/4)*(self.mesh.Ti - THG + self.mu*CONST.H_MASS*((self.vxi - VxHG)**2) / (6*CONST.Q))
+
                 Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_P = Maxwell*nH
 
