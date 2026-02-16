@@ -27,7 +27,7 @@ LR_CYCLE = 50
 MIN_LR = 1e-6
 
 # Iteration Parameters
-NUM_ITERS = 50
+NUM_ITERS = 100
 CLIP_NORM = 1e0
 
 # Gif Parameters
@@ -106,9 +106,11 @@ if __name__ == "__main__":
 
     # --- Test Optimization ---
     initial_fH_signs = torch.sign(true_fH.detach())
-    initial_fH = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(true_fH.detach()))))
+    initial_fH = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(true_fH.detach()))))
 
-    initial_nH = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(true_nH.detach()))))
+    initial_nH = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(true_nH.detach()))))
+    # initial_nH = torch.nn.Parameter(torch.randn_like(true_nH, requires_grad=True))
+    # initial_nH = torch.nn.Parameter(torch.zeros_like(true_nH, requires_grad=True))
 
     initial_TH2_mom = torch.nn.Parameter(torch.randn_like(true_TH2_mom))
     initial_VxH2_mom = torch.nn.Parameter(torch.randn_like(true_VxH2_mom))

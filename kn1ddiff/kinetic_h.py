@@ -455,13 +455,16 @@ class KineticH():
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
+        dtype, device = self.dtype, self.device
 
-        fH_gen = torch.zeros((nvr,nvx,nx))
-        fH_total = torch.zeros((nvr,nvx,nx), requires_grad=True)
-        nH_gen = torch.zeros((nx))
+        fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
+        fH_total = torch.zeros((nvr,nvx,nx), requires_grad=True, dtype=dtype, device=device)
+        nH_gen = torch.zeros((nx), dtype=dtype, device=device)
 
-        Beta_CX_sum = torch.zeros((nvr,nvx,nx))
-        m_sums = CollisionType(torch.zeros((nvr,nvx,nx)), torch.zeros((nvr,nvx,nx)), torch.zeros((nvr,nvx,nx)))
+        Beta_CX_sum = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
+        m_sums = CollisionType(torch.zeros((nvr,nvx,nx), dtype=dtype, device=device), 
+                               torch.zeros((nvr,nvx,nx), dtype=dtype, device=device), 
+                               torch.zeros((nvr,nvx,nx), dtype=dtype, device=device))
 
 
         for i in range(self.generation_count):
