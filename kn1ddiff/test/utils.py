@@ -127,7 +127,7 @@ class GIF_Generator():
         ymin = ymin-0.05*data_range
         ymax = ymax+0.05*data_range
         for i in range(self.size):
-            num_name = self.name+"_"+str(i)
+            num_name = self.name+"_gifgen"+str(i)
             generate_compare_plot(self.image_location, num_name, x, self.data[i], x, self.true_val, y_range=[ymin, ymax])
             self.image_paths.append(self.image_location+num_name+".png")
         print("Images Generated")
