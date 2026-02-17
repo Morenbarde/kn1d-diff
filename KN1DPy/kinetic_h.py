@@ -444,29 +444,29 @@ class KineticH():
         Iterate through and computes generations of collision
         '''
 
-        # file = 'kh_gens_in.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH,
-        #             'A' : meq_coeffs.A,
-        #             'B' : meq_coeffs.B,
-        #             'C' : meq_coeffs.C,
-        #             'D' : meq_coeffs.D,
-        #             'F' : meq_coeffs.F,
-        #             'G' : meq_coeffs.G,
-        #             'CF_H_H' : collision_freqs.H_H,
-        #             'CF_H_P' : collision_freqs.H_P,
-        #             'CF_H_H2' : collision_freqs.H_H2,
+        file = 'kh_gens_in.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH,
+                    'A' : meq_coeffs.A,
+                    'B' : meq_coeffs.B,
+                    'C' : meq_coeffs.C,
+                    'D' : meq_coeffs.D,
+                    'F' : meq_coeffs.F,
+                    'G' : meq_coeffs.G,
+                    'CF_H_H' : collision_freqs.H_H,
+                    'CF_H_P' : collision_freqs.H_P,
+                    'CF_H_H2' : collision_freqs.H_H2,
                     
-        #             'TH2_Moment' : self.H2_Moments.TH2,
-        #             'VxH2_Moment' : self.H2_Moments.VxH2,
-        #             'fi_hat' : self.Internal.fi_hat,
-        #             'Alpha_CX' : self.Internal.Alpha_CX,
-        #             'ni' : self.Internal.ni,
-        #             'SIG_CX' : self.Internal.SIG_CX
-        #             }
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
+                    'TH2_Moment' : self.H2_Moments.TH2,
+                    'VxH2_Moment' : self.H2_Moments.VxH2,
+                    'fi_hat' : self.Internal.fi_hat,
+                    'Alpha_CX' : self.Internal.Alpha_CX,
+                    'ni' : self.Internal.ni,
+                    'SIG_CX' : self.Internal.SIG_CX
+                    }
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        input()
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
@@ -532,18 +532,18 @@ class KineticH():
             
 
 
-        # file = 'kh_gens_out.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH_total,
-        #             'Beta_CX_sum' : Beta_CX_sum,
-        #             'Msum_H_H' : m_sums.H_H,
-        #             'Msum_H_P' : m_sums.H_P,
-        #             'Msum_H_H2' : m_sums.H_H2
-        #             }
+        file = 'kh_gens_out.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH_total,
+                    'Beta_CX_sum' : Beta_CX_sum,
+                    'Msum_H_H' : m_sums.H_H,
+                    'Msum_H_P' : m_sums.H_P,
+                    'Msum_H_H2' : m_sums.H_H2
+                    }
 
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        input()
 
         return fH_total, Beta_CX_sum, m_sums
     
@@ -894,20 +894,20 @@ class KineticH():
                 Maxwell = create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, self.mu, 1, self.mesh.Tnorm)
                 MH_H2 = Maxwell*nH
 
-        file = 'mh_in_out.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH,
-                    'nH' : nH,
-                    'TH2_Moment' : self.H2_Moments.TH2,
-                    'VxH2_Moment' : self.H2_Moments.VxH2,
+        # file = 'mh_in_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'nH' : nH,
+        #             'TH2_Moment' : self.H2_Moments.TH2,
+        #             'VxH2_Moment' : self.H2_Moments.VxH2,
 
-                    'MH_H' : MH_H,
-                    'MH_P' : MH_P,
-                    'MH_H2' : MH_H2}
+        #             'MH_H' : MH_H,
+        #             'MH_P' : MH_P,
+        #             'MH_H2' : MH_H2}
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/mh_values/"+file, sav_data)
+        # input()
         
         return CollisionType(MH_H, MH_P, MH_H2)
 

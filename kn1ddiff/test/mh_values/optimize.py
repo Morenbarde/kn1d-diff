@@ -22,7 +22,7 @@ OPTIMIZE_FH = False
 OPTIMIZE_NH = True
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-2
+INITIAL_LR = 1e-1
 LR_CYCLE = 50
 MIN_LR = 1e-7
 
