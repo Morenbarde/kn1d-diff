@@ -487,6 +487,7 @@ class KineticH():
                 # Compute next generation molecular distribution
                 OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
                 fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
+
                 for k in range(nx-1):
                     fH_gen[:,vxp,k+1] = meq_coeffs.A[:,vxp,k]*fH_gen[:,vxp,k] + meq_coeffs.B[:,vxp,k]*(Beta_CX[:,vxp,k+1] + OmegaM[:,vxp,k+1] + Beta_CX[:,vxp,k] + OmegaM[:,vxp,k])
                 for k in range(nx-1, 0, -1):

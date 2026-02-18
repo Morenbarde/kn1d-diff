@@ -299,6 +299,9 @@ if __name__ == "__main__":
         # --- Run Function ---
         fH_out, Beta_CX_sum, m_sums = kinetic_h._run_generations(fH_in, meq_coeffs, coll_freqs)
 
+        forward_done = time.time()
+        print("Forward Time: ", forward_done - epoch_start)
+
 
         # --- Optimize ---
 
@@ -322,6 +325,9 @@ if __name__ == "__main__":
         optimizer.step()
         # scheduler.step(loss)
         scheduler.step()
+
+        backward_done = time.time()
+        print("Backward Time: ", backward_done - forward_done)
 
         # Save Best Epoch
         loss_list.append(loss.item())
