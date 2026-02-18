@@ -29,11 +29,11 @@ OPTIMIZE_MESH_COEF = True
 OPTIMIZE_COLLISION = False
 
 # Iteration Parameters
-NUM_ITERS = 1
+NUM_ITERS = 30
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
+INITIAL_LR = 2e-2
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6
@@ -41,7 +41,7 @@ MIN_LR = 1e-6
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 1
+GIF_FREQ = 2
 
 
 if __name__ == "__main__":
@@ -155,19 +155,19 @@ if __name__ == "__main__":
     initial_fH = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_fH.detach()))))
 
     # initial_A = torch.nn.Parameter(torch.randn_like(truein_A, requires_grad=True))
-    initial_A = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_A.detach()))))
+    initial_A = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_A.detach()))))
     # initial_B = torch.nn.Parameter(torch.randn_like(truein_B, requires_grad=True))
-    initial_B = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_B.detach()))))
+    initial_B = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_B.detach()))))
     # initial_C = torch.nn.Parameter(torch.randn_like(truein_C, requires_grad=True))
-    initial_C = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_C.detach()))))
+    initial_C = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_C.detach()))))
     # initial_D = torch.nn.Parameter(torch.randn_like(truein_D, requires_grad=True))
-    initial_D = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_D.detach()))))
+    initial_D = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_D.detach()))))
     # initial_F = torch.nn.Parameter(torch.randn_like(truein_F, requires_grad=True))
     initial_F_sign = torch.sign(truein_F.detach())
-    initial_F = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_F.detach()))))
+    initial_F = torch.nn.Parameter(torch.log(torch.abs(1.03*torch.clone(truein_F.detach()))))
     # initial_G = torch.nn.Parameter(torch.randn_like(truein_G, requires_grad=True))
     initial_G_sign = torch.sign(truein_G.detach())
-    initial_G = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_G.detach()))))
+    initial_G = torch.nn.Parameter(torch.log(torch.abs(1.03*torch.clone(truein_G.detach()))))
 
     # initial_CF_H_H = torch.nn.Parameter(torch.randn_like(truein_CF_H_H, requires_grad=True))
     initial_CF_H_H = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_CF_H_H.detach()))))
@@ -276,9 +276,9 @@ if __name__ == "__main__":
             mB = torch.exp(initial_B) 
             mC = torch.exp(initial_C)
             mD = torch.exp(initial_D) 
-            mF = torch.exp(initial_F) 
+            mF = initial_F_sign*torch.exp(initial_F) 
             # mF = 1e18 * torch.tanh(initial_F) 
-            mG = torch.exp(initial_G)
+            mG = initial_G_sign*torch.exp(initial_G)
             # mG = 1e18 * torch.tanh(initial_G) 
             meq_coeffs = MeshEqCoefficients(mA, mB, mC, mD, mF, mG)
         else:
