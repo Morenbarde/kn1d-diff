@@ -458,7 +458,7 @@ class KineticH():
         dtype, device = self.dtype, self.device
 
         fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
-        fH_total = torch.zeros((nvr,nvx,nx), requires_grad=True, dtype=dtype, device=device)
+        fH_total = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
         nH_gen = torch.zeros((nx), dtype=dtype, device=device)
 
         Beta_CX_sum = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
@@ -494,7 +494,7 @@ class KineticH():
                     fH_gen[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fH_gen[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
 
 
-            # --- Update Distribution and Density Profile
+            # --- Update Distribution and Density Profile ---
 
             # Add result to total neutral distribution function
             fH_total = fH_total + fH_gen

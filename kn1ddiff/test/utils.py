@@ -4,21 +4,50 @@ import matplotlib.pyplot as plt
 import os
 from PIL import Image
 
-def generate_compare_plot(dir, title, x, y, true_x, true_y, xlabel="", ylabel="", x_range = None, y_range = None):
+
+def rel_L2_np(pred, act, eps=1e-12):
+    num = np.linalg.norm(pred - act)
+    den = np.linalg.norm(pred)
+
+    return num / (den + eps)
+
+def rel_L2_torch(pred, act, eps=1e-12):
+    num = torch.linalg.norm(pred - act)
+    den = torch.linalg.norm(pred)
+
+    return (num / (den + eps)).item()
+
+# Torch converter
+def numpy_to_torch(np_arr, device, dtype):
+    return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
+
+def torch_to_numpy(torch_tensor):
+    if type(torch_tensor) == torch.Tensor:
+        torch_tensor = torch_tensor.cpu().detach().numpy()
+    return torch_tensor
+
+
+
+def check_and_generate_dir(dir_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+
+def generate_compare_plot(dir, title, x, y, true_x, true_y, init_x = None, init_y = None, xlabel="", ylabel="", x_range = None, y_range = None):
     check_and_generate_dir(dir)
     
     # Adjust types if necessary
-    if type(x) == torch.Tensor:
-        x = x.cpu().detach().numpy()
-    if type(y) == torch.Tensor:
-        y = y.cpu().detach().numpy()
-    if type(true_x) == torch.Tensor:
-        true_x = true_x.cpu().detach().numpy()
-    if type(true_y) == torch.Tensor:
-        true_y = true_y.cpu().detach().numpy()
+    torch_to_numpy(x)
+    torch_to_numpy(y)
+    torch_to_numpy(true_x)
+    torch_to_numpy(true_y)
+    torch_to_numpy(init_x)
+    torch_to_numpy(init_y)
 
-    plt.plot(x, y, color = 'blue', marker='x', markersize=3, markeredgecolor='cyan', label="Optimized")
-    plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=3, markeredgecolor='red', label="True", ls=":")
+    if(init_x is not None and init_y is not None):
+        plt.plot(init_x, init_y, color = 'pink', marker='x', markersize=2, markeredgecolor='purple', label="Initial", ls=":")
+    plt.plot(x, y, color = 'blue', marker='x', markersize=2, markeredgecolor='cyan', label="Optimized")
+    plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=2, markeredgecolor='red', label="True", ls=":")
     # plt.yscale('log')
     plt.title(title)
     plt.xlabel(xlabel)
@@ -52,34 +81,6 @@ def generate_lr_plot(dir, title, lr, xlabel="", ylabel=""):
     plt.legend()
     plt.savefig(dir + title + '.png', dpi=300)
     plt.clf()
-
-
-
-
-def rel_L2_np(pred, act, eps=1e-12):
-    num = np.linalg.norm(pred - act)
-    den = np.linalg.norm(pred)
-
-    return num / (den + eps)
-
-def rel_L2_torch(pred, act, eps=1e-12):
-    num = torch.linalg.norm(pred - act)
-    den = torch.linalg.norm(pred)
-
-    return (num / (den + eps)).item()
-
-# Torch converter
-def numpy_to_torch(np_arr, device, dtype):
-    return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
-
-def torch_to_numpy(torch_tensor):
-    return torch_tensor.cpu().detach().numpy()
-
-
-
-def check_and_generate_dir(dir_path):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
 
 
 class GIF_Generator():

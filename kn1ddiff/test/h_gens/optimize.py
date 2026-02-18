@@ -24,24 +24,24 @@ USE_CPU = True
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH = False
+OPTIMIZE_FH = True
 OPTIMIZE_MESH_COEF = True
-OPTIMIZE_COLLISION = False
+OPTIMIZE_COLLISION = True
 
 # Iteration Parameters
-NUM_ITERS = 30
+NUM_ITERS = 15
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
 INITIAL_LR = 2e-2
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-6
+MIN_LR = 1e-5
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 2
+GIF_FREQ = 1
 
 
 if __name__ == "__main__":
@@ -151,38 +151,45 @@ if __name__ == "__main__":
     # --- Optimization Parameters ---
 
     # initial_fH = torch.nn.Parameter(torch.randn_like(truein_fH, requires_grad=True))
-    initial_fH_sign = torch.sign(truein_fH.detach())
-    initial_fH = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(truein_fH.detach()))))
+    initial_fH = 0.9*torch.clone(truein_fH.detach())
+    fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
 
     # initial_A = torch.nn.Parameter(torch.randn_like(truein_A, requires_grad=True))
-    initial_A = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_A.detach()))))
+    initial_A = 0.9*torch.clone(truein_A.detach())
+    A_param = torch.nn.Parameter(torch.log(torch.abs(initial_A)))
     # initial_B = torch.nn.Parameter(torch.randn_like(truein_B, requires_grad=True))
-    initial_B = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_B.detach()))))
+    initial_B = 0.9*torch.clone(truein_B.detach())
+    B_param = torch.nn.Parameter(torch.log(torch.abs(initial_B)))
     # initial_C = torch.nn.Parameter(torch.randn_like(truein_C, requires_grad=True))
-    initial_C = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_C.detach()))))
+    initial_C = 0.9*torch.clone(truein_C.detach())
+    C_param = torch.nn.Parameter(torch.log(torch.abs(initial_C)))
     # initial_D = torch.nn.Parameter(torch.randn_like(truein_D, requires_grad=True))
-    initial_D = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_D.detach()))))
+    initial_D = 0.9*torch.clone(truein_D.detach())
+    D_param = torch.nn.Parameter(torch.log(torch.abs(initial_D)))
     # initial_F = torch.nn.Parameter(torch.randn_like(truein_F, requires_grad=True))
-    initial_F_sign = torch.sign(truein_F.detach())
-    initial_F = torch.nn.Parameter(torch.log(torch.abs(1.03*torch.clone(truein_F.detach()))))
+    initial_F = 0.9*torch.clone(truein_F.detach())
+    F_param = torch.nn.Parameter(torch.log(torch.abs(initial_F)))
     # initial_G = torch.nn.Parameter(torch.randn_like(truein_G, requires_grad=True))
-    initial_G_sign = torch.sign(truein_G.detach())
-    initial_G = torch.nn.Parameter(torch.log(torch.abs(1.03*torch.clone(truein_G.detach()))))
+    initial_G = 0.9*torch.clone(truein_G.detach())
+    G_param = torch.nn.Parameter(torch.log(torch.abs(initial_G)))
 
     # initial_CF_H_H = torch.nn.Parameter(torch.randn_like(truein_CF_H_H, requires_grad=True))
-    initial_CF_H_H = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_CF_H_H.detach()))))
+    initial_CF_H_H = 0.9*torch.clone(truein_CF_H_H.detach())
+    CF_H_H_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H)))
     # initial_CF_H_P = torch.nn.Parameter(torch.randn_like(truein_CF_H_P, requires_grad=True))
-    initial_CF_H_P = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_CF_H_P.detach()))))
+    initial_CF_H_P = 0.9*torch.clone(truein_CF_H_P.detach())
+    CF_H_P_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_P)))
     # initial_CF_H_H2 = torch.nn.Parameter(torch.randn_like(truein_CF_H_H2, requires_grad=True))
-    initial_CF_H_H2 = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(truein_CF_H_H2.detach()))))
+    initial_CF_H_H2 = 0.9*torch.clone(truein_CF_H_H2.detach())
+    CF_H_H2_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H2)))
 
     parameters = []
     if OPTIMIZE_FH:
-        parameters.append(initial_fH)
+        parameters.append(fH_param)
     if OPTIMIZE_MESH_COEF:
-        parameters.extend([initial_A, initial_B, initial_C, initial_D, initial_F, initial_G])
+        parameters.extend([A_param, B_param, C_param, D_param, F_param, G_param])
     if OPTIMIZE_COLLISION:
-        parameters.extend([initial_CF_H_H, initial_CF_H_P, initial_CF_H_H2])
+        parameters.extend([CF_H_H_param, CF_H_P_param, CF_H_H2_param])
 
     optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9,  0.99))
 
@@ -235,7 +242,7 @@ if __name__ == "__main__":
     # Init Gif Generator
     if GENERATE_GIF:
         if OPTIMIZE_FH:
-            fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,0,0], fps=GIF_FPS, frequency=GIF_FREQ)
+            fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_MESH_COEF:
             A_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/A/", "A", truein_A[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
             B_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/B/", "B", truein_B[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
@@ -264,21 +271,18 @@ if __name__ == "__main__":
         # --- Bound Inputs ---
 
         if OPTIMIZE_FH:
-            # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
-            # fH = 1e19*torch.nn.functional.tanh(initial_fH)
-            # fH_in = 1e19 * torch.sigmoid(initial_fH)
-            fH_in = initial_fH_sign*torch.exp(initial_fH)
+            fH_in = torch.sign(initial_fH)*torch.exp(fH_param)
         else:
             fH_in = truein_fH
 
         if OPTIMIZE_MESH_COEF:
-            mA = torch.exp(initial_A)
-            mB = torch.exp(initial_B) 
-            mC = torch.exp(initial_C)
-            mD = torch.exp(initial_D) 
-            mF = initial_F_sign*torch.exp(initial_F) 
+            mA = torch.exp(A_param)
+            mB = torch.exp(B_param) 
+            mC = torch.exp(C_param)
+            mD = torch.exp(D_param) 
+            mF = torch.sign(initial_F)*torch.exp(F_param) 
             # mF = 1e18 * torch.tanh(initial_F) 
-            mG = initial_G_sign*torch.exp(initial_G)
+            mG = torch.sign(initial_G)*torch.exp(G_param)
             # mG = 1e18 * torch.tanh(initial_G) 
             meq_coeffs = MeshEqCoefficients(mA, mB, mC, mD, mF, mG)
         else:
@@ -286,11 +290,11 @@ if __name__ == "__main__":
 
         if OPTIMIZE_COLLISION:
             # cf_hh = 1e-2 * torch.sigmoid(initial_CF_H_H)
-            cf_hh = torch.exp(initial_CF_H_H)
+            cf_hh = torch.exp(CF_H_H_param)
             # cf_hp = 1e+1 * torch.sigmoid(initial_CF_H_P)
-            cf_hp = torch.exp(initial_CF_H_P)
+            cf_hp = torch.exp(CF_H_P_param)
             # cf_hh2 = 1e-1 * torch.sigmoid(initial_CF_H_H2)
-            cf_hh2 = torch.exp(initial_CF_H_H2)
+            cf_hh2 = torch.exp(CF_H_H2_param)
             coll_freqs = CollisionType(cf_hh, cf_hp, cf_hh2)
         else:
             coll_freqs = truein_collision_freqs
@@ -319,7 +323,7 @@ if __name__ == "__main__":
         loss.backward()
 
         # Clip Gradient
-        torch.nn.utils.clip_grad_norm_([initial_fH], max_norm=CLIP_NORM)
+        # torch.nn.utils.clip_grad_norm_([fH_param], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
@@ -367,7 +371,7 @@ if __name__ == "__main__":
         # Update Gif data
         if GENERATE_GIF:
             if OPTIMIZE_FH:
-                fh_gifgen.update(fH_in[:,0,0], epoch)
+                fh_gifgen.update(fH_in[:,10,0], epoch)
             if OPTIMIZE_MESH_COEF:
                 A_gifgen.update(meq_coeffs.A[5,10,:], epoch)
                 B_gifgen.update(meq_coeffs.B[5,10,:], epoch)
@@ -467,27 +471,27 @@ if __name__ == "__main__":
 
     # fH
     if OPTIMIZE_FH:
-        x = range(opt_fH_in[5,10,:].numel())
-        for i in range(len(opt_fH_in[5,:,0])):
-            generate_compare_plot(image_dir+"FH/", "fH"+str(i), x, opt_fH_in[5,i,:], x, truein_fH[5,i,:])
+        x = range(opt_fH_in[:,10,0].numel())
+        for i in range(len(opt_fH_in[0,:,0])):
+            generate_compare_plot(image_dir+"fH/", "fH"+str(i), x, opt_fH_in[:,i,0], x, truein_fH[:,i,0], init_x=x, init_y=initial_fH[:,i,0])
 
     # MEQ Coeffs
     if OPTIMIZE_MESH_COEF:
         x = range(opt_me_coeffs.A[5,10,:].numel())
         for i in range(len(opt_me_coeffs.A[5,:,0])):
-            generate_compare_plot(image_dir+"MEQ/A/", "A"+str(i), x, opt_me_coeffs.A[5,i,:], x, truein_A[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/B/", "B"+str(i), x, opt_me_coeffs.B[5,i,:], x, truein_B[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/C/", "C"+str(i), x, opt_me_coeffs.C[5,i,:], x, truein_C[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/D/", "D"+str(i), x, opt_me_coeffs.D[5,i,:], x, truein_D[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/F/", "F"+str(i), x, opt_me_coeffs.F[5,i,:], x, truein_F[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/G/", "G"+str(i), x, opt_me_coeffs.G[5,i,:], x, truein_G[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/A/", "A"+str(i), x, opt_me_coeffs.A[5,i,:], x, truein_A[5,i,:], init_x=x, init_y=initial_A[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/B/", "B"+str(i), x, opt_me_coeffs.B[5,i,:], x, truein_B[5,i,:], init_x=x, init_y=initial_B[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/C/", "C"+str(i), x, opt_me_coeffs.C[5,i,:], x, truein_C[5,i,:], init_x=x, init_y=initial_C[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/D/", "D"+str(i), x, opt_me_coeffs.D[5,i,:], x, truein_D[5,i,:], init_x=x, init_y=initial_D[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/F/", "F"+str(i), x, opt_me_coeffs.F[5,i,:], x, truein_F[5,i,:], init_x=x, init_y=initial_F[5,i,:])
+            generate_compare_plot(image_dir+"MEQ/G/", "G"+str(i), x, opt_me_coeffs.G[5,i,:], x, truein_G[5,i,:], init_x=x, init_y=initial_G[5,i,:])
 
     # Collision Frequencies
     if OPTIMIZE_COLLISION:
         x = range(opt_coll_freq.H_H.numel())
-        generate_compare_plot(image_dir+"Collision_Frequency/", "H_H", x, opt_coll_freq.H_H, x, truein_CF_H_H)
-        generate_compare_plot(image_dir+"Collision_Frequency/", "H_P", x, opt_coll_freq.H_P, x, truein_CF_H_P)
-        generate_compare_plot(image_dir+"Collision_Frequency/", "H_H2", x, opt_coll_freq.H_H2, x, truein_CF_H_H2)
+        generate_compare_plot(image_dir+"Collision_Frequency/", "H_H", x, opt_coll_freq.H_H, x, truein_CF_H_H, init_x=x, init_y=initial_CF_H_H)
+        generate_compare_plot(image_dir+"Collision_Frequency/", "H_P", x, opt_coll_freq.H_P, x, truein_CF_H_P, init_x=x, init_y=initial_CF_H_P)
+        generate_compare_plot(image_dir+"Collision_Frequency/", "H_H2", x, opt_coll_freq.H_H2, x, truein_CF_H_H2, init_x=x, init_y=initial_CF_H_H2)
 
     # --- Gif Generation ---
     if GENERATE_GIF:
