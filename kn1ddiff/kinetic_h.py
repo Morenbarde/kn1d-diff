@@ -4,6 +4,7 @@ from numpy.typing import NDArray
 import torch
 
 from .utils import sval, get_config, torch_reshape_fortran
+from .torch_utils import dclamp
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .kinetic_mesh import KineticMesh
@@ -654,57 +655,60 @@ class KineticH():
             
         # Compute VxH
         if self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL or self.COLLISIONS.H_H_EL:
-            vxh_mat = np.tensordot(fH, (self.mesh.vx*self.dvx), axes=([1], [0]))
-            VxH = self.vth*np.sum(self.dvr_vol[:,None]*vxh_mat, axis=0) / (nH + epsilon)
+            vxh_mat = torch.tensordot(fH, (self.mesh.vx*self.dvx), dims=([1], [0]))
+            VxH = self.vth*torch.sum(self.dvr_vol[:,None]*vxh_mat, dim=0) / (nH + epsilon)
 
         #	Compute Omega_H_P for present fH and Alpha_H_P if H_P elastic collisions are included
         if self.COLLISIONS.H_P_EL:
             self._debrief_msg('Computing Omega_H_P', 1)
 
             DeltaVx = (VxH - self.vxi) / self.vth
-            MagDeltaVx = np.maximum(np.abs(DeltaVx), self.DeltaVx_tol)
-            DeltaVx = np.sign(DeltaVx)*MagDeltaVx
+            MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
 
-            omega_hp_mat = np.tensordot((self.Internal.Alpha_H_P*fH), self.dvx, axes=([1],[0]))
-            Omega_H_P = np.sum(self.dvr_vol[:,None]*omega_hp_mat, axis=0) / (nH*DeltaVx + epsilon)
-            Omega_H_P = np.maximum(Omega_H_P, 0)
+            omega_hp_mat = torch.tensordot((self.Internal.Alpha_H_P*fH), self.dvx, dims=([1],[0]))
+            Omega_H_P = torch.sum(self.dvr_vol[:,None]*omega_hp_mat, dim=0) / (nH*DeltaVx + epsilon)
+            # Omega_H_P = torch.clamp(Omega_H_P, min=0)
+            Omega_H_P = dclamp(Omega_H_P, min=0)
 
         #	Compute Omega_H_H2 for present fH and Alpha_H_H2 if H_H2 elastic collisions are included
         if self.COLLISIONS.H2_H_EL:
             self._debrief_msg('Computing Omega_H_H2', 1)
 
             DeltaVx = (VxH - self.H2_Moments.VxH2) / self.vth
-            MagDeltaVx = np.maximum(np.abs(DeltaVx), self.DeltaVx_tol)
-            DeltaVx = np.sign(DeltaVx)*MagDeltaVx
+            MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
 
-            omega_hh2_mat = np.tensordot((self.Internal.Alpha_H_H2*fH), self.dvx, axes=([1],[0]))
-            Omega_H_H2 = np.sum(self.dvr_vol[:,None]*omega_hh2_mat, axis=0) / (nH*DeltaVx + epsilon)
-            Omega_H_H2 = np.maximum(Omega_H_H2, 0)
+            omega_hh2_mat = torch.tensordot((self.Internal.Alpha_H_H2*fH), self.dvx, dims=([1],[0]))
+            Omega_H_H2 = torch.sum(self.dvr_vol[:,None]*omega_hh2_mat, dim=0) / (nH*DeltaVx + epsilon)
+            # Omega_H_H2 = torch.clamp(Omega_H_H2, min=0)
+            Omega_H_H2 = dclamp(Omega_H_H2, min=0)
 
         #	Compute Omega_H_H for present fH if H_H elastic collisions are included
         if self.COLLISIONS.H_H_EL:
             self._debrief_msg('Computing Omega_H_H', 1)
 
-            if np.sum(self.Internal.MH_H_sum) <= 0:
+            if torch.sum(self.Internal.MH_H_sum) <= 0:
                 vr2_2vx_ran2 = self.mesh.vr[:,None,None]**2 - 2*(self.mesh.vx[None,:,None] - VxH[None,None,:])**2
 
-                wperp_mat = np.tensordot((vr2_2vx_ran2*fH), self.dvx, axes=([1],[0]))
-                Wperp_paraH = np.sum(self.dvr_vol[:,None]*wperp_mat, axis=0) / (nH + epsilon)
+                wperp_mat = torch.tensordot((vr2_2vx_ran2*fH), self.dvx, dims=([1],[0]))
+                Wperp_paraH = torch.sum(self.dvr_vol[:,None]*wperp_mat, dim=0) / (nH + epsilon)
 
             else:
                 M_fH = self.Internal.MH_H_sum - fH
-                wperp_mat = np.tensordot((self.vr2_2vx2_2D[:,:,None]*M_fH), self.dvx, axes=([1],[0]))
-                Wperp_paraH = -np.sum(self.dvr_vol[:,None]*wperp_mat, axis=0) / (nH + epsilon)
+                wperp_mat = torch.tensordot((self.vr2_2vx2_2D[:,:,None]*M_fH), self.dvx, dims=([1],[0]))
+                Wperp_paraH = -torch.sum(self.dvr_vol[:,None]*wperp_mat, dim=0) / (nH + epsilon)
 
-            Work = fH.reshape((nvr*nvx, nx), order='F')
-            Alpha_H_H = (self.Internal.SIG_H_H @ Work).reshape((nvr,nvx,nx), order='F')
-            MagWpp = np.maximum(np.abs(Wperp_paraH), self.Wpp_tol)
-            Wpp = np.sign(Wperp_paraH)*MagWpp
+            Work = torch_reshape_fortran(fH, (nvr*nvx, nx))
+            Alpha_H_H = torch_reshape_fortran((self.Internal.SIG_H_H @ Work), (nvr,nvx,nx))
+            MagWpp = torch.clamp(torch.abs(Wperp_paraH), min=self.Wpp_tol)
+            Wpp = torch.sign(Wperp_paraH)*MagWpp
 
-            omega_hh_mat = np.tensordot((Alpha_H_H*fH), self.dvx, axes=([1],[0]))
-            Omega_H_H = np.sum(self.dvr_vol[:,None]*omega_hh_mat, axis=0) / (nH*Wpp + epsilon)
-            Omega_H_H = np.maximum(Omega_H_H, 0)
-
+            omega_hh_mat = torch.tensordot((Alpha_H_H*fH), self.dvx, dims=([1],[0]))
+            Omega_H_H = torch.sum(self.dvr_vol[:,None]*omega_hh_mat, dim=0) / (nH*Wpp + epsilon)
+            # Omega_H_H = torch.clamp(Omega_H_H, min=0)
+            Omega_H_H = dclamp(Omega_H_H, min=0)
+        
         return CollisionType(Omega_H_H, Omega_H_P, Omega_H_H2)
     
 
