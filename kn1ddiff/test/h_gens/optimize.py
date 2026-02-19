@@ -25,15 +25,15 @@ EPSILON = 10e-10
 
 # Optimization Choices
 OPTIMIZE_FH = True
-OPTIMIZE_MESH_COEF = True
+OPTIMIZE_ALPHA_C = True
 OPTIMIZE_COLLISION = True
 
 # Iteration Parameters
-NUM_ITERS = 15
+NUM_ITERS = 10
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 2e-2
+INITIAL_LR = 5e-2
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-5
@@ -70,27 +70,18 @@ if __name__ == "__main__":
     # Gradient
     truein_fH = in_data["fH"]
     print("fH Range: ", torch.max(truein_fH), torch.min(truein_fH))
-    truein_A = in_data["A"]
-    print("A Range: ", torch.max(truein_A), torch.min(truein_A))
-    truein_B = in_data["B"]
-    print("B Range: ", torch.max(truein_B), torch.min(truein_B))
-    truein_C = in_data["C"]
-    print("C Range: ", torch.max(truein_C), torch.min(truein_C))
-    truein_D = in_data["D"]
-    print("D Range: ", torch.max(truein_D), torch.min(truein_D))
-    truein_F = in_data["F"]
-    print("F Range: ", torch.max(truein_F), torch.min(truein_F))
-    truein_G = in_data["G"]
-    print("G Range: ", torch.max(truein_G), torch.min(truein_G))
+    truein_alpha_c = in_data["alpha_c"]
+
+    print("A Range: ", torch.max(truein_alpha_c), torch.min(truein_alpha_c))
     truein_CF_H_H = in_data["CF_H_H"]
+
     print("CF_H_H Range: ", torch.max(truein_CF_H_H), torch.min(truein_CF_H_H))
     truein_CF_H_P = in_data["CF_H_P"]
     print("CF_H_P Range: ", torch.max(truein_CF_H_P), torch.min(truein_CF_H_P))
     truein_CF_H_H2 = in_data["CF_H_H2"]
     print("CF_H_H2 Range: ", torch.max(truein_CF_H_H2), torch.min(truein_CF_H_H2))
-    # input()
-    truein_meq_coeffs = MeshEqCoefficients(truein_A, truein_B, truein_C, truein_D, truein_F, truein_G)
     truein_collision_freqs = CollisionType(truein_CF_H_H, truein_CF_H_P, truein_CF_H_H2)
+    # input()
 
 
     # Desired Outputs
@@ -126,6 +117,7 @@ if __name__ == "__main__":
     # kinetic_h internal Data
     kinetic_h.H2_Moments.TH2 = in_data['TH2_Moment']
     kinetic_h.H2_Moments.VxH2 = in_data['VxH2_Moment']
+    kinetic_h.Internal.Sn = in_data['Sn']
     kinetic_h.Internal.fi_hat = in_data['fi_hat']
     kinetic_h.Internal.Alpha_CX = in_data['Alpha_CX']
     kinetic_h.Internal.ni = in_data['ni']
@@ -134,7 +126,7 @@ if __name__ == "__main__":
 
     # --- Test Input Data ---
 
-    # fH, Beta_CX_sum, m_sums = kinetic_h._run_generations(truein_fH, truein_meq_coeffs, truein_collision_freqs)
+    # fH, Beta_CX_sum, m_sums = kinetic_h._run_generations(truein_fH, truein_alpha_c, truein_collision_freqs)
     # print("fH close: ", torch.allclose(fH, trueout_fH))
     # print(rel_L2_torch(fH, trueout_fH))
     # print("Beta_CX_sum close: ", torch.allclose(Beta_CX_sum, trueout_Beta_CX_sum))
@@ -150,44 +142,24 @@ if __name__ == "__main__":
 
     # --- Optimization Parameters ---
 
-    # initial_fH = torch.nn.Parameter(torch.randn_like(truein_fH, requires_grad=True))
-    initial_fH = 0.9*torch.clone(truein_fH.detach())
+    initial_fH = 1.05*torch.clone(truein_fH.detach())
     fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
 
-    # initial_A = torch.nn.Parameter(torch.randn_like(truein_A, requires_grad=True))
-    initial_A = 0.9*torch.clone(truein_A.detach())
-    A_param = torch.nn.Parameter(torch.log(torch.abs(initial_A)))
-    # initial_B = torch.nn.Parameter(torch.randn_like(truein_B, requires_grad=True))
-    initial_B = 0.9*torch.clone(truein_B.detach())
-    B_param = torch.nn.Parameter(torch.log(torch.abs(initial_B)))
-    # initial_C = torch.nn.Parameter(torch.randn_like(truein_C, requires_grad=True))
-    initial_C = 0.9*torch.clone(truein_C.detach())
-    C_param = torch.nn.Parameter(torch.log(torch.abs(initial_C)))
-    # initial_D = torch.nn.Parameter(torch.randn_like(truein_D, requires_grad=True))
-    initial_D = 0.9*torch.clone(truein_D.detach())
-    D_param = torch.nn.Parameter(torch.log(torch.abs(initial_D)))
-    # initial_F = torch.nn.Parameter(torch.randn_like(truein_F, requires_grad=True))
-    initial_F = 0.9*torch.clone(truein_F.detach())
-    F_param = torch.nn.Parameter(torch.log(torch.abs(initial_F)))
-    # initial_G = torch.nn.Parameter(torch.randn_like(truein_G, requires_grad=True))
-    initial_G = 0.9*torch.clone(truein_G.detach())
-    G_param = torch.nn.Parameter(torch.log(torch.abs(initial_G)))
+    initial_alpha_c = 1.05*torch.clone(truein_alpha_c.detach())
+    alpha_c_param = torch.nn.Parameter(torch.log(torch.abs(initial_alpha_c)))
 
-    # initial_CF_H_H = torch.nn.Parameter(torch.randn_like(truein_CF_H_H, requires_grad=True))
-    initial_CF_H_H = 0.9*torch.clone(truein_CF_H_H.detach())
+    initial_CF_H_H = 1.05*torch.clone(truein_CF_H_H.detach())
     CF_H_H_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H)))
-    # initial_CF_H_P = torch.nn.Parameter(torch.randn_like(truein_CF_H_P, requires_grad=True))
-    initial_CF_H_P = 0.9*torch.clone(truein_CF_H_P.detach())
+    initial_CF_H_P = 1.05*torch.clone(truein_CF_H_P.detach())
     CF_H_P_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_P)))
-    # initial_CF_H_H2 = torch.nn.Parameter(torch.randn_like(truein_CF_H_H2, requires_grad=True))
-    initial_CF_H_H2 = 0.9*torch.clone(truein_CF_H_H2.detach())
+    initial_CF_H_H2 = 1.05*torch.clone(truein_CF_H_H2.detach())
     CF_H_H2_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H2)))
 
     parameters = []
     if OPTIMIZE_FH:
         parameters.append(fH_param)
-    if OPTIMIZE_MESH_COEF:
-        parameters.extend([A_param, B_param, C_param, D_param, F_param, G_param])
+    if OPTIMIZE_ALPHA_C:
+        parameters.extend([alpha_c_param])
     if OPTIMIZE_COLLISION:
         parameters.extend([CF_H_H_param, CF_H_P_param, CF_H_H2_param])
 
@@ -243,13 +215,8 @@ if __name__ == "__main__":
     if GENERATE_GIF:
         if OPTIMIZE_FH:
             fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
-        if OPTIMIZE_MESH_COEF:
-            A_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/A/", "A", truein_A[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
-            B_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/B/", "B", truein_B[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
-            C_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/C/", "C", truein_C[5,9,:], fps=GIF_FPS, frequency=GIF_FREQ)
-            D_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/D/", "D", truein_D[5,9,:], fps=GIF_FPS, frequency=GIF_FREQ)
-            F_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/F/", "F", truein_F[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
-            G_gifgen = GIF_Generator(NUM_ITERS, image_dir+"MEQ/G/", "G", truein_G[5,9,:], fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_ALPHA_C:
+            alpha_c_gifgen = GIF_Generator(NUM_ITERS, image_dir+"alpha_c/", "alpha_c", truein_alpha_c[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_COLLISION:
             H_H_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Collision_Frequency/", "H_H", truein_CF_H_H, fps=GIF_FPS, frequency=GIF_FREQ)
             H_P_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Collision_Frequency/", "H_P", truein_CF_H_P, fps=GIF_FPS, frequency=GIF_FREQ)
@@ -275,18 +242,10 @@ if __name__ == "__main__":
         else:
             fH_in = truein_fH
 
-        if OPTIMIZE_MESH_COEF:
-            mA = torch.exp(A_param)
-            mB = torch.exp(B_param) 
-            mC = torch.exp(C_param)
-            mD = torch.exp(D_param) 
-            mF = torch.sign(initial_F)*torch.exp(F_param) 
-            # mF = 1e18 * torch.tanh(initial_F) 
-            mG = torch.sign(initial_G)*torch.exp(G_param)
-            # mG = 1e18 * torch.tanh(initial_G) 
-            meq_coeffs = MeshEqCoefficients(mA, mB, mC, mD, mF, mG)
+        if OPTIMIZE_ALPHA_C:
+            alpha_c = torch.exp(alpha_c_param)
         else:
-            meq_coeffs = truein_meq_coeffs
+            alpha_c = truein_alpha_c
 
         if OPTIMIZE_COLLISION:
             # cf_hh = 1e-2 * torch.sigmoid(initial_CF_H_H)
@@ -301,7 +260,7 @@ if __name__ == "__main__":
 
 
         # --- Run Function ---
-        fH_out, Beta_CX_sum, m_sums = kinetic_h._run_generations(fH_in, meq_coeffs, coll_freqs)
+        fH_out, Beta_CX_sum, m_sums = kinetic_h._run_generations(fH_in, alpha_c, coll_freqs)
 
         forward_done = time.time()
         print("Forward Time: ", forward_done - epoch_start)
@@ -340,14 +299,7 @@ if __name__ == "__main__":
             best_loss = loss.item()
             best_inputs = [
                         fH_in.detach().cpu(),
-                        MeshEqCoefficients(
-                            meq_coeffs.A.detach().cpu(),
-                            meq_coeffs.B.detach().cpu(),
-                            meq_coeffs.C.detach().cpu(),
-                            meq_coeffs.D.detach().cpu(),
-                            meq_coeffs.F.detach().cpu(),
-                            meq_coeffs.G.detach().cpu()
-                            ),
+                        alpha_c.detach().cpu(),
                         CollisionType(
                             coll_freqs.H_H.detach().cpu(),
                             coll_freqs.H_P.detach().cpu(),
@@ -372,13 +324,8 @@ if __name__ == "__main__":
         if GENERATE_GIF:
             if OPTIMIZE_FH:
                 fh_gifgen.update(fH_in[:,10,0], epoch)
-            if OPTIMIZE_MESH_COEF:
-                A_gifgen.update(meq_coeffs.A[5,10,:], epoch)
-                B_gifgen.update(meq_coeffs.B[5,10,:], epoch)
-                C_gifgen.update(meq_coeffs.C[5,9,:], epoch)
-                D_gifgen.update(meq_coeffs.D[5,9,:], epoch)
-                F_gifgen.update(meq_coeffs.F[5,10,:], epoch)
-                G_gifgen.update(meq_coeffs.G[5,9,:], epoch)
+            if OPTIMIZE_ALPHA_C:
+                alpha_c_gifgen.update(alpha_c[5,10,:], epoch)
             if OPTIMIZE_COLLISION:
                 H_H_gifgen.update(cf_hh, epoch)
                 H_P_gifgen.update(cf_hp, epoch)
@@ -394,7 +341,7 @@ if __name__ == "__main__":
 
     # --- Analysis ---
 
-    opt_fH_in, opt_me_coeffs, opt_coll_freq = best_inputs[0], best_inputs[1], best_inputs[2]
+    opt_fH_in, opt_alpha_c, opt_coll_freq = best_inputs[0], best_inputs[1], best_inputs[2]
     opt_fH_out, opt_Beta_CX_sum, opt_m_sums = best_pred[0], best_pred[1], best_pred[2]
 
     # --- Analyze ---
@@ -407,21 +354,11 @@ if __name__ == "__main__":
         print("fH Input Relative L2: ", rel_L2_torch(opt_fH_in, truein_fH))
         print()
 
-    if OPTIMIZE_MESH_COEF:
-        A_loss = loss_fun(opt_me_coeffs.A, truein_A).item()
-        B_loss = loss_fun(opt_me_coeffs.B, truein_B).item()
-        C_loss = loss_fun(opt_me_coeffs.C, truein_C).item()
-        D_loss = loss_fun(opt_me_coeffs.D, truein_D).item()
-        F_loss = loss_fun(opt_me_coeffs.F, truein_F).item()
-        G_loss = loss_fun(opt_me_coeffs.G, truein_G).item()
-        print("Mesh Coef Loss: ", A_loss, B_loss, C_loss, D_loss, F_loss, G_loss)
-        A_l2 = rel_L2_torch(opt_me_coeffs.A, truein_A)
-        B_l2 = rel_L2_torch(opt_me_coeffs.B, truein_B)
-        C_l2 = rel_L2_torch(opt_me_coeffs.C, truein_C)
-        D_l2 = rel_L2_torch(opt_me_coeffs.D, truein_D)
-        F_l2 = rel_L2_torch(opt_me_coeffs.F, truein_F)
-        G_l2 = rel_L2_torch(opt_me_coeffs.G, truein_G)
-        print("Mesh Coef Relative L2: ", A_l2, B_l2, C_l2, D_l2, F_l2, G_l2)
+    if OPTIMIZE_ALPHA_C:
+        alpha_c_loss = loss_fun(opt_alpha_c, truein_alpha_c).item()
+        print("alpha_c Loss: ", alpha_c_loss)
+        alpha_c_l2 = rel_L2_torch(opt_alpha_c, truein_alpha_c)
+        print("alpha_c Relative L2: ", alpha_c_l2)
         print()
 
     if OPTIMIZE_COLLISION:
@@ -476,15 +413,10 @@ if __name__ == "__main__":
             generate_compare_plot(image_dir+"fH/", "fH"+str(i), x, opt_fH_in[:,i,0], x, truein_fH[:,i,0], init_x=x, init_y=initial_fH[:,i,0])
 
     # MEQ Coeffs
-    if OPTIMIZE_MESH_COEF:
-        x = range(opt_me_coeffs.A[5,10,:].numel())
-        for i in range(len(opt_me_coeffs.A[5,:,0])):
-            generate_compare_plot(image_dir+"MEQ/A/", "A"+str(i), x, opt_me_coeffs.A[5,i,:], x, truein_A[5,i,:], init_x=x, init_y=initial_A[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/B/", "B"+str(i), x, opt_me_coeffs.B[5,i,:], x, truein_B[5,i,:], init_x=x, init_y=initial_B[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/C/", "C"+str(i), x, opt_me_coeffs.C[5,i,:], x, truein_C[5,i,:], init_x=x, init_y=initial_C[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/D/", "D"+str(i), x, opt_me_coeffs.D[5,i,:], x, truein_D[5,i,:], init_x=x, init_y=initial_D[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/F/", "F"+str(i), x, opt_me_coeffs.F[5,i,:], x, truein_F[5,i,:], init_x=x, init_y=initial_F[5,i,:])
-            generate_compare_plot(image_dir+"MEQ/G/", "G"+str(i), x, opt_me_coeffs.G[5,i,:], x, truein_G[5,i,:], init_x=x, init_y=initial_G[5,i,:])
+    if OPTIMIZE_ALPHA_C:
+        x = range(opt_alpha_c[5,10,:].numel())
+        for i in range(len(opt_alpha_c[5,:,0])):
+            generate_compare_plot(image_dir+"alpha_c/", "alpha_c"+str(i), x, opt_alpha_c[5,i,:], x, truein_alpha_c[5,i,:], init_x=x, init_y=initial_alpha_c[5,i,:])
 
     # Collision Frequencies
     if OPTIMIZE_COLLISION:
@@ -497,13 +429,8 @@ if __name__ == "__main__":
     if GENERATE_GIF:
         if OPTIMIZE_FH:
             fh_gifgen.generate_gif()
-        if OPTIMIZE_MESH_COEF:
-            A_gifgen.generate_gif()
-            B_gifgen.generate_gif()
-            C_gifgen.generate_gif()
-            D_gifgen.generate_gif()
-            F_gifgen.generate_gif()
-            G_gifgen.generate_gif()
+        if OPTIMIZE_ALPHA_C:
+            alpha_c_gifgen.generate_gif()
         if OPTIMIZE_COLLISION:
             H_H_gifgen.generate_gif()
             H_P_gifgen.generate_gif()

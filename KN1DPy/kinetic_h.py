@@ -411,13 +411,10 @@ class KineticH():
             # Total Collision Frequency
             alpha_c = self._compute_collision_frequency(collision_freqs, gamma_wall)
 
-            # Generate Coefficients
-            meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c)
-
 
             # --- Iterative Generations ---
 
-            fH, Beta_CX_sum, m_sums = self._run_generations(fH, meq_coeffs, collision_freqs)
+            fH, Beta_CX_sum, m_sums = self._run_generations(fH, alpha_c, collision_freqs)
             self.Internal.MH_H_sum = m_sums.H_H
 
             # Compute H density profile
@@ -439,34 +436,30 @@ class KineticH():
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
 
-    def _run_generations(self, fH, meq_coeffs, collision_freqs):
+    def _run_generations(self, fH, alpha_c, collision_freqs):
         '''
         Iterate through and computes generations of collision
         '''
 
-        # file = 'kh_gens_in.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH,
-        #             'A' : meq_coeffs.A,
-        #             'B' : meq_coeffs.B,
-        #             'C' : meq_coeffs.C,
-        #             'D' : meq_coeffs.D,
-        #             'F' : meq_coeffs.F,
-        #             'G' : meq_coeffs.G,
-        #             'CF_H_H' : collision_freqs.H_H,
-        #             'CF_H_P' : collision_freqs.H_P,
-        #             'CF_H_H2' : collision_freqs.H_H2,
+        file = 'kh_gens_in.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH,
+                    'alpha_c' : alpha_c,
+                    'CF_H_H' : collision_freqs.H_H,
+                    'CF_H_P' : collision_freqs.H_P,
+                    'CF_H_H2' : collision_freqs.H_H2,
                     
-        #             'TH2_Moment' : self.H2_Moments.TH2,
-        #             'VxH2_Moment' : self.H2_Moments.VxH2,
-        #             'fi_hat' : self.Internal.fi_hat,
-        #             'Alpha_CX' : self.Internal.Alpha_CX,
-        #             'ni' : self.Internal.ni,
-        #             'SIG_CX' : self.Internal.SIG_CX
-        #             }
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
+                    'TH2_Moment' : self.H2_Moments.TH2,
+                    'VxH2_Moment' : self.H2_Moments.VxH2,
+                    'Sn' : self.Internal.Sn,
+                    'fi_hat' : self.Internal.fi_hat,
+                    'Alpha_CX' : self.Internal.Alpha_CX,
+                    'ni' : self.Internal.ni,
+                    'SIG_CX' : self.Internal.SIG_CX
+                    }
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        input()
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
@@ -479,6 +472,10 @@ class KineticH():
         m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
 
 
+        
+        # Generate Coefficients
+        meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c)
+
         for i in range(self.generation_count):
 
             self._debrief_msg('Computing atomic neutral generation#'+sval(i), 0)
@@ -489,9 +486,9 @@ class KineticH():
                 # Compute first-flight (0th generation) neutral distribution function
                 fH_gen[:,vxp,0] = fH[:,vxp,0]
                 for k in range(nx-1):
-                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,vxp,k] + meq_coeffs.F[:,vxp,k]
+                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.F[:,:,k]
                 for k in range(nx-1,0,-1):
-                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,vxn,k] + meq_coeffs.G[:,vxn,k]
+                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.G[:,:,k-1]
 
             else:
                 # --- Iterative Generations ---
@@ -499,10 +496,13 @@ class KineticH():
                 # Compute next generation molecular distribution
                 OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
                 fH_gen[:] = 0
+
+                beta_omega_offsum = (Beta_CX[:,:,1:] + OmegaM[:,:,1:] + Beta_CX[:,:,:-1] + OmegaM[:,:,:-1])
                 for k in range(nx-1):
-                    fH_gen[:,vxp,k+1] = meq_coeffs.A[:,vxp,k]*fH_gen[:,vxp,k] + meq_coeffs.B[:,vxp,k]*(Beta_CX[:,vxp,k+1] + OmegaM[:,vxp,k+1] + Beta_CX[:,vxp,k] + OmegaM[:,vxp,k])
+                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.B[:,:,k]*beta_omega_offsum[:,vxp,k]
+                
                 for k in range(nx-1, 0, -1):
-                    fH_gen[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fH_gen[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
+                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.D[:,:,k-1]*beta_omega_offsum[:,vxn,k-1]
 
 
             # --- Update Distribution and Density Profile
@@ -532,18 +532,18 @@ class KineticH():
             
 
 
-        # file = 'kh_gens_out.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH_total,
-        #             'Beta_CX_sum' : Beta_CX_sum,
-        #             'Msum_H_H' : m_sums.H_H,
-        #             'Msum_H_P' : m_sums.H_P,
-        #             'Msum_H_H2' : m_sums.H_H2
-        #             }
+        file = 'kh_gens_out.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH_total,
+                    'Beta_CX_sum' : Beta_CX_sum,
+                    'Msum_H_H' : m_sums.H_H,
+                    'Msum_H_P' : m_sums.H_P,
+                    'Msum_H_H2' : m_sums.H_H2
+                    }
 
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        input()
 
         return fH_total, Beta_CX_sum, m_sums
     
@@ -794,15 +794,18 @@ class KineticH():
         Omega_EL = collision_freqs.H_P + collision_freqs.H_H2 + collision_freqs.H_H
 
         # Total collision frequency
-        alpha_c = np.zeros((self.nvr,self.nvx,self.nx))
+        # alpha_c = np.zeros((self.nvr,self.nvx,self.nx))
         if self.COLLISIONS.H_P_CX:
-            for k in range(self.nx):
-                alpha_c[:,:,k] = self.Internal.Alpha_CX[:,:,k] + self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
+            alpha_c = self.Internal.Alpha_CX + self.Internal.alpha_ion[None,None,:] + Omega_EL[None,None,:] + gamma_wall
+            # for k in range(self.nx):
+            #     alpha_c[:,:,k] = self.Internal.Alpha_CX[:,:,k] + self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
         else:
+            print("NOTE: alpha_c calculation without HP_CX Collisions has not been tested or optimized yet.")
+            input()
             for k in range(self.nx):
                 alpha_c[:,:,k] = self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
 
-        self._test_grid_spacing(alpha_c)
+        # self._test_grid_spacing(alpha_c)
 
         return alpha_c
     
@@ -812,25 +815,44 @@ class KineticH():
         Define parameters Ak, Bk, Ck, Dk, Fk, Gk using Eqs. (3.22), (3.25), (3.30), (3.33)
         '''
 
-        Ak = np.zeros((self.nvr,self.nvx,self.nx))
-        Bk = np.zeros((self.nvr,self.nvx,self.nx))
-        Ck = np.zeros((self.nvr,self.nvx,self.nx))
-        Dk = np.zeros((self.nvr,self.nvx,self.nx))
-        Fk = np.zeros((self.nvr,self.nvx,self.nx))
-        Gk = np.zeros((self.nvr,self.nvx,self.nx))
+        # Ak = np.zeros((self.nvr,self.nvx,self.nx))
+        # Bk = np.zeros((self.nvr,self.nvx,self.nx))
+        # Ck = np.zeros((self.nvr,self.nvx,self.nx))
+        # Dk = np.zeros((self.nvr,self.nvx,self.nx))
+        # Fk = np.zeros((self.nvr,self.nvx,self.nx))
+        # Gk = np.zeros((self.nvr,self.nvx,self.nx))
 
-        for k in range(0, self.nx-1):
-            x_diffs = self.mesh.x[k+1] - self.mesh.x[k]
-            for j in self.vx_pos:
-                denom = 2*self.mesh.vx[j] + x_diffs*alpha_c[:,j,k+1]
-                Ak[:,j,k] = (2*self.mesh.vx[j] - x_diffs*alpha_c[:,j,k]) / denom
-                Bk[:,j,k] = x_diffs / denom
-                Fk[:,j,k] = x_diffs*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
-            for j in self.vx_neg:
-                denom = -2*self.mesh.vx[j] + x_diffs*alpha_c[:,j,k]
-                Ck[:,j,k+1] = (-2*self.mesh.vx[j] - x_diffs*alpha_c[:,j,k+1]) / denom
-                Dk[:,j,k+1] = x_diffs / denom
-                Gk[:,j,k+1] = x_diffs*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
+        # x_diffs = self.mesh.x[1:] - self.mesh.x[:-1]
+        # for k in range(0, self.nx-1):
+        #     for j in self.vx_pos:
+        #         denom = 2*self.mesh.vx[j] + x_diffs[k]*alpha_c[:,j,k+1]
+        #         Ak[:,j,k] = (2*self.mesh.vx[j] - x_diffs[k]*alpha_c[:,j,k]) / denom
+        #         Bk[:,j,k] = x_diffs[k] / denom
+        #         Fk[:,j,k] = x_diffs[k]*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
+        #     for j in self.vx_neg:
+        #         denom = -2*self.mesh.vx[j] + x_diffs[k]*alpha_c[:,j,k]
+        #         Ck[:,j,k+1] = (-2*self.mesh.vx[j] - x_diffs[k]*alpha_c[:,j,k+1]) / denom
+        #         Dk[:,j,k+1] = x_diffs[k] / denom
+        #         Gk[:,j,k+1] = x_diffs[k]*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
+
+        vxp, vxn = self.vx_pos, self.vx_neg
+        vx_pslice = self.mesh.vx[vxp]
+        vx_nslice = self.mesh.vx[vxn]
+
+        # (nx-1)
+        x_diffs = self.mesh.x[1:] - self.mesh.x[:-1]
+
+        # vxp
+        denom = 2*vx_pslice[None,:,None] + x_diffs*alpha_c[:,vxp,1:]
+        Ak = (2*vx_pslice[None,:,None] - x_diffs*alpha_c[:,vxp,:-1]) / denom
+        Bk = x_diffs / denom
+        Fk = x_diffs*(self.Internal.Sn[:,vxp,1:]+self.Internal.Sn[:,vxp,:-1]) / denom
+        
+        # vxn
+        denom = -2*vx_nslice[None,:,None] + x_diffs*alpha_c[:,vxn,:-1]
+        Ck = (-2*vx_nslice[None,:,None] - x_diffs*alpha_c[:,vxn,1:]) / denom
+        Dk = x_diffs / denom
+        Gk = x_diffs*(self.Internal.Sn[:,vxn,1:]+self.Internal.Sn[:,vxn,:-1]) / denom
 
         return MeshEqCoefficients(Ak, Bk, Ck, Dk, Fk, Gk)
     

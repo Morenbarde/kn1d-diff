@@ -23,23 +23,23 @@ USE_CPU = False
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH = True
+OPTIMIZE_FH = False
 OPTIMIZE_NH = True
 
 # Iteration Parameters
-NUM_ITERS = 500
+NUM_ITERS = 1000
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-4
+INITIAL_LR = 2e-3
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-5
+MIN_LR = 1e-4
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 5
+GIF_FREQ = 20
 
 
 if __name__ == "__main__":
@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
     # --- Test Input Data ---
 
-    omega_vals = kinetic_h._compute_omega_values(truein_fH, truein_nH)
+    # omega_vals = kinetic_h._compute_omega_values(truein_fH, truein_nH)
 
     # print("OH_H close: ", torch.allclose(trueout_OH_H, omega_vals.H_H))
     # print("OH_H L2: ", rel_L2_torch(trueout_OH_H, omega_vals.H_H))
@@ -122,9 +122,9 @@ if __name__ == "__main__":
 
     # --- Optimization Parameters ---
 
-    initial_fH = 1.1*torch.clone(truein_fH.detach())
+    initial_fH = 1*torch.clone(truein_fH.detach())
     fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
-    initial_nH = 1.1*torch.clone(truein_nH.detach())
+    initial_nH = 1*torch.clone(truein_nH.detach())
     nH_param = torch.nn.Parameter(torch.log(torch.abs(initial_nH)))
 
     parameters = []
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         loss.backward()
 
-        print(fH_param.grad.abs().mean())
+        # print(fH_param.grad.abs().mean())
         # print(nH_param.grad.abs().mean())
 
         # Clip Gradient

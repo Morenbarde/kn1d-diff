@@ -421,13 +421,10 @@ class KineticH():
             # Total Collision Frequency
             alpha_c = self._compute_collision_frequency(collision_freqs, gamma_wall)
 
-            # Generate Coefficients
-            meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c)
-
 
             # --- Iterative Generations ---
 
-            fH, Beta_CX_sum, m_sums = self._run_generations(fH, meq_coeffs, collision_freqs)
+            fH, Beta_CX_sum, m_sums = self._run_generations(fH, alpha_c, collision_freqs)
             self.Internal.MH_H_sum = m_sums.H_H
 
             # Compute H density profile
@@ -449,7 +446,7 @@ class KineticH():
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
 
-    def _run_generations(self, fH, meq_coeffs, collision_freqs):
+    def _run_generations(self, fH, alpha_c, collision_freqs):
         '''
         Iterate through and computes generations of collision
         '''
@@ -468,6 +465,9 @@ class KineticH():
                                torch.zeros((nvr,nvx,nx), dtype=dtype, device=device))
 
 
+        # Generate Coefficients
+        meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c)
+
         for i in range(self.generation_count):
 
             self._debrief_msg('Computing atomic neutral generation#'+sval(i), 0)
@@ -478,9 +478,9 @@ class KineticH():
                 # Compute first-flight (0th generation) neutral distribution function
                 fH_gen[:,vxp,0] = fH[:,vxp,0]
                 for k in range(nx-1):
-                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,vxp,k] + meq_coeffs.F[:,vxp,k]
+                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.F[:,:,k]
                 for k in range(nx-1,0,-1):
-                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,vxn,k] + meq_coeffs.G[:,vxn,k]
+                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.G[:,:,k-1]
 
             else:
                 # --- Iterative Generations ---
@@ -489,10 +489,12 @@ class KineticH():
                 OmegaM = collision_freqs.H_H*m_vals.H_H + collision_freqs.H_P*m_vals.H_P + collision_freqs.H_H2*m_vals.H_H2
                 fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
 
+                beta_omega_offsum = (Beta_CX[:,:,1:] + OmegaM[:,:,1:] + Beta_CX[:,:,:-1] + OmegaM[:,:,:-1])
                 for k in range(nx-1):
-                    fH_gen[:,vxp,k+1] = meq_coeffs.A[:,vxp,k]*fH_gen[:,vxp,k] + meq_coeffs.B[:,vxp,k]*(Beta_CX[:,vxp,k+1] + OmegaM[:,vxp,k+1] + Beta_CX[:,vxp,k] + OmegaM[:,vxp,k])
+                    fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.B[:,:,k]*beta_omega_offsum[:,vxp,k]
+                
                 for k in range(nx-1, 0, -1):
-                    fH_gen[:,vxn,k-1] = meq_coeffs.C[:,vxn,k]*fH_gen[:,vxn,k] + meq_coeffs.D[:,vxn,k]*(Beta_CX[:,vxn,k-1] + OmegaM[:,vxn,k-1] + Beta_CX[:,vxn,k] + OmegaM[:,vxn,k])
+                    fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.D[:,:,k-1]*beta_omega_offsum[:,vxn,k-1]
 
 
             # --- Update Distribution and Density Profile ---
@@ -663,26 +665,37 @@ class KineticH():
             self._debrief_msg('Computing Omega_H_P', 1)
 
             DeltaVx = (VxH - self.vxi) / self.vth
-            MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
-            DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
+            # MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            # MagDeltaVx = dclamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            # DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
+            DeltaVx = DeltaVx.sign() * dclamp(DeltaVx.abs(), min=self.DeltaVx_tol)
+
 
             omega_hp_mat = torch.tensordot((self.Internal.Alpha_H_P*fH), self.dvx, dims=([1],[0]))
+            with torch.no_grad():
+                print(torch.min(torch.abs(nH * DeltaVx)))
+
             Omega_H_P = torch.sum(self.dvr_vol[:,None]*omega_hp_mat, dim=0) / (nH*DeltaVx + epsilon)
             # Omega_H_P = torch.clamp(Omega_H_P, min=0)
-            Omega_H_P = dclamp(Omega_H_P, min=0)
+            # Omega_H_P = dclamp(Omega_H_P, min=0)
+            Omega_H_P = torch.relu(Omega_H_P)
 
         #	Compute Omega_H_H2 for present fH and Alpha_H_H2 if H_H2 elastic collisions are included
         if self.COLLISIONS.H2_H_EL:
             self._debrief_msg('Computing Omega_H_H2', 1)
 
             DeltaVx = (VxH - self.H2_Moments.VxH2) / self.vth
-            MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
-            DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
+            # MagDeltaVx = torch.clamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            # MagDeltaVx = dclamp(torch.abs(DeltaVx), min=self.DeltaVx_tol)
+            # DeltaVx = torch.sign(DeltaVx)*MagDeltaVx
+            DeltaVx = DeltaVx.sign() * dclamp(DeltaVx.abs(), min=self.DeltaVx_tol)
+
 
             omega_hh2_mat = torch.tensordot((self.Internal.Alpha_H_H2*fH), self.dvx, dims=([1],[0]))
             Omega_H_H2 = torch.sum(self.dvr_vol[:,None]*omega_hh2_mat, dim=0) / (nH*DeltaVx + epsilon)
             # Omega_H_H2 = torch.clamp(Omega_H_H2, min=0)
-            Omega_H_H2 = dclamp(Omega_H_H2, min=0)
+            # Omega_H_H2 = dclamp(Omega_H_H2, min=0)
+            Omega_H_H2 = torch.relu(Omega_H_H2)
 
         #	Compute Omega_H_H for present fH if H_H elastic collisions are included
         if self.COLLISIONS.H_H_EL:
@@ -701,13 +714,17 @@ class KineticH():
 
             Work = torch_reshape_fortran(fH, (nvr*nvx, nx))
             Alpha_H_H = torch_reshape_fortran((self.Internal.SIG_H_H @ Work), (nvr,nvx,nx))
-            MagWpp = torch.clamp(torch.abs(Wperp_paraH), min=self.Wpp_tol)
-            Wpp = torch.sign(Wperp_paraH)*MagWpp
+            # MagWpp = torch.clamp(torch.abs(Wperp_paraH), min=self.Wpp_tol)
+            # MagWpp = dclamp(torch.abs(Wperp_paraH), min=self.Wpp_tol)
+            # Wpp = torch.sign(Wperp_paraH)*MagWpp
+            Wpp = Wperp_paraH.sign() * dclamp(Wperp_paraH.abs(), min=self.Wpp_tol)
+
 
             omega_hh_mat = torch.tensordot((Alpha_H_H*fH), self.dvx, dims=([1],[0]))
             Omega_H_H = torch.sum(self.dvr_vol[:,None]*omega_hh_mat, dim=0) / (nH*Wpp + epsilon)
             # Omega_H_H = torch.clamp(Omega_H_H, min=0)
-            Omega_H_H = dclamp(Omega_H_H, min=0)
+            # Omega_H_H = dclamp(Omega_H_H, min=0)
+            Omega_H_H = torch.relu(Omega_H_H)
         
         return CollisionType(Omega_H_H, Omega_H_P, Omega_H_H2)
     
@@ -722,15 +739,16 @@ class KineticH():
         Omega_EL = collision_freqs.H_P + collision_freqs.H_H2 + collision_freqs.H_H
 
         # Total collision frequency
-        alpha_c = np.zeros((self.nvr,self.nvx,self.nx))
+        # alpha_c = (nvr,nvx,nx)
         if self.COLLISIONS.H_P_CX:
-            for k in range(self.nx):
-                alpha_c[:,:,k] = self.Internal.Alpha_CX[:,:,k] + self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
+            alpha_c = self.Internal.Alpha_CX + self.Internal.alpha_ion[None,None,:] + Omega_EL[None,None,:] + gamma_wall
         else:
+            print("NOTE: alpha_c calculation without HP_CX Collisions has not been tested or optimized yet.")
+            input()
             for k in range(self.nx):
                 alpha_c[:,:,k] = self.Internal.alpha_ion[k] + Omega_EL[k] + gamma_wall[:,:,k]
 
-        self._test_grid_spacing(alpha_c)
+        # self._test_grid_spacing(alpha_c)
 
         return alpha_c
     
@@ -740,25 +758,24 @@ class KineticH():
         Define parameters Ak, Bk, Ck, Dk, Fk, Gk using Eqs. (3.22), (3.25), (3.30), (3.33)
         '''
 
-        Ak = np.zeros((self.nvr,self.nvx,self.nx))
-        Bk = np.zeros((self.nvr,self.nvx,self.nx))
-        Ck = np.zeros((self.nvr,self.nvx,self.nx))
-        Dk = np.zeros((self.nvr,self.nvx,self.nx))
-        Fk = np.zeros((self.nvr,self.nvx,self.nx))
-        Gk = np.zeros((self.nvr,self.nvx,self.nx))
+        vxp, vxn = self.vx_pos, self.vx_neg
+        vx_pslice = self.mesh.vx[vxp]
+        vx_nslice = self.mesh.vx[vxn]
 
-        for k in range(0, self.nx-1):
-            x_diffs = self.mesh.x[k+1] - self.mesh.x[k]
-            for j in self.vx_pos:
-                denom = 2*self.mesh.vx[j] + x_diffs*alpha_c[:,j,k+1]
-                Ak[:,j,k] = (2*self.mesh.vx[j] - x_diffs*alpha_c[:,j,k]) / denom
-                Bk[:,j,k] = x_diffs / denom
-                Fk[:,j,k] = x_diffs*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
-            for j in self.vx_neg:
-                denom = -2*self.mesh.vx[j] + x_diffs*alpha_c[:,j,k]
-                Ck[:,j,k+1] = (-2*self.mesh.vx[j] - x_diffs*alpha_c[:,j,k+1]) / denom
-                Dk[:,j,k+1] = x_diffs / denom
-                Gk[:,j,k+1] = x_diffs*(self.Internal.Sn[:,j,k+1]+self.Internal.Sn[:,j,k]) / denom
+        # (nx-1)
+        x_diffs = self.mesh.x[1:] - self.mesh.x[:-1]
+
+        # vxp
+        denom = 2*vx_pslice[None,:,None] + x_diffs*alpha_c[:,vxp,1:]
+        Ak = (2*vx_pslice[None,:,None] - x_diffs*alpha_c[:,vxp,:-1]) / denom
+        Bk = x_diffs / denom
+        Fk = x_diffs*(self.Internal.Sn[:,vxp,1:]+self.Internal.Sn[:,vxp,:-1]) / denom
+        
+        # vxn
+        denom = -2*vx_nslice[None,:,None] + x_diffs*alpha_c[:,vxn,:-1]
+        Ck = (-2*vx_nslice[None,:,None] - x_diffs*alpha_c[:,vxn,1:]) / denom
+        Dk = x_diffs / denom
+        Gk = x_diffs*(self.Internal.Sn[:,vxn,1:]+self.Internal.Sn[:,vxn,:-1]) / denom
 
         return MeshEqCoefficients(Ak, Bk, Ck, Dk, Fk, Gk)
     
