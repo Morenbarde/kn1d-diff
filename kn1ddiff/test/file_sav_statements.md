@@ -155,18 +155,14 @@ input()
 file = 'kh_gens_in.json'
 print("Saving to file: " + file)
 sav_data = {'fH' : fH,
-            'A' : meq_coeffs.A,
-            'B' : meq_coeffs.B,
-            'C' : meq_coeffs.C,
-            'D' : meq_coeffs.D,
-            'F' : meq_coeffs.F,
-            'G' : meq_coeffs.G,
+            'alpha_c' : alpha_c,
             'CF_H_H' : collision_freqs.H_H,
             'CF_H_P' : collision_freqs.H_P,
             'CF_H_H2' : collision_freqs.H_H2,
             
             'TH2_Moment' : self.H2_Moments.TH2,
             'VxH2_Moment' : self.H2_Moments.VxH2,
+            'Sn' : self.Internal.Sn,
             'fi_hat' : self.Internal.fi_hat,
             'Alpha_CX' : self.Internal.Alpha_CX,
             'ni' : self.Internal.ni,
