@@ -72,7 +72,7 @@ if __name__ == "__main__":
     print("fH Range: ", torch.max(truein_fH), torch.min(truein_fH))
     truein_alpha_c = in_data["alpha_c"]
 
-    print("A Range: ", torch.max(truein_alpha_c), torch.min(truein_alpha_c))
+    print("alpha_c Range: ", torch.max(truein_alpha_c), torch.min(truein_alpha_c))
     truein_CF_H_H = in_data["CF_H_H"]
 
     print("CF_H_H Range: ", torch.max(truein_CF_H_H), torch.min(truein_CF_H_H))

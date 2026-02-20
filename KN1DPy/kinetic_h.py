@@ -391,17 +391,39 @@ class KineticH():
         terminating when density change is low enough.
         '''
 
+        file = 'kh_iters_in.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH,
+                    'nH' : nH,
+                    'gamma_wall' : gamma_wall,
+                    
+                    'TH2_Moment' : self.H2_Moments.TH2,
+                    'VxH2_Moment' : self.H2_Moments.VxH2,
+                    'Sn' : self.Internal.Sn,
+                    'fi_hat' : self.Internal.fi_hat,
+                    'Alpha_CX' : self.Internal.Alpha_CX,
+                    'alpha_ion' : self.Internal.alpha_ion,
+                    'ni' : self.Internal.ni,
+                    'SIG_CX' : self.Internal.SIG_CX,
+                    'Alpha_H_H2' : self.Internal.Alpha_H_H2,
+                    'Alpha_H_P' : self.Internal.Alpha_H_P,
+                    'MH_H_sum' : self.Internal.MH_H_sum,
+                    }
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
+        input()
+
         #	Set iteration scheme
-        fH_iterate = False
-        if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL: 
-            fH_iterate = True
+        # fH_iterate = False
+        # if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL: 
+        #     fH_iterate = True
 
         # Begin Iteration
 
         # while True:
         for _ in range(self.iteration_count):
 
-            nH_input = np.copy(nH)
+            # nH_input = np.copy(nH)
 
 
             # --- Compute Collision Frequency ---
@@ -424,14 +446,32 @@ class KineticH():
 
             # --- End Iteration ---
 
-            if fH_iterate:
+            # if fH_iterate:
                 # Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
                 # If Delta_nHs is less than 10*truncate then stop iterating fH
 
-                self.Internal.Delta_nHs = np.max(np.abs(nH_input - nH)) / np.max(nH)
+                # self.Internal.Delta_nHs = np.max(np.abs(nH_input - nH)) / np.max(nH)
                 # if self.Internal.Delta_nHs <= 10*self.truncate:
                 #     break
 
+
+        file = 'kh_iters_out.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH,
+                    'nH' : nH,
+                    'alpha_c' : alpha_c,
+                    'Beta_CX_sum' : Beta_CX_sum,
+                    'CF_H_H' : collision_freqs.H_H,
+                    'CF_H_P' : collision_freqs.H_P,
+                    'CF_H_H2' : collision_freqs.H_H2,
+                    'Msum_H_H' : m_sums.H_H,
+                    'Msum_H_P' : m_sums.H_P,
+                    'Msum_H_H2' : m_sums.H_H2
+                    }
+
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
+        input()
 
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
@@ -441,25 +481,25 @@ class KineticH():
         Iterate through and computes generations of collision
         '''
 
-        file = 'kh_gens_in.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH,
-                    'alpha_c' : alpha_c,
-                    'CF_H_H' : collision_freqs.H_H,
-                    'CF_H_P' : collision_freqs.H_P,
-                    'CF_H_H2' : collision_freqs.H_H2,
+        # file = 'kh_gens_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'alpha_c' : alpha_c,
+        #             'CF_H_H' : collision_freqs.H_H,
+        #             'CF_H_P' : collision_freqs.H_P,
+        #             'CF_H_H2' : collision_freqs.H_H2,
                     
-                    'TH2_Moment' : self.H2_Moments.TH2,
-                    'VxH2_Moment' : self.H2_Moments.VxH2,
-                    'Sn' : self.Internal.Sn,
-                    'fi_hat' : self.Internal.fi_hat,
-                    'Alpha_CX' : self.Internal.Alpha_CX,
-                    'ni' : self.Internal.ni,
-                    'SIG_CX' : self.Internal.SIG_CX
-                    }
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        input()
+        #             'TH2_Moment' : self.H2_Moments.TH2,
+        #             'VxH2_Moment' : self.H2_Moments.VxH2,
+        #             'Sn' : self.Internal.Sn,
+        #             'fi_hat' : self.Internal.fi_hat,
+        #             'Alpha_CX' : self.Internal.Alpha_CX,
+        #             'ni' : self.Internal.ni,
+        #             'SIG_CX' : self.Internal.SIG_CX
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        # input()
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
@@ -532,18 +572,18 @@ class KineticH():
             
 
 
-        file = 'kh_gens_out.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH_total,
-                    'Beta_CX_sum' : Beta_CX_sum,
-                    'Msum_H_H' : m_sums.H_H,
-                    'Msum_H_P' : m_sums.H_P,
-                    'Msum_H_H2' : m_sums.H_H2
-                    }
+        # file = 'kh_gens_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH_total,
+        #             'Beta_CX_sum' : Beta_CX_sum,
+        #             'Msum_H_H' : m_sums.H_H,
+        #             'Msum_H_P' : m_sums.H_P,
+        #             'Msum_H_H2' : m_sums.H_H2
+        #             }
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
+        # input()
 
         return fH_total, Beta_CX_sum, m_sums
     
@@ -768,10 +808,10 @@ class KineticH():
         # sav_data = {'fH' : fH,
         #             'nH' : nH,
 
-        #             'VxH2' : self.H2_Moments.VxH2,
-        #             'Alpha_H_H2' : self.Internal.Alpha_H_H2,
-        #             'Alpha_H_P' : self.Internal.Alpha_H_P,
-        #             'MH_H_sum' : self.Internal.MH_H_sum,
+                    # 'VxH2' : self.H2_Moments.VxH2,
+                    # 'Alpha_H_H2' : self.Internal.Alpha_H_H2,
+                    # 'Alpha_H_P' : self.Internal.Alpha_H_P,
+                    # 'MH_H_sum' : self.Internal.MH_H_sum,
 
         #             'OH_H' : Omega_H_H,
         #             'OH_P' : Omega_H_P,

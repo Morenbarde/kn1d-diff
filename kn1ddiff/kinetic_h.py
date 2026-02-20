@@ -401,17 +401,10 @@ class KineticH():
         terminating when density change is low enough.
         '''
 
-        #	Set iteration scheme
-        fH_iterate = False
-        if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL: 
-            fH_iterate = True
-
         # Begin Iteration
 
         # while True:
         for _ in range(self.iteration_count):
-
-            nH_input = np.copy(nH)
 
 
             # --- Compute Collision Frequency ---
@@ -425,22 +418,10 @@ class KineticH():
             # --- Iterative Generations ---
 
             fH, Beta_CX_sum, m_sums = self._run_generations(fH, alpha_c, collision_freqs)
-            self.Internal.MH_H_sum = m_sums.H_H
+            self.Internal.MH_H_sum = m_sums.H_H.detach()
 
             # Compute H density profile
-            for k in range(self.nx):
-                nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
-
-
-            # --- End Iteration ---
-
-            if fH_iterate:
-                # Compute 'seed error': Delta_nHs=(|nHs-nH|)/max(nH) 
-                # If Delta_nHs is less than 10*truncate then stop iterating fH
-
-                self.Internal.Delta_nHs = np.max(np.abs(nH_input - nH)) / np.max(nH)
-                # if self.Internal.Delta_nHs <= 10*self.truncate:
-                #     break
+            nH = torch.einsum('i,ijk,j->k', self.dvr_vol, fH, self.dvx)
 
 
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
@@ -672,8 +653,6 @@ class KineticH():
 
 
             omega_hp_mat = torch.tensordot((self.Internal.Alpha_H_P*fH), self.dvx, dims=([1],[0]))
-            with torch.no_grad():
-                print(torch.min(torch.abs(nH * DeltaVx)))
 
             Omega_H_P = torch.sum(self.dvr_vol[:,None]*omega_hp_mat, dim=0) / (nH*DeltaVx + epsilon)
             # Omega_H_P = torch.clamp(Omega_H_P, min=0)

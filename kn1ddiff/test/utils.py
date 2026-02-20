@@ -23,6 +23,19 @@ def rel_L2_loss(pred, act, eps=1e-12):
 
     return (num / (den + eps))
 
+
+# Analysis
+
+def check_close(var_name, pred, true):
+    print(var_name+" close: ", torch.allclose(pred, true))
+    print(var_name+" L2: ", rel_L2_torch(pred, true))
+
+def analyze_difference(name, loss_fun, pred, true):
+    print(name+" Loss: ", loss_fun(pred, true).item())
+    print(name+" Relative L2: ", rel_L2_torch(pred, true))
+
+
+
 # Torch converter
 def numpy_to_torch(np_arr, device, dtype):
     return torch.from_numpy(np_arr).to(dtype=dtype, device=device)
@@ -38,6 +51,8 @@ def check_and_generate_dir(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
+
+# Plotting
 
 def generate_compare_plot(dir, title, x, y, true_x, true_y, init_x = None, init_y = None, xlabel="", ylabel="", x_range = None, y_range = None):
     check_and_generate_dir(dir)
