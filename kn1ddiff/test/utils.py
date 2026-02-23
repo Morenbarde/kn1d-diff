@@ -65,10 +65,10 @@ def generate_compare_plot(dir, title, x, y, true_x, true_y, init_x = None, init_
     torch_to_numpy(init_x)
     torch_to_numpy(init_y)
 
-    if(init_x is not None and init_y is not None):
-        plt.plot(init_x, init_y, color = 'pink', marker='x', markersize=2, markeredgecolor='purple', label="Initial", ls=":")
     plt.plot(x, y, color = 'blue', marker='x', markersize=2, markeredgecolor='cyan', label="Optimized")
     plt.plot(true_x, true_y, color = 'orange', marker='x', markersize=2, markeredgecolor='red', label="True", ls=":")
+    if(init_x is not None and init_y is not None):
+        plt.plot(init_x, init_y, color = 'pink', marker='x', markersize=2, markeredgecolor='purple', label="Initial", ls=":")
     # plt.yscale('log')
     plt.title(title)
     plt.xlabel(xlabel)

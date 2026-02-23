@@ -436,9 +436,8 @@ class KineticH():
         vxp, vxn = self.vx_pos, self.vx_neg
         dtype, device = self.dtype, self.device
 
-        fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
         fH_total = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
-        nH_gen = torch.zeros((nx), dtype=dtype, device=device)
+        # nH_gen = torch.zeros((nx), dtype=dtype, device=device)
 
         Beta_CX_sum = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
         m_sums = CollisionType(torch.zeros((nvr,nvx,nx), dtype=dtype, device=device), 
@@ -452,6 +451,8 @@ class KineticH():
         for i in range(self.generation_count):
 
             self._debrief_msg('Computing atomic neutral generation#'+sval(i), 0)
+
+            fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
 
             if i == 0:
                 # --- 0th Generation ---

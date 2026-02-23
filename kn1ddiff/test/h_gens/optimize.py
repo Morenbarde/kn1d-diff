@@ -29,18 +29,19 @@ OPTIMIZE_ALPHA_C = True
 OPTIMIZE_COLLISION = True
 
 # Iteration Parameters
-NUM_ITERS = 10
+NUM_ITERS = 5
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-2
+INITIAL_LR = 1e-1
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-5
 
 # Gif parameters
 GENERATE_GIF = True
-GIF_FPS = 10
+GIF_FPS = 2
 GIF_FREQ = 1
 
 
@@ -142,17 +143,17 @@ if __name__ == "__main__":
 
     # --- Optimization Parameters ---
 
-    initial_fH = 1.05*torch.clone(truein_fH.detach())
+    initial_fH = 1.1*torch.clone(truein_fH.detach())
     fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
 
-    initial_alpha_c = 1.05*torch.clone(truein_alpha_c.detach())
+    initial_alpha_c = 1.1*torch.clone(truein_alpha_c.detach())
     alpha_c_param = torch.nn.Parameter(torch.log(torch.abs(initial_alpha_c)))
 
-    initial_CF_H_H = 1.05*torch.clone(truein_CF_H_H.detach())
+    initial_CF_H_H = 1.1*torch.clone(truein_CF_H_H.detach())
     CF_H_H_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H)))
-    initial_CF_H_P = 1.05*torch.clone(truein_CF_H_P.detach())
+    initial_CF_H_P = 1.1*torch.clone(truein_CF_H_P.detach())
     CF_H_P_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_P)))
-    initial_CF_H_H2 = 1.05*torch.clone(truein_CF_H_H2.detach())
+    initial_CF_H_H2 = 1.1*torch.clone(truein_CF_H_H2.detach())
     CF_H_H2_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H2)))
 
     parameters = []
@@ -214,7 +215,7 @@ if __name__ == "__main__":
     # Init Gif Generator
     if GENERATE_GIF:
         if OPTIMIZE_FH:
-            fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
+            fh_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,7,0], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_ALPHA_C:
             alpha_c_gifgen = GIF_Generator(NUM_ITERS, image_dir+"alpha_c/", "alpha_c", truein_alpha_c[5,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_COLLISION:
@@ -286,8 +287,9 @@ if __name__ == "__main__":
 
         #Optimize
         optimizer.step()
-        # scheduler.step(loss)
-        scheduler.step()
+        if CYCLE_LR:
+            # scheduler.step(loss)
+            scheduler.step()
 
         backward_done = time.time()
         print("Backward Time: ", backward_done - forward_done)
@@ -323,7 +325,7 @@ if __name__ == "__main__":
         # Update Gif data
         if GENERATE_GIF:
             if OPTIMIZE_FH:
-                fh_gifgen.update(fH_in[:,10,0], epoch)
+                fh_gifgen.update(fH_in[:,7,0], epoch)
             if OPTIMIZE_ALPHA_C:
                 alpha_c_gifgen.update(alpha_c[5,10,:], epoch)
             if OPTIMIZE_COLLISION:

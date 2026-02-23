@@ -3,6 +3,7 @@ import numpy as np
 import json
 import time
 from datetime import timedelta
+import math
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import KineticH
@@ -18,22 +19,24 @@ epsilon = 10e-10
 USE_CPU = True
 dtype = torch.float64
 
-OPTIMIZE_FH = False
+OPTIMIZE_FH = True
 OPTIMIZE_NH = True
 
-# Learning Rate Parameters
-INITIAL_LR = 1e-1
-LR_CYCLE = 50
-MIN_LR = 1e-7
-
 # Iteration Parameters
-NUM_ITERS = 100
-CLIP_NORM = 1e0
+NUM_ITERS = 1000
+CLIP_NORM = 1e-0
+
+# Learning Rate Parameters
+INITIAL_LR = 5e-4
+CYCLE_LR = False
+LR_CYCLE_COUNT = 1
+LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
+MIN_LR = 1e-7
 
 # Gif Parameters
 GENERATE_GIF = True
-GIF_FPS = 10
-GIF_FREQ = 5
+GIF_FPS = 15
+GIF_FREQ = 10
 
 
 if __name__ == "__main__":
@@ -105,12 +108,11 @@ if __name__ == "__main__":
 
 
     # --- Test Optimization ---
-    initial_fH_signs = torch.sign(true_fH.detach())
-    initial_fH = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(true_fH.detach()))))
+    initial_fH = 0.9*torch.clone(true_fH.detach())
+    fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
 
-    initial_nH = torch.nn.Parameter(torch.log(torch.abs(1.1*torch.clone(true_nH.detach()))))
-    # initial_nH = torch.nn.Parameter(torch.randn_like(true_nH, requires_grad=True))
-    # initial_nH = torch.nn.Parameter(torch.zeros_like(true_nH, requires_grad=True))
+    initial_nH = 0.9*torch.clone(true_nH.detach())
+    nH_param = torch.nn.Parameter(torch.log(torch.abs(initial_nH)))
 
     initial_TH2_mom = torch.nn.Parameter(torch.randn_like(true_TH2_mom))
     initial_VxH2_mom = torch.nn.Parameter(torch.randn_like(true_VxH2_mom))
@@ -118,11 +120,12 @@ if __name__ == "__main__":
 
     parameters = []
     if OPTIMIZE_FH:
-        parameters.append(initial_fH)
+        parameters.append(fH_param)
     if OPTIMIZE_NH:
-        parameters.append(initial_nH)
+        parameters.append(nH_param)
 
-    optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR)
+    optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.85, 0.999))
+    # optimizer = torch.optim.SGD(parameters, lr=INITIAL_LR, momentum=0.8)
 
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     #     optimizer,
@@ -180,16 +183,16 @@ if __name__ == "__main__":
         epoch_start = time.time()
 
         if OPTIMIZE_FH:
-            # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
-            # fH = 1e19*torch.nn.functional.tanh(initial_fH)
-            # fH = 1e19 * torch.sigmoid(initial_fH)
-            fH = initial_fH_signs*torch.exp(initial_fH)
+            # fH = 1e19 * torch.nn.functional.softplus(fH_param)
+            # fH = 1e19*torch.nn.functional.tanh(fH_param)
+            # fH = 1e19 * torch.sigmoid(fH_param)
+            fH = torch.sign(initial_fH)*torch.exp(fH_param)
         else:
             fH = true_fH
 
         if OPTIMIZE_NH:
-            # nH = 1e17 * torch.sigmoid(initial_nH)
-            nH = torch.exp(initial_nH)
+            # nH = 1e17 * torch.sigmoid(nH_param)
+            nH = torch.exp(nH_param)
         else:
             nH = true_nH
 
@@ -207,12 +210,13 @@ if __name__ == "__main__":
         loss.backward()
 
         # Clip Gradient
-        torch.nn.utils.clip_grad_norm_([initial_fH, initial_nH], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_([fH_param, nH_param], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
-        # scheduler.step(loss)
-        scheduler.step()
+        if CYCLE_LR:
+            # scheduler.step(loss)
+            scheduler.step()
 
         # Save Best Epoch
         loss_list.append(loss.item())
@@ -298,9 +302,9 @@ if __name__ == "__main__":
     print("Generating Images and Gifs")
 
     x = range(opt_fH[0,0,:].numel())
-    generate_compare_plot(image_dir+"fH_Images/", "fH", x, opt_fH[0,0,:], x, true_fH[0,0,:])
+    generate_compare_plot(image_dir+"fH_Images/", "fH", x, opt_fH[0,0,:], x, true_fH[0,0,:], init_x=x, init_y=initial_fH[0,0,:])
     x = range(opt_nH.numel())
-    generate_compare_plot(image_dir+"nH_Images/", "nH", x, opt_nH, x, true_nH)
+    generate_compare_plot(image_dir+"nH_Images/", "nH", x, opt_nH, x, true_nH, init_x=x, init_y=initial_nH)
     x = range(opt_TH2.numel())
     generate_compare_plot(image_dir, "TH2", x, opt_TH2, x, true_TH2_mom)
     x = range(opt_VxH2.numel())

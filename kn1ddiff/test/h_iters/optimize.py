@@ -40,7 +40,7 @@ MIN_LR = 1e-5
 
 # Gif parameters
 GENERATE_GIF = True
-GIF_FPS = 10
+GIF_FPS = 5
 GIF_FREQ = 1
 
 
