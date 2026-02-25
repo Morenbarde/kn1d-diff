@@ -24,25 +24,25 @@ USE_CPU = True
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH = True
+OPTIMIZE_FH = False
 OPTIMIZE_ALPHA_C = True
-OPTIMIZE_COLLISION = True
+OPTIMIZE_COLLISION = False
 
 # Iteration Parameters
-NUM_ITERS = 5
+NUM_ITERS = 200
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
+INITIAL_LR = 5e-4
 CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-5
+MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
-GIF_FPS = 2
-GIF_FREQ = 1
+GIF_FPS = 5
+GIF_FREQ = 10
 
 
 if __name__ == "__main__":
@@ -146,14 +146,14 @@ if __name__ == "__main__":
     initial_fH = 1.1*torch.clone(truein_fH.detach())
     fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
 
-    initial_alpha_c = 1.1*torch.clone(truein_alpha_c.detach())
+    initial_alpha_c = 0.95*torch.clone(truein_alpha_c.detach())
     alpha_c_param = torch.nn.Parameter(torch.log(torch.abs(initial_alpha_c)))
 
-    initial_CF_H_H = 1.1*torch.clone(truein_CF_H_H.detach())
+    initial_CF_H_H = 0.95*torch.clone(truein_CF_H_H.detach())
     CF_H_H_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H)))
-    initial_CF_H_P = 1.1*torch.clone(truein_CF_H_P.detach())
+    initial_CF_H_P = 0.95*torch.clone(truein_CF_H_P.detach())
     CF_H_P_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_P)))
-    initial_CF_H_H2 = 1.1*torch.clone(truein_CF_H_H2.detach())
+    initial_CF_H_H2 = 0.95*torch.clone(truein_CF_H_H2.detach())
     CF_H_H2_param = torch.nn.Parameter(torch.log(torch.abs(initial_CF_H_H2)))
 
     parameters = []
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     if OPTIMIZE_COLLISION:
         parameters.extend([CF_H_H_param, CF_H_P_param, CF_H_H2_param])
 
-    optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9,  0.99))
+    optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9, 0.999))
 
 
     # --- Scheduler Options --- 

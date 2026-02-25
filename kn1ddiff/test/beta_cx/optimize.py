@@ -3,6 +3,7 @@ import numpy as np
 import json
 import time
 from datetime import timedelta
+import math
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import KineticH
@@ -20,14 +21,16 @@ USE_CPU = False
 
 OPTIMIZE_FH = True
 
-# Learning Rate Parameters
-INITIAL_LR = 1e-3
-LR_CYCLE = 250
-MIN_LR = 1e-6
-
 # Iteration Parameters
-NUM_ITERS = 1000
+NUM_ITERS = 2000
 CLIP_NORM = 1e-1
+
+# Learning Rate Parameters
+INITIAL_LR = 5e-4
+CYCLE_LR = True
+LR_CYCLE_COUNT = 1
+LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
+MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
@@ -95,13 +98,13 @@ if __name__ == "__main__":
 
     # --- Test Optimization ---
     # initial_fH = torch.nn.Parameter(torch.randn_like(true_fH, requires_grad=True, dtype=dtype, device=device))
-    initial_sign = torch.sign(true_fH.detach())
-    initial_fH = torch.nn.Parameter(torch.log(torch.abs(1*torch.clone(true_fH.detach()))))
+    initial_fH = 0.9*torch.clone(true_fH.detach())
+    fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
     # initial_fH = torch.nn.Parameter(torch.zeros_like(true_fH, requires_grad=True))
 
     parameters = []
     if OPTIMIZE_FH:
-        parameters.append(initial_fH)
+        parameters.append(fH_param)
 
     optimizer = torch.optim.Adam(parameters, lr=INITIAL_LR, betas=(0.9,  0.99))
 
@@ -120,7 +123,7 @@ if __name__ == "__main__":
         optimizer,
         T_0=LR_CYCLE,
         # T_mult=1,
-        # eta_min=MIN_LR,
+        eta_min=MIN_LR,
     )
 
 
@@ -169,7 +172,7 @@ if __name__ == "__main__":
             # fH = 1e19 * torch.nn.functional.softplus(initial_fH)
             # fH = 1e19 * torch.nn.functional.tanh(initial_fH)
             # fH = 1e19 * torch.sigmoid(initial_fH)
-            fH = initial_sign*torch.exp(initial_fH)
+            fH = torch.sign(initial_fH)*torch.exp(fH_param)
         else:
             fH = true_fH
 
@@ -184,12 +187,13 @@ if __name__ == "__main__":
         loss.backward()
 
         # Clip Gradient
-        torch.nn.utils.clip_grad_norm_([initial_fH], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_([fH_param], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
-        # scheduler.step(loss)
-        scheduler.step()
+        if CYCLE_LR:
+            # scheduler.step(loss)
+            scheduler.step()
 
         # Save Best Epoch
         loss_list.append(loss.item())
@@ -251,7 +255,7 @@ if __name__ == "__main__":
 
     x = range(opt_fH[0,10,:].numel())
     for i in range(len(opt_fH[0,:,0])):
-        generate_compare_plot(image_dir+"fH_Images/", "fH_slice"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:])
+        generate_compare_plot(image_dir+"fH_Images/", "fH_slice"+str(i), x, opt_fH[0,i,:], x, true_fH[0,i,:], init_x=x, init_y=initial_fH[0,i,:])
 
     generate_loss_plot(image_dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
     generate_lr_plot(image_dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")

@@ -391,27 +391,27 @@ class KineticH():
         terminating when density change is low enough.
         '''
 
-        file = 'kh_iters_in.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH,
-                    'nH' : nH,
-                    'gamma_wall' : gamma_wall,
+        # file = 'kh_iters_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'nH' : nH,
+        #             'gamma_wall' : gamma_wall,
                     
-                    'TH2_Moment' : self.H2_Moments.TH2,
-                    'VxH2_Moment' : self.H2_Moments.VxH2,
-                    'Sn' : self.Internal.Sn,
-                    'fi_hat' : self.Internal.fi_hat,
-                    'Alpha_CX' : self.Internal.Alpha_CX,
-                    'alpha_ion' : self.Internal.alpha_ion,
-                    'ni' : self.Internal.ni,
-                    'SIG_CX' : self.Internal.SIG_CX,
-                    'Alpha_H_H2' : self.Internal.Alpha_H_H2,
-                    'Alpha_H_P' : self.Internal.Alpha_H_P,
-                    'MH_H_sum' : self.Internal.MH_H_sum,
-                    }
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
-        input()
+        #             'TH2_Moment' : self.H2_Moments.TH2,
+        #             'VxH2_Moment' : self.H2_Moments.VxH2,
+        #             'Sn' : self.Internal.Sn,
+        #             'fi_hat' : self.Internal.fi_hat,
+        #             'Alpha_CX' : self.Internal.Alpha_CX,
+        #             'alpha_ion' : self.Internal.alpha_ion,
+        #             'ni' : self.Internal.ni,
+        #             'SIG_CX' : self.Internal.SIG_CX,
+        #             'Alpha_H_H2' : self.Internal.Alpha_H_H2,
+        #             'Alpha_H_P' : self.Internal.Alpha_H_P,
+        #             'MH_H_sum' : self.Internal.MH_H_sum,
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
+        # input()
 
         #	Set iteration scheme
         # fH_iterate = False
@@ -436,6 +436,26 @@ class KineticH():
 
             # --- Iterative Generations ---
 
+            file = 'kh_gens_in.json'
+            print("Saving to file: " + file)
+            sav_data = {'fH' : fH,
+                        'gamma_wall' : gamma_wall,
+                        'alpha_c' : alpha_c,
+                        'CF_H_H' : collision_freqs.H_H,
+                        'CF_H_P' : collision_freqs.H_P,
+                        'CF_H_H2' : collision_freqs.H_H2,
+                        
+                        'TH2_Moment' : self.H2_Moments.TH2,
+                        'VxH2_Moment' : self.H2_Moments.VxH2,
+                        'Sn' : self.Internal.Sn,
+                        'fi_hat' : self.Internal.fi_hat,
+                        'Alpha_CX' : self.Internal.Alpha_CX,
+                        'ni' : self.Internal.ni,
+                        'SIG_CX' : self.Internal.SIG_CX
+                        }
+            sav_data = make_json_compatible(sav_data)
+            sav_to_json("kn1ddiff/test/h_gens_plus_alpha_c/"+file, sav_data)
+            input()
             fH, Beta_CX_sum, m_sums = self._run_generations(fH, alpha_c, collision_freqs)
             self.Internal.MH_H_sum = m_sums.H_H
 
@@ -455,23 +475,23 @@ class KineticH():
                 #     break
 
 
-        file = 'kh_iters_out.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH' : fH,
-                    'nH' : nH,
-                    'alpha_c' : alpha_c,
-                    'Beta_CX_sum' : Beta_CX_sum,
-                    'CF_H_H' : collision_freqs.H_H,
-                    'CF_H_P' : collision_freqs.H_P,
-                    'CF_H_H2' : collision_freqs.H_H2,
-                    'Msum_H_H' : m_sums.H_H,
-                    'Msum_H_P' : m_sums.H_P,
-                    'Msum_H_H2' : m_sums.H_H2
-                    }
+        # file = 'kh_iters_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'nH' : nH,
+        #             'alpha_c' : alpha_c,
+        #             'Beta_CX_sum' : Beta_CX_sum,
+        #             'CF_H_H' : collision_freqs.H_H,
+        #             'CF_H_P' : collision_freqs.H_P,
+        #             'CF_H_H2' : collision_freqs.H_H2,
+        #             'Msum_H_H' : m_sums.H_H,
+        #             'Msum_H_P' : m_sums.H_P,
+        #             'Msum_H_H2' : m_sums.H_H2
+        #             }
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_iters/"+file, sav_data)
+        # input()
 
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
@@ -480,26 +500,6 @@ class KineticH():
         '''
         Iterate through and computes generations of collision
         '''
-
-        # file = 'kh_gens_in.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH,
-        #             'alpha_c' : alpha_c,
-        #             'CF_H_H' : collision_freqs.H_H,
-        #             'CF_H_P' : collision_freqs.H_P,
-        #             'CF_H_H2' : collision_freqs.H_H2,
-                    
-        #             'TH2_Moment' : self.H2_Moments.TH2,
-        #             'VxH2_Moment' : self.H2_Moments.VxH2,
-        #             'Sn' : self.Internal.Sn,
-        #             'fi_hat' : self.Internal.fi_hat,
-        #             'Alpha_CX' : self.Internal.Alpha_CX,
-        #             'ni' : self.Internal.ni,
-        #             'SIG_CX' : self.Internal.SIG_CX
-        #             }
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
@@ -524,6 +524,7 @@ class KineticH():
                 # --- 0th Generation ---
                             
                 # Compute first-flight (0th generation) neutral distribution function
+                print(fH[:,vxp,0])
                 fH_gen[:,vxp,0] = fH[:,vxp,0]
                 for k in range(nx-1):
                     fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.F[:,:,k]
@@ -572,18 +573,18 @@ class KineticH():
             
 
 
-        # file = 'kh_gens_out.json'
-        # print("Saving to file: " + file)
-        # sav_data = {'fH' : fH_total,
-        #             'Beta_CX_sum' : Beta_CX_sum,
-        #             'Msum_H_H' : m_sums.H_H,
-        #             'Msum_H_P' : m_sums.H_P,
-        #             'Msum_H_H2' : m_sums.H_H2
-        #             }
+        file = 'kh_gens_out.json'
+        print("Saving to file: " + file)
+        sav_data = {'fH' : fH_total,
+                    'Beta_CX_sum' : Beta_CX_sum,
+                    'Msum_H_H' : m_sums.H_H,
+                    'Msum_H_P' : m_sums.H_P,
+                    'Msum_H_H2' : m_sums.H_H2
+                    }
 
-        # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_gens/"+file, sav_data)
-        # input()
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/h_gens_plus_alpha_c/"+file, sav_data)
+        input()
 
         return fH_total, Beta_CX_sum, m_sums
     
