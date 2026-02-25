@@ -4,6 +4,7 @@ import json
 import time
 from datetime import timedelta
 import math
+from dataclasses import dataclass, asdict
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import *
@@ -11,10 +12,10 @@ from kn1ddiff.test.utils import *
 
 
 
-dir = "kn1ddiff/test/h_gens/"
+dir = "kn1ddiff/test/h_proc/"
 image_dir = dir+"Images/"
-in_file = "kh_gens_in.json"
-out_file = "kh_gens_out.json"
+in_file = "kh_proc_in.json"
+out_file = "kh_proc_out.json"
 
 # Torch
 dtype = torch.float64
@@ -24,12 +25,14 @@ USE_CPU = True
 EPSILON = 10e-10
 
 # Optimization Choices
+OPTIMIZE_FH2 = False
+OPTIMIZE_FSH = False
 OPTIMIZE_FH = False
-OPTIMIZE_ALPHA_C = False
-OPTIMIZE_COLLISION = True
+OPTIMIZE_NHP = False
+OPTIMIZE_THP = False
 
 # Iteration Parameters
-NUM_ITERS = 200
+NUM_ITERS = 10
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
@@ -69,29 +72,37 @@ if __name__ == "__main__":
     # Fixed
 
     # Gradient
+    truein_fH2 = in_data["fH2"]
+    print("fH2 Range: ", torch.max(truein_fH2), torch.min(truein_fH2))
+    truein_fSH = in_data["fSH"]
+    print("fSH Range: ", torch.max(truein_fSH), torch.min(truein_fSH))
     truein_fH = in_data["fH"]
     print("fH Range: ", torch.max(truein_fH), torch.min(truein_fH))
-    truein_alpha_c = in_data["alpha_c"]
-
-    print("alpha_c Range: ", torch.max(truein_alpha_c), torch.min(truein_alpha_c))
-    truein_CF_H_H = in_data["CF_H_H"]
-
-    print("CF_H_H Range: ", torch.max(truein_CF_H_H), torch.min(truein_CF_H_H))
-    truein_CF_H_P = in_data["CF_H_P"]
-    print("CF_H_P Range: ", torch.max(truein_CF_H_P), torch.min(truein_CF_H_P))
-    truein_CF_H_H2 = in_data["CF_H_H2"]
-    print("CF_H_H2 Range: ", torch.max(truein_CF_H_H2), torch.min(truein_CF_H_H2))
-    truein_collision_freqs = CollisionType(truein_CF_H_H, truein_CF_H_P, truein_CF_H_H2)
+    truein_nHP = in_data["nHP"]
+    print("nHP Range: ", torch.max(truein_nHP), torch.min(truein_nHP))
+    truein_THP = in_data["THP"]
+    print("THP Range: ", torch.max(truein_THP), torch.min(truein_THP))
     # input()
 
 
     # Desired Outputs
     
-    trueout_fH = out_data["fH"]
-    trueout_Beta_CX_sum = out_data["Beta_CX_sum"]
-    trueout_Msum_H_H = out_data["Msum_H_H"]
-    trueout_Msum_H_P = out_data["Msum_H_P"]
-    trueout_Msum_H_H2 = out_data["Msum_H_H2"]
+    true_results = KHResults(out_data["fH"], 
+                             out_data["nH"], 
+                             out_data["GammaxH"], 
+                             out_data["VxH"], 
+                             out_data["pH"], 
+                             out_data["TH"], 
+                             out_data["qxH"], 
+                             out_data["qxH_total"], 
+                             out_data["NetHSource"], 
+                             out_data["Sion"], 
+                             out_data["QH"], 
+                             out_data["RxH"], 
+                             out_data["QH_total"], 
+                             out_data["AlbedoH"], 
+                             out_data["SideWallH"],
+                        )
 
 
     # --- Set up Kinetic_H ---
@@ -115,30 +126,19 @@ if __name__ == "__main__":
                         compute_errors=True, debrief=True, debug=False, 
                         device=device, dtype=dtype)
 
-    # kinetic_h internal Data
-    kinetic_h.H2_Moments.TH2 = in_data['TH2_Moment']
-    kinetic_h.H2_Moments.VxH2 = in_data['VxH2_Moment']
-    kinetic_h.Internal.Sn = in_data['Sn']
-    kinetic_h.Internal.fi_hat = in_data['fi_hat']
-    kinetic_h.Internal.Alpha_CX = in_data['Alpha_CX']
-    kinetic_h.Internal.ni = in_data['ni']
-    kinetic_h.Internal.SIG_CX = in_data['SIG_CX']
-
 
     # --- Test Input Data ---
 
-    # fH, Beta_CX_sum, m_sums = kinetic_h._run_generations(truein_fH, truein_alpha_c, truein_collision_freqs)
-    # print("fH close: ", torch.allclose(fH, trueout_fH))
-    # print(rel_L2_torch(fH, trueout_fH))
-    # print("Beta_CX_sum close: ", torch.allclose(Beta_CX_sum, trueout_Beta_CX_sum))
-    # print(rel_L2_torch(Beta_CX_sum, trueout_Beta_CX_sum))
-    # print("Msum_H_H close: ", torch.allclose(m_sums.H_H, trueout_Msum_H_H))
-    # print(rel_L2_torch(m_sums.H_H, trueout_Msum_H_H))
-    # print("Msum_H_P close: ", torch.allclose(m_sums.H_P, trueout_Msum_H_P))
-    # print(rel_L2_torch(m_sums.H_P, trueout_Msum_H_P))
-    # print("Msum_H_H2 close: ", torch.allclose(m_sums.H_H2, trueout_Msum_H_H2))
-    # print(rel_L2_torch(m_sums.H_H2, trueout_Msum_H_H2))
-    # input()
+    kh_results = kinetic_h.run_procedure(truein_fH2, truein_fSH, truein_fH, truein_nHP, truein_THP)
+
+    true_results_dict = asdict(true_results)
+    for key, val in asdict(kh_results).items():
+        true_val = true_results_dict[key]
+        print("Checking "+key)
+        print("    Close: ", torch.allclose(val, true_val))
+        print("    L2: ", rel_L2_torch(val, true_val))
+    input()
+
 
 
     # --- Optimization Parameters ---
