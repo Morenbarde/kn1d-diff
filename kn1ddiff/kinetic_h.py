@@ -356,7 +356,7 @@ class KineticH():
         # Compute nH
         nH = torch.zeros(nx, dtype=self.dtype, device=self.device)
         for k in range(nx):
-            nH[k] = torch.sum(self.dvr_vol*(np.matmul(fH[:,:,k], self.dvx)))
+            nH[k] = torch.sum(self.dvr_vol*(torch.matmul(fH[:,:,k], self.dvx)))
 
         # Compute Side-Wall collision rate
         gamma_wall = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
