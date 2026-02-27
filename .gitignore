@@ -4,3 +4,4 @@ __pycache__/
 /Results
 *.gif
 *.png
+*.log

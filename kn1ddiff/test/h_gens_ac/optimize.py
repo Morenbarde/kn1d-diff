@@ -2,17 +2,20 @@ import torch
 import numpy as np
 import json
 import time
-from datetime import timedelta
+from datetime import timedelta, datetime
 import math
+import sys
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import *
 from kn1ddiff.test.utils import *
 
+now = datetime.now()
+folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")
 
-
-dir = "kn1ddiff/test/h_gens_ac/"
-image_dir = dir+"Images/"
+local_dir = "kn1ddiff/test/h_gens_ac/"
+run_dir = local_dir+"Runs/"+folder_name+"/"
+image_dir = run_dir+"Images/"
 in_file = "kh_gens_ac_in.json"
 out_file = "kh_gens_ac_out.json"
 
@@ -29,23 +32,26 @@ OPTIMIZE_GAMMA_WALL = False # No Reason to make true
 OPTIMIZE_COLLISION = True
 
 # Iteration Parameters
-NUM_ITERS = 50
+NUM_ITERS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-2
+INITIAL_LR = 1e-3
 CYCLE_LR = True
-LR_CYCLE_COUNT = 0.5
+LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-4
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 5
+GIF_FREQ = 1
 
 
 if __name__ == "__main__":
+
+    # Start logging to run file
+    setup_log(run_dir)
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda and not USE_CPU else "cpu")
@@ -54,14 +60,16 @@ if __name__ == "__main__":
     #     torch.cuda.manual_seed(72)
 
     # torch.autograd.set_detect_anomaly(True)
+    torch.set_num_threads(2)
+    torch._dynamo.config.capture_scalar_outputs = True
 
 
     # --- Load Inputs and Outputs ---
-    with open(dir+in_file, 'r') as f:
+    with open(local_dir+in_file, 'r') as f:
         in_data = json.load(f)
         for key, value in in_data.items():
             in_data[key] = torch.tensor(value, dtype=dtype, device=device)
-    with open(dir+out_file, 'r') as f:
+    with open(local_dir+out_file, 'r') as f:
         out_data = json.load(f)
         for key, value in out_data.items():
             out_data[key] = torch.tensor(value, dtype=dtype, device=device)
@@ -99,12 +107,12 @@ if __name__ == "__main__":
     
     # --- Set up Kinetic_H ---
 
-    with open(dir+"h_mesh_in.json", 'r') as f:
+    with open(local_dir+"h_mesh_in.json", 'r') as f:
         mesh_input = json.load(f)
         for key, value in mesh_input.items():
             mesh_input[key] = np.asarray(value)
 
-    with open(dir+"kinetic_h_in.json", 'r') as f:
+    with open(local_dir+"kinetic_h_in.json", 'r') as f:
         kh_in = json.load(f)
         for key, value in kh_in.items():
             kh_in[key] = torch.tensor(value, dtype=dtype, device=device)
@@ -113,7 +121,7 @@ if __name__ == "__main__":
     
     kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
                         ni_correct=True, truncate=1.0e-3, max_gen=100, 
-                        compute_errors=True, debrief=True, debug=False, 
+                        compute_errors=True, debrief=False, debug=False, 
                         device=device, dtype=dtype)
 
     # kinetic_h internal Data
@@ -270,7 +278,8 @@ if __name__ == "__main__":
         fH_out, Beta_CX_sum, m_sums = kinetic_h._run_generations(fH_in, alpha_c, coll_freqs)
 
         forward_done = time.time()
-        print("Forward Time: ", forward_done - epoch_start)
+        forward_time = forward_done - epoch_start
+        # print("Forward Time: ", forward_time)
 
 
         # --- Optimize ---
@@ -290,7 +299,7 @@ if __name__ == "__main__":
         loss.backward()
 
         # Clip Gradient
-        # torch.nn.utils.clip_grad_norm_([fH_param], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_([fH_param, CF_H_H_param, CF_H_P_param, CF_H_H2_param, gamma_wall_param], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
@@ -299,7 +308,8 @@ if __name__ == "__main__":
             scheduler.step()
 
         backward_done = time.time()
-        print("Backward Time: ", backward_done - forward_done)
+        backward_time = backward_done - forward_done
+        # print("Backward Time: ", backward_time)
 
         # Save Best Epoch
         loss_list.append(loss.item())
@@ -324,9 +334,9 @@ if __name__ == "__main__":
 
         print(
             f"epoch: {epoch:<5} | "
-            f"runtime: {epoch_runtime:<8.2} | "
-            f"loss: {loss.item():<10.6e} | "
-            f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
+            f"runtime: {epoch_runtime:<5.2f}   F: {forward_time:<4.2f}  B: {backward_time:<4.2f} | "
+            f"lr: {scheduler.get_last_lr()[0]:.2e} | "
+            f"loss: {loss.item():<10.6e}"
         )
 
         # Update Gif data

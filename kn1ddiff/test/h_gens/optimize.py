@@ -112,7 +112,7 @@ if __name__ == "__main__":
     
     kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
                         ni_correct=True, truncate=1.0e-3, max_gen=100, 
-                        compute_errors=True, debrief=True, debug=False, 
+                        compute_errors=True, debrief=False, debug=False, 
                         device=device, dtype=dtype)
 
     # kinetic_h internal Data

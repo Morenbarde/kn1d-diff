@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
 from PIL import Image
 
 
@@ -46,11 +47,25 @@ def torch_to_numpy(torch_tensor):
     return torch_tensor
 
 
+# Directories
 
 def check_and_generate_dir(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
+
+# Logging
+
+def setup_log(run_dir):
+    check_and_generate_dir(run_dir)
+
+    log_path = os.path.join(run_dir, "optim.log")
+    log_file = open(log_path, "a", buffering=1)
+
+    sys.stdout = log_file
+    sys.stderr = log_file
+
+    
 
 # Plotting
 
