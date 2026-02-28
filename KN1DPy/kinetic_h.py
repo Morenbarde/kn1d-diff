@@ -314,17 +314,17 @@ class KineticH():
         '''
 
 
-        file = 'kh_proc_in.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH2' : fH2,
-                    'fSH' : fSH,
-                    'fH'  : fH,
-                    'nHP' : nHP,
-                    'THP' : THP,
-                    }
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
-        input()
+        # file = 'kh_proc_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH2' : fH2,
+        #             'fSH' : fSH,
+        #             'fH'  : fH,
+        #             'nHP' : nHP,
+        #             'THP' : THP,
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # input()
 
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
@@ -392,28 +392,28 @@ class KineticH():
 
         self._debrief_msg("Finished", 0)
 
-        file = 'kh_proc_out.json'
-        print("Saving to file: " + file)
-        sav_data = {"fH" : results.fH,
-                    "nH" : results.nH,
-                    "GammaxH" : results.GammaxH,
-                    "VxH": results.VxH,
-                    "pH": results.pH,
-                    "TH": results.TH,
-                    "qxH": results.qxH,
-                    "qxH_total": results.qxH_total,
-                    "NetHSource": results.NetHSource,
-                    "Sion": results.Sion,
-                    "QH": results.QH,
-                    "RxH": results.RxH,
-                    "QH_total": results.QH_total,
-                    "AlbedoH": results.AlbedoH,
-                    "SideWallH": results.SideWallH
-                    }
+        # file = 'kh_proc_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {"fH" : results.fH,
+        #             "nH" : results.nH,
+        #             "GammaxH" : results.GammaxH,
+        #             "VxH": results.VxH,
+        #             "pH": results.pH,
+        #             "TH": results.TH,
+        #             "qxH": results.qxH,
+        #             "qxH_total": results.qxH_total,
+        #             "NetHSource": results.NetHSource,
+        #             "Sion": results.Sion,
+        #             "QH": results.QH,
+        #             "RxH": results.RxH,
+        #             "QH_total": results.QH_total,
+        #             "AlbedoH": results.AlbedoH,
+        #             "SideWallH": results.SideWallH
+        #             }
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # input()
 
         return results
         

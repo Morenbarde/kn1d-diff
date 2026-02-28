@@ -658,8 +658,8 @@ class KineticH():
 
             Omega_H_P = torch.sum(self.dvr_vol[:,None]*omega_hp_mat, dim=0) / (nH*DeltaVx + epsilon)
             # Omega_H_P = torch.clamp(Omega_H_P, min=0)
-            # Omega_H_P = dclamp(Omega_H_P, min=0)
-            Omega_H_P = torch.relu(Omega_H_P)
+            Omega_H_P = dclamp(Omega_H_P, min=0)
+            # Omega_H_P = torch.relu(Omega_H_P)
 
         #	Compute Omega_H_H2 for present fH and Alpha_H_H2 if H_H2 elastic collisions are included
         if self.COLLISIONS.H2_H_EL:
@@ -675,8 +675,8 @@ class KineticH():
             omega_hh2_mat = torch.tensordot((self.Internal.Alpha_H_H2*fH), self.dvx, dims=([1],[0]))
             Omega_H_H2 = torch.sum(self.dvr_vol[:,None]*omega_hh2_mat, dim=0) / (nH*DeltaVx + epsilon)
             # Omega_H_H2 = torch.clamp(Omega_H_H2, min=0)
-            # Omega_H_H2 = dclamp(Omega_H_H2, min=0)
-            Omega_H_H2 = torch.relu(Omega_H_H2)
+            Omega_H_H2 = dclamp(Omega_H_H2, min=0)
+            # Omega_H_H2 = torch.relu(Omega_H_H2)
 
         #	Compute Omega_H_H for present fH if H_H elastic collisions are included
         if self.COLLISIONS.H_H_EL:
@@ -704,8 +704,8 @@ class KineticH():
             omega_hh_mat = torch.tensordot((Alpha_H_H*fH), self.dvx, dims=([1],[0]))
             Omega_H_H = torch.sum(self.dvr_vol[:,None]*omega_hh_mat, dim=0) / (nH*Wpp + epsilon)
             # Omega_H_H = torch.clamp(Omega_H_H, min=0)
-            # Omega_H_H = dclamp(Omega_H_H, min=0)
-            Omega_H_H = torch.relu(Omega_H_H)
+            Omega_H_H = dclamp(Omega_H_H, min=0)
+            # Omega_H_H = torch.relu(Omega_H_H)
         
         return CollisionType(Omega_H_H, Omega_H_P, Omega_H_H2)
     

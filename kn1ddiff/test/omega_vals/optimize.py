@@ -17,13 +17,13 @@ data_file = "omega_in_out.json"
 
 # Torch
 dtype = torch.float64
-USE_CPU = False
+USE_CPU = True
 
 # Constants
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH = False
+OPTIMIZE_FH = True
 OPTIMIZE_NH = True
 
 # Iteration Parameters
@@ -31,15 +31,15 @@ NUM_ITERS = 1000
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 2e-3
+INITIAL_LR = 5e-3
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-4
+MIN_LR = 1e-5
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 10
-GIF_FREQ = 20
+GIF_FREQ = 50
 
 
 if __name__ == "__main__":
@@ -104,27 +104,27 @@ if __name__ == "__main__":
 
     # --- Test Input Data ---
 
-    # omega_vals = kinetic_h._compute_omega_values(truein_fH, truein_nH)
+    omega_vals = kinetic_h._compute_omega_values(truein_fH, truein_nH)
 
-    # print("OH_H close: ", torch.allclose(trueout_OH_H, omega_vals.H_H))
-    # print("OH_H L2: ", rel_L2_torch(trueout_OH_H, omega_vals.H_H))
-    # print("OH_H range: ", torch.min(omega_vals.H_H), torch.max(omega_vals.H_H))
+    print("OH_H close: ", torch.allclose(trueout_OH_H, omega_vals.H_H))
+    print("OH_H L2: ", rel_L2_torch(trueout_OH_H, omega_vals.H_H))
+    print("OH_H range: ", torch.min(omega_vals.H_H), torch.max(omega_vals.H_H))
 
-    # print("OH_P close: ", torch.allclose(trueout_OH_P, omega_vals.H_P))
-    # print("OH_P L2: ", rel_L2_torch(trueout_OH_P, omega_vals.H_P))
-    # print("OH_P range: ", torch.min(omega_vals.H_P), torch.max(omega_vals.H_P))
+    print("OH_P close: ", torch.allclose(trueout_OH_P, omega_vals.H_P))
+    print("OH_P L2: ", rel_L2_torch(trueout_OH_P, omega_vals.H_P))
+    print("OH_P range: ", torch.min(omega_vals.H_P), torch.max(omega_vals.H_P))
 
-    # print("OH_H2 close: ", torch.allclose(trueout_OH_H2, omega_vals.H_H2))
-    # print("OH_H2 L2: ", rel_L2_torch(trueout_OH_H2, omega_vals.H_H2))
-    # print("OH_H2 range: ", torch.min(omega_vals.H_H2), torch.max(omega_vals.H_H2))
-    # input()
+    print("OH_H2 close: ", torch.allclose(trueout_OH_H2, omega_vals.H_H2))
+    print("OH_H2 L2: ", rel_L2_torch(trueout_OH_H2, omega_vals.H_H2))
+    print("OH_H2 range: ", torch.min(omega_vals.H_H2), torch.max(omega_vals.H_H2))
+    input()
 
 
     # --- Optimization Parameters ---
 
-    initial_fH = 1*torch.clone(truein_fH.detach())
+    initial_fH = 1.1*torch.clone(truein_fH.detach())
     fH_param = torch.nn.Parameter(torch.log(torch.abs(initial_fH)))
-    initial_nH = 1*torch.clone(truein_nH.detach())
+    initial_nH = 1.1*torch.clone(truein_nH.detach())
     nH_param = torch.nn.Parameter(torch.log(torch.abs(initial_nH)))
 
     parameters = []
@@ -151,7 +151,7 @@ if __name__ == "__main__":
         optimizer,
         T_0=LR_CYCLE,
         # T_mult=1,
-        # eta_min=MIN_LR,
+        eta_min=MIN_LR,
     )
 
 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
 
     # loss_fun = lambda pred, true : torch.nn.functional.mse_loss(pred, true)
     # loss_fun = lambda p, t: torch.mean((p - t)**2 / (t**2 + 1e-12))
-    loss_fun = lambda pred, true : rel_L2_loss(pred, true)
+    # loss_fun = lambda pred, true : rel_L2_loss(pred, true)
     # loss_fun = lambda pred, true : torch.mean(
     #         (torch.log(torch.abs(pred) + 1e-12)
     #     - torch.log(torch.abs(true) + 1e-12))**2
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     #     return torch.sign(x) * torch.log1p(torch.abs(x))
     # loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
 
-
+    loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
 
 
 
@@ -238,7 +238,7 @@ if __name__ == "__main__":
         # print(nH_param.grad.abs().mean())
 
         # Clip Gradient
-        # torch.nn.utils.clip_grad_norm_([fH_param], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_([fH_param, nH_param], max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()

@@ -4,7 +4,7 @@ import json
 import time
 from datetime import timedelta, datetime
 import math
-import sys
+import os
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import *
@@ -32,20 +32,21 @@ OPTIMIZE_GAMMA_WALL = False # No Reason to make true
 OPTIMIZE_COLLISION = True
 
 # Iteration Parameters
-NUM_ITERS = 2
+NUM_ITERS = 1000
+NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
 INITIAL_LR = 1e-3
-CYCLE_LR = True
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-4
+MIN_LR = 1e-3
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 1
+GIF_FREQ = 25
 
 
 if __name__ == "__main__":
@@ -53,15 +54,25 @@ if __name__ == "__main__":
     # Start logging to run file
     setup_log(run_dir)
 
+    print("Process PID: ", os.getpid())
+
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda and not USE_CPU else "cpu")
     print("device: ", device)
     # if use_cuda:
     #     torch.cuda.manual_seed(72)
 
+    print("Thread Count: ", NUM_THREADS)
+    print("Iteration Count: ", NUM_ITERS)
+    print("Initial Learning Rate: ", INITIAL_LR)
+    if CYCLE_LR:
+        print("Min Learning Rate: ", MIN_LR)
+        print("Learning Rate Cycle Length: ", LR_CYCLE)
+    print("Gradient Clipping: ", CLIP_NORM)
+
     # torch.autograd.set_detect_anomaly(True)
-    torch.set_num_threads(2)
-    torch._dynamo.config.capture_scalar_outputs = True
+    torch.set_num_threads(NUM_THREADS)
+    # torch._dynamo.config.capture_scalar_outputs = True
 
 
     # --- Load Inputs and Outputs ---
@@ -151,7 +162,6 @@ if __name__ == "__main__":
     # print(rel_L2_torch(m_sums.H_P, trueout_Msum_H_P))
     # print("Msum_H_H2 close: ", torch.allclose(m_sums.H_H2, trueout_Msum_H_H2))
     # print(rel_L2_torch(m_sums.H_H2, trueout_Msum_H_H2))
-    # input()
 
 
     # --- Optimization Parameters ---
@@ -190,7 +200,6 @@ if __name__ == "__main__":
     # )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_ITERS)
 
-    print("Learning Rate Cycle: ", LR_CYCLE)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
         T_0=LR_CYCLE,
@@ -210,9 +219,12 @@ if __name__ == "__main__":
     #     )
     # loss_fun = lambda pred, true : ((torch.log(pred + EPSILON) - torch.log(true + EPSILON))**2).mean()
 
-    def symmetric_log(x):
-        return torch.sign(x) * torch.log1p(torch.abs(x))
-    loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
+    # def symmetric_log(x):
+    #     return torch.sign(x) * torch.log1p(torch.abs(x))
+    # loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
+
+
+    loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
 
 
 
