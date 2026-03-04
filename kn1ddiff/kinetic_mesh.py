@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 import torch
 
-from .utils import get_config, interp_1d, reverse
+from .utils import get_config, interp_1d, reverse, numpy_to_torch, torch_to_numpy
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 from .sigma.sigmav_ion_hh import sigmav_ion_hh
@@ -129,7 +129,7 @@ class KineticMesh:
                 ioniz_rate = jh.jhs_coef(nfine, Tefine, no_null = True)
             else:
                 ioniz_rate = sigmav_ion_h0(Tefine)
-            react_rate = nfine*(ioniz_rate + sigmav_cx_h0(Tifine, np.full(xfine.shape, minE0))) + gamma_wall
+            react_rate = nfine*(ioniz_rate + torch_to_numpy(sigmav_cx_h0(numpy_to_torch(Tifine, device, dtype), numpy_to_torch(np.full(xfine.shape, minE0), device, dtype)))) + gamma_wall
 
         elif mesh_type == 'h2':
             react_rate = nfine*(sigmav_ion_hh(Tefine) + sigmav_h1s_h1s_hh(Tefine) + sigmav_h1s_h2s_hh(Tefine) + 0.1*sigmav_cx_hh(Tifine,Tifine)) + gamma_wall

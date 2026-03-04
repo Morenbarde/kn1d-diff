@@ -33,3 +33,27 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 def dclamp(x, min=None, max=None):
     clamped = torch.clamp(x, min=min, max=max)
     return x + (clamped - x).detach()
+
+
+def poly_torch(x: torch.Tensor, c: torch.Tensor):
+    '''
+    Evaluate a polynomial at one or more points, but with pytorch
+
+    Parameters
+    ----------
+        x : float or ndarray
+            Variable/s to evaluate the polynomial at
+        c : ndarray
+            array of polynomial coefficients
+            
+    Returns
+    -------
+        y : float or ndarray
+            Value of the polynomial evaluated at x, array of values if x is an array
+    '''
+
+    n = c.numel()-1
+    y = c[n]
+    for i in range(n-1, -1, -1):
+        y = y*x + c[i]
+    return y

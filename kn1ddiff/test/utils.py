@@ -6,6 +6,10 @@ import sys
 from PIL import Image
 
 
+def init_optimization_tensor(tensor, factor, offset_factor):
+    tensor = torch.clone(tensor.detach())
+    return (factor*tensor) + (offset_factor*tensor)
+
 def rel_L2_np(pred, act, eps=1e-12):
     num = np.linalg.norm(pred - act)
     den = np.linalg.norm(pred)
@@ -35,6 +39,9 @@ def analyze_difference(name, loss_fun, pred, true):
     print(name+" Loss: ", loss_fun(pred, true).item())
     print(name+" Relative L2: ", rel_L2_torch(pred, true))
 
+def print_torch_range(tensor: torch.Tensor, var_name = "Var"):
+    print(var_name+" Range: ", torch.min(tensor).item(), torch.max(tensor).item())
+    print(var_name+" Mean/Med: ", torch.mean(tensor).item(), torch.median(tensor).item())
 
 
 # Torch converter
