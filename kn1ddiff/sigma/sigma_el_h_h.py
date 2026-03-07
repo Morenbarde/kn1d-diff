@@ -1,8 +1,10 @@
 import numpy as np 
+import torch
 
 from ..utils import poly
+from ..torch_utils import poly_torch
 
-def sigma_el_h_h(E, vis = False):
+def sigma_el_h_h(E: torch.Tensor, vis = False):
     '''
     Computes momentum transfer cross section for elastic collisions of H onto H
     for specified energy of H. Data are taken from 
@@ -26,19 +28,17 @@ def sigma_el_h_h(E, vis = False):
             the value of Sigma at the 0.03 or 1e4 eV boundary is returned. (m^-2)
     '''
 
-    E = np.asarray(E, dtype=float)
-
     # Ensure 0.03e0 < E < 1.01e4
-    E = np.clip(E, 0.03e0, 1.01e4)
+    E = torch.clamp(E, 0.03e0, 1.01e4)
 
     if vis: 
         # calculates viscosity cross section
-        a = np.array([ -3.344860e1, -4.238982e-1, -7.477873e-2, -7.915053e-3, -2.686129e-4])
+        a = torch.tensor([ -3.344860e1, -4.238982e-1, -7.477873e-2, -7.915053e-3, -2.686129e-4], dtype=E.dtype, device=E.device)
     else: 
         # calculates momentum transfer cross section
-        a = np.array([ -3.330843e1, -5.738374e-1, -1.028610e-1, -3.920980e-3, 5.964135e-4])
+        a = torch.tensor([ -3.330843e1, -5.738374e-1, -1.028610e-1, -3.920980e-3, 5.964135e-4], dtype=E.dtype, device=E.device)
     
-    result = np.exp(poly(np.log(E), a)) * 1e-4
+    result = torch.exp(poly_torch(torch.log(E), a)) * 1e-4
     return result
 
 

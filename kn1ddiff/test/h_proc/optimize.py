@@ -29,30 +29,31 @@ USE_CPU = True
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH2 = True
-OPTIMIZE_FSH = True
-OPTIMIZE_FH = True
-OPTIMIZE_NHP = True
-OPTIMIZE_THP = True
+OPTIMIZE_FH2 = False
+OPTIMIZE_FSH = False
+OPTIMIZE_FH = False
+OPTIMIZE_NHP = False
+OPTIMIZE_THP = False
 # Mesh/Program Input
-OPTIMIZE_MESH = False
+OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.0 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
+LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 1
+NUM_ITERS = 100
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-4
+INITIAL_LR = 5e-3
 CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-6
+MIN_LR = 1e-5
 
 # Gif parameters
 GENERATE_GIF = True
@@ -74,13 +75,28 @@ if __name__ == "__main__":
     # if use_cuda:
     #     torch.cuda.manual_seed(72)
 
+
+    ### Print Run Info ###
+
+    print()
+    print("Optimizing: ")
+    print("    FH2: ", OPTIMIZE_FH2)
+    print("    FSH: ", OPTIMIZE_FSH)
+    print("    FH: ", OPTIMIZE_FH)
+    print("    NHP: ", OPTIMIZE_NHP)
+    print("    THP: ", OPTIMIZE_THP)
+    print("    MESH: ", OPTIMIZE_MESH)
+    print("    VMESH: ", OPTIMIZE_VMESH)
+    print()
     print("Thread Count: ", NUM_THREADS)
     print("Iteration Count: ", NUM_ITERS)
+    print("Initial Offset: *"+str(INIT_FACTOR)+", +"+str(OFFSET_FACTOR))
     print("Initial Learning Rate: ", INITIAL_LR)
     if CYCLE_LR:
         print("Min Learning Rate: ", MIN_LR)
         print("Learning Rate Cycle Length: ", LR_CYCLE)
     print("Gradient Clipping: ", CLIP_NORM)
+    print("Loss Function: ", LOSS_FUNC)
     print()
 
     # torch.autograd.set_detect_anomaly(True)
@@ -172,7 +188,7 @@ if __name__ == "__main__":
     
     kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
                         ni_correct=True, truncate=1.0e-3, max_gen=100, 
-                        compute_errors=True, debrief=True, debug=False, 
+                        compute_errors=True, debrief=False, debug=False, 
                         device=device, dtype=dtype)
 
 
@@ -253,14 +269,6 @@ if __name__ == "__main__":
 
     # --- Scheduler Options --- 
 
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    #     optimizer,
-    #     factor=0.1,
-    #     patience=50,
-    #     min_lr=1e-5
-    # )
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=NUM_ITERS)
-
     print("Learning Rate Cycle: ", LR_CYCLE)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
@@ -272,20 +280,13 @@ if __name__ == "__main__":
 
     # --- Loss Function Options --- 
 
-    # loss_fun = lambda pred, true : torch.nn.functional.mse_loss(pred, true)
-    # loss_fun = lambda p, t: torch.mean((p - t)**2 / (t**2 + 1e-12))
-    # loss_fun = lambda pred, true : rel_L2_torch(pred, true)
-    # loss_fun = lambda pred, true : torch.mean(
-    #         (torch.log(torch.abs(pred) + 1e-12)
-    #     - torch.log(torch.abs(true) + 1e-12))**2
-    #     )
-    # loss_fun = lambda pred, true : ((torch.log(pred + EPSILON) - torch.log(true + EPSILON))**2).mean()
+    if LOSS_FUNC == "sym":
+        def symmetric_log(x):
+            return torch.sign(x) * torch.log1p(torch.abs(x))
+        loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
 
-    def symmetric_log(x):
-        return torch.sign(x) * torch.log1p(torch.abs(x))
-    loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
-
-    # loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
+    elif LOSS_FUNC == "log":
+        loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
 
 
 
@@ -299,11 +300,11 @@ if __name__ == "__main__":
     # Init Gif Generator
     if GENERATE_GIF:
         if OPTIMIZE_FH2:
-            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH2/", "fH2", truein_fH2[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
+            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH2/", "fH2", truein_fH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_FSH:
-            fSH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fSH/", "fSH", truein_fSH[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
+            fSH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fSH/", "fSH", truein_fSH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_FH:
-            fH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[:,10,0], fps=GIF_FPS, frequency=GIF_FREQ)
+            fH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_NHP:
             nHP_gifgen = GIF_Generator(NUM_ITERS, image_dir+"nHP/", "nHP", truein_nHP, fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_THP:
@@ -329,11 +330,11 @@ if __name__ == "__main__":
 
         # --- Bound Inputs ---
 
-        fH2_in = torch.exp(fH2_param) #if OPTIMIZE_FH2 else truein_fH2
-        fSH_in = torch.exp(fSH_param) #if OPTIMIZE_FSH else truein_fSH
-        fH_in = torch.exp(fH_param) #if OPTIMIZE_FH else truein_fH
-        nHP_in = torch.exp(nHP_param)# if OPTIMIZE_NHP else truein_nHP
-        THP_in = torch.exp(THP_param) #if OPTIMIZE_THP else truein_THP
+        fH2_in = torch.sign(initial_fH2)*torch.exp(fH2_param) if OPTIMIZE_FH2 else truein_fH2
+        fSH_in = torch.sign(initial_fSH)*torch.exp(fSH_param) if OPTIMIZE_FSH else truein_fSH
+        fH_in = torch.sign(initial_fH)*torch.exp(fH_param) if OPTIMIZE_FH else truein_fH
+        nHP_in = torch.exp(nHP_param) if OPTIMIZE_NHP else truein_nHP
+        THP_in = torch.exp(THP_param) if OPTIMIZE_THP else truein_THP
 
         if OPTIMIZE_MESH:
             Ti_in = torch.exp(Ti_param)
@@ -346,12 +347,18 @@ if __name__ == "__main__":
             mesh.ne = ne_in
             mesh.Tnorm = Tnorm_in
 
+            # Reinitialize kinetic_h with mesh
+            kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
+                        ni_correct=True, truncate=1.0e-3, max_gen=100, 
+                        compute_errors=True, debrief=False, debug=False, 
+                        device=device, dtype=dtype)
+
 
         # --- Run Function ---
         kh_results = kinetic_h.run_procedure(fH2_in, fSH_in, fH_in, nHP_in, THP_in)
 
         forward_done = time.time()
-        print("Forward Time: ", forward_done - epoch_start)
+        forward_time = forward_done - epoch_start
 
 
         # --- Optimize ---
@@ -380,7 +387,7 @@ if __name__ == "__main__":
         loss.backward()
 
         # Clip Gradient
-        # torch.nn.utils.clip_grad_norm_([fH_param], max_norm=CLIP_NORM)
+        torch.nn.utils.clip_grad_norm_(parameters, max_norm=CLIP_NORM)
 
         #Optimize
         optimizer.step()
@@ -389,7 +396,7 @@ if __name__ == "__main__":
             scheduler.step()
 
         backward_done = time.time()
-        print("Backward Time: ", backward_done - forward_done)
+        backward_time = backward_done - forward_done
 
         # Save Best Epoch
         loss_list.append(loss.item())
@@ -402,6 +409,11 @@ if __name__ == "__main__":
                             "fH" : fH_in.detach().cpu(),
                             "nHP" : nHP_in.detach().cpu(),
                             "THP" : THP_in.detach().cpu(),
+
+                            "Ti" : mesh.Ti.detach().cpu(),
+                            "Te" : mesh.Te.detach().cpu(),
+                            "ne" : mesh.ne.detach().cpu(),
+                            "Tnorm" : mesh.Tnorm.detach().cpu(),
                             }
             
             best_pred = KHResults(
@@ -428,28 +440,28 @@ if __name__ == "__main__":
 
         print(
             f"epoch: {epoch:<5} | "
-            f"runtime: {epoch_runtime:<8.2} | "
-            f"loss: {loss.item():<10.6e} | "
-            f"learning rate: {scheduler.get_last_lr()[0]:.2e}"
+            f"runtime: {epoch_runtime:<5.2f}   F: {forward_time:<5.2f}  B: {backward_time:<5.2f} | "
+            f"lr: {scheduler.get_last_lr()[0]:.2e} | "
+            f"loss: {loss.item():<10.6e}"
         )
 
         # Update Gif data
         if GENERATE_GIF:
             if OPTIMIZE_FH2:
-                fH2_gifgen.update(fH2_in[:,10,0], epoch)
+                fH2_gifgen.update(fH2_in[0,10,:], epoch)
             if OPTIMIZE_FSH:
-                fSH_gifgen.update(fSH_in[:,10,0], epoch)
+                fSH_gifgen.update(fSH_in[0,10,:], epoch)
             if OPTIMIZE_FH:
-                fH_gifgen.update(fH_in[:,10,0], epoch)
+                fH_gifgen.update(fH_in[0,10,:], epoch)
             if OPTIMIZE_NHP:
                 nHP_gifgen.update(nHP_in, epoch)
             if OPTIMIZE_THP:
                 THP_gifgen.update(THP_in, epoch)
 
             if OPTIMIZE_MESH:
-                Ti_gifgen.update(kinetic_h.mesh.Ti, epoch)
-                Te_gifgen.update(kinetic_h.mesh.Te, epoch)
-                ne_gifgen.update(kinetic_h.mesh.ne, epoch)
+                Ti_gifgen.update(Ti_in, epoch)
+                Te_gifgen.update(Te_in, epoch)
+                ne_gifgen.update(ne_in, epoch)
 
     optimization_runtime = time.time() - optim_start
     print(f"Total Optimization Time: {timedelta(seconds=round(optimization_runtime))}")
@@ -486,6 +498,16 @@ if __name__ == "__main__":
         analyze_difference("THP", loss_fun, opt_inputs["THP"], truein_THP)
         print()
 
+    if OPTIMIZE_MESH:
+        analyze_difference("Ti", loss_fun, opt_inputs["Ti"], truein_Ti)
+        print()
+        analyze_difference("Te", loss_fun, opt_inputs["Te"], truein_Te)
+        print()
+        analyze_difference("ne", loss_fun, opt_inputs["ne"], truein_ne)
+        print()
+        analyze_difference("Tnorm", loss_fun, opt_inputs["Tnorm"], truein_Tnorm)
+        print()
+
     # Outputs Analysis
 
     print("### Outputs Analysis ###")
@@ -516,23 +538,29 @@ if __name__ == "__main__":
     generate_lr_plot(image_dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
     
     if OPTIMIZE_FH2:
-        x = range(opt_inputs["fH2"][:,10,0].numel())
+        x = range(opt_inputs["fH2"][0,10,:].numel())
         for i in range(len(opt_inputs["fH2"][0,:,0])):
-            generate_compare_plot(image_dir+"fH2/", "fH2"+str(i), x, opt_inputs["fH2"][:,i,0], x, truein_fH2[:,i,0], init_x=x, init_y=initial_fH2[:,i,0])
+            generate_compare_plot(image_dir+"fH2/", "fH2-"+str(i), x, opt_inputs["fH2"][0,i,:], x, truein_fH2[0,i,:], init_x=x, init_y=initial_fH2[0,i,:])
     if OPTIMIZE_FSH:
-        x = range(opt_inputs["fSH"][:,10,0].numel())
+        x = range(opt_inputs["fSH"][0,10,:].numel())
         for i in range(len(opt_inputs["fSH"][0,:,0])):
-            generate_compare_plot(image_dir+"fSH/", "fSH"+str(i), x, opt_inputs["fSH"][:,i,0], x, truein_fSH[:,i,0], init_x=x, init_y=initial_fSH[:,i,0])
+            generate_compare_plot(image_dir+"fSH/", "fSH-"+str(i), x, opt_inputs["fSH"][0,i,:], x, truein_fSH[0,i,:], init_x=x, init_y=initial_fSH[0,i,:])
     if OPTIMIZE_FH:
-        x = range(opt_inputs["fH"][:,10,0].numel())
+        x = range(opt_inputs["fH"][0,10,:].numel())
         for i in range(len(opt_inputs["fH"][0,:,0])):
-            generate_compare_plot(image_dir+"fH/", "fH"+str(i), x, opt_inputs["fH"][:,i,0], x, truein_fH[:,i,0], init_x=x, init_y=initial_fH[:,i,0])
+            generate_compare_plot(image_dir+"fH/", "fH-"+str(i), x, opt_inputs["fH"][0,i,:], x, truein_fH[0,i,:], init_x=x, init_y=initial_fH[0,i,:])
     if OPTIMIZE_NHP:
         x = range(opt_inputs["nHP"].numel())
-        generate_compare_plot(image_dir+"nHP/", "nHP"+str(i), x, opt_inputs["nHP"], x, truein_nHP, init_x=x, init_y=initial_nHP)
+        generate_compare_plot(image_dir+"nHP/", "nHP", x, opt_inputs["nHP"], x, truein_nHP, init_x=x, init_y=initial_nHP)
     if OPTIMIZE_THP:
-        x = range(opt_inputs["THP"][:,10,0].numel())
-        generate_compare_plot(image_dir+"THP/", "THP"+str(i), x, opt_inputs["THP"], x, truein_THP, init_x=x, init_y=initial_THP)
+        x = range(opt_inputs["THP"].numel())
+        generate_compare_plot(image_dir+"THP/", "THP", x, opt_inputs["THP"], x, truein_THP, init_x=x, init_y=initial_THP)
+
+    if OPTIMIZE_MESH:
+        x = mesh_output["x"]
+        generate_compare_plot(image_dir+"Mesh/Ti/", "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
+        generate_compare_plot(image_dir+"Mesh/Te/", "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
+        generate_compare_plot(image_dir+"Mesh/ne/", "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
 
     # --- Gif Generation ---
     if GENERATE_GIF:

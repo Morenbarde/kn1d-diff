@@ -314,17 +314,17 @@ class KineticH():
         '''
 
 
-        file = 'kh_proc_in.json'
-        print("Saving to file: " + file)
-        sav_data = {'fH2' : fH2,
-                    'fSH' : fSH,
-                    'fH'  : fH,
-                    'nHP' : nHP,
-                    'THP' : THP,
-                    }
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
-        input()
+        # file = 'kh_proc_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH2' : fH2,
+        #             'fSH' : fSH,
+        #             'fH'  : fH,
+        #             'nHP' : nHP,
+        #             'THP' : THP,
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # input()
 
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
@@ -390,27 +390,27 @@ class KineticH():
 
         self._debrief_msg("Finished", 0)
 
-        file = 'kh_proc_out.json'
-        print("Saving to file: " + file)
-        sav_data = {"fH" : results.fH,
-                    "nH" : results.nH,
-                    "GammaxH" : results.GammaxH,
-                    "VxH": results.VxH,
-                    "pH": results.pH,
-                    "TH": results.TH,
-                    "qxH": results.qxH,
-                    "qxH_total": results.qxH_total,
-                    "NetHSource": results.NetHSource,
-                    "Sion": results.Sion,
-                    "QH": results.QH,
-                    "RxH": results.RxH,
-                    "QH_total": results.QH_total,
-                    "AlbedoH": results.AlbedoH,
-                    "SideWallH": results.SideWallH
-                    }
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
-        input()
+        # file = 'kh_proc_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {"fH" : results.fH,
+        #             "nH" : results.nH,
+        #             "GammaxH" : results.GammaxH,
+        #             "VxH": results.VxH,
+        #             "pH": results.pH,
+        #             "TH": results.TH,
+        #             "qxH": results.qxH,
+        #             "qxH_total": results.qxH_total,
+        #             "NetHSource": results.NetHSource,
+        #             "Sion": results.Sion,
+        #             "QH": results.QH,
+        #             "RxH": results.RxH,
+        #             "QH_total": results.QH_total,
+        #             "AlbedoH": results.AlbedoH,
+        #             "SideWallH": results.SideWallH
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # input()
 
         return results
         
@@ -1197,16 +1197,18 @@ class KineticH():
         self._debrief_msg('Computing vr2vx2, vr2vx_vxi2, ErelH_P', 1)
 
         # Magnitude of total normalized v^2 at each mesh point
-        self.Internal.vr2vx2 = np.zeros((self.nvr,self.nvx,self.nx))
-        for i in range(self.nvr):
-            for k in range(self.nx):
-                self.Internal.vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
+        # self.Internal.vr2vx2 = np.zeros((self.nvr,self.nvx,self.nx))
+        # for i in range(self.nvr):
+        #     for k in range(self.nx):
+        #         self.Internal.vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
+        self.Internal.vr2vx2 = np.tile((self.mesh.vr[:,None]**2 + self.mesh.vx[None,:]**2)[:,:,None], (1, 1, self.nx))
 
         # Magnitude of total normalized (v-vxi)^2 at each mesh point
-        self.Internal.vr2vx_vxi2 = np.zeros((self.nvr,self.nvx,self.nx))
-        for i in range(self.nvr):
-            for k in range(self.nx):
-                self.Internal.vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/self.vth)**2
+        # self.Internal.vr2vx_vxi2 = np.zeros((self.nvr,self.nvx,self.nx))
+        # for i in range(self.nvr):
+        #     for k in range(self.nx):
+        #         self.Internal.vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/self.vth)**2
+        self.Internal.vr2vx_vxi2 = self.mesh.vr[:,None,None]**2 + (self.mesh.vx[None,:,None] - self.vxi[None,None,:]/self.vth)**2
 
         # Atomic hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.ErelH_P = (0.5*CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2)) / CONST.Q
@@ -1220,9 +1222,13 @@ class KineticH():
 
         # Ti/mu at each mesh point
         self._debrief_msg('Computing Ti/mu at each mesh point', 1)
-        self.Internal.Ti_mu = np.zeros((self.nvr,self.nvx,self.nx))
-        for k in range(self.nx):
-            self.Internal.Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
+        # self.Internal.Ti_mu = np.zeros((self.nvr,self.nvx,self.nx))
+        # for k in range(self.nx):
+        #     self.Internal.Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
+        self.Internal.Ti_mu = np.broadcast_to(
+            self.mesh.Ti[None, None, :] / self.mu,
+            (self.nvr, self.nvx, self.nx)
+        )
 
         # Compute Fi_hat
         self._debrief_msg('Computing fi_hat', 1)

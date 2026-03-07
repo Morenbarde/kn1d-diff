@@ -897,16 +897,10 @@ class KineticH():
         self._debrief_msg('Computing vr2vx2, vr2vx_vxi2, ErelH_P', 1)
 
         # Magnitude of total normalized v^2 at each mesh point
-        self.Internal.vr2vx2 = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
-        for i in range(self.nvr):
-            for k in range(self.nx):
-                self.Internal.vr2vx2[i,:,k] = self.mesh.vr[i]**2 + self.mesh.vx**2
+        self.Internal.vr2vx2 = torch.tile((self.mesh.vr[:,None]**2 + self.mesh.vx[None,:]**2)[:,:,None], (1, 1, self.nx))
 
         # Magnitude of total normalized (v-vxi)^2 at each mesh point
-        self.Internal.vr2vx_vxi2 = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
-        for i in range(self.nvr):
-            for k in range(self.nx):
-                self.Internal.vr2vx_vxi2[i,:,k] = self.mesh.vr[i]**2 + (self.mesh.vx - self.vxi[k]/self.vth)**2
+        self.Internal.vr2vx_vxi2 = self.mesh.vr[:,None,None]**2 + (self.mesh.vx[None,:,None] - self.vxi[None,None,:]/self.vth)**2
 
         # Atomic hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.ErelH_P = (0.5*CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2)) / CONST.Q
@@ -920,9 +914,7 @@ class KineticH():
 
         # Ti/mu at each mesh point
         self._debrief_msg('Computing Ti/mu at each mesh point', 1)
-        self.Internal.Ti_mu = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
-        for k in range(self.nx):
-            self.Internal.Ti_mu[:,:,k] = self.mesh.Ti[k] / self.mu
+        self.Internal.Ti_mu = torch.broadcast_to(self.mesh.Ti[None, None, :]/self.mu, (self.nvr, self.nvx, self.nx))
 
         # Compute Fi_hat
         self._debrief_msg('Computing fi_hat', 1)
@@ -943,17 +935,17 @@ class KineticH():
         # Reaction R1:  e + H -> e + H(+) + e   (ionization)
         #NOTE Only collrad modified for autodifferentiation to start
         if self.ion_rate_option == "collrad":
-            self.Internal.sigv[:,1] = torch.from_numpy(collrad_sigmav_ion_h0(self.mesh.ne.cpu().detach().numpy(), self.mesh.Te.cpu().detach().numpy())).to(dtype=self.dtype, device=self.device) # from COLLRAD code (DEGAS-2)
-        elif self.ion_rate_option == "jh":
+            self.Internal.sigv[:,1] = collrad_sigmav_ion_h0(self.mesh.ne, self.mesh.Te) # from COLLRAD code (DEGAS-2)
+        elif self.ion_rate_option == "jh": #NOTE Not Torch Safe YEt
             self.Internal.sigv[:,1] = self.jh.jhs_coef(self.mesh.ne, self.mesh.Te, no_null=True) # Johnson-Hinnov, limited Te range
-        else:
+        else:   #NOTE Not Torch Safe Yet
             self.Internal.sigv[:,1] = sigmav_ion_h0(self.mesh.Te) # from Janev et al., up to 20keV
                 
         # Reaction R2:  e + H(+) -> H(1s) + hv  (radiative recombination)
-        if self.ion_rate_option == "jh":
+        if self.ion_rate_option == "jh": # NOTE Not Torch Safe Yet
             self.Internal.sigv[:,2] = self.jh.jhalpha_coef(self.mesh.ne, self.mesh.Te, no_null=True)
         else:
-            self.Internal.sigv[:,2] = torch.from_numpy(sigmav_rec_h1s(self.mesh.Te.cpu().detach().numpy())).to(dtype=self.dtype, device=self.device)
+            self.Internal.sigv[:,2] = sigmav_rec_h1s(self.mesh.Te)
 
         # H ionization rate (normalized by vth) = reaction 1
         self.Internal.alpha_ion = (self.mesh.ne*self.Internal.sigv[:,1]) / self.vth
@@ -1018,8 +1010,7 @@ class KineticH():
         #	Compute sigma_cx * v_v at all possible relative velocities
         # _Sig = self.Internal.v_v*sigma_cx_h0(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))
         sig_in = (self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))
-        sig_out = torch.from_numpy(sigma_cx_h0(sig_in.cpu())).to(dtype=self.dtype, device=self.device)
-        _Sig = self.Internal.v_v*sig_out
+        _Sig = self.Internal.v_v*sigma_cx_h0(sig_in)
         _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
 
         #	Set SIG_CX = vr' x Integral{v_v*sigma_cx} 
@@ -1044,7 +1035,7 @@ class KineticH():
         #	Compute sigma_H_H * vr2_vx2 * v_v at all possible relative velocities
         # _Sig = self.Internal.vr2_vx2*self.Internal.v_v*sigma_el_h_h(self.Internal.v_v2*(0.5*CONST.H_MASS*self.mu*(self.vth**2) / CONST.Q), vis=True) / 8
         sig_in = (self.Internal.v_v2*(0.5*CONST.H_MASS*self.mu*(self.vth**2) / CONST.Q))
-        sig_out = torch.from_numpy(sigma_el_h_h(sig_in.cpu(), vis=True)).to(dtype=self.dtype, device=self.device)
+        sig_out = sigma_el_h_h(sig_in, vis=True)
         _Sig = self.Internal.vr2_vx2*self.Internal.v_v*sig_out / 8
         _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
 
@@ -1071,8 +1062,7 @@ class KineticH():
         # Compute sigma_H_H2 * v_v at all possible relative velocities
         # _Sig = self.Internal.v_v*sigma_el_h_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2) / CONST.Q))
         sig_in = self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2) / CONST.Q)
-        sig_out = torch.from_numpy(sigma_el_h_h(sig_in.cpu())).to(dtype=self.dtype, device=self.device)
-        _Sig = self.Internal.v_v*sig_out
+        _Sig = self.Internal.v_v*sigma_el_h_hh(sig_in)
         _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
 
         # Note: using H energy here for cross-sections tabulated as H->H2
@@ -1099,8 +1089,7 @@ class KineticH():
         # Compute sigma_H_P * v_v at all possible relative velocities
         # _Sig = self.Internal.v_v*sigma_el_p_h(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2) / CONST.Q))
         sig_in = self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2) / CONST.Q)
-        sig_out = torch.from_numpy(sigma_el_p_h(sig_in.cpu())).to(dtype=self.dtype, device=self.device)
-        _Sig = self.Internal.v_v*sig_out
+        _Sig = self.Internal.v_v*sigma_el_p_h(sig_in)
         _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx,self.ntheta))
 
         # Set SIG_H_P = vr' x vx_vx x Integral{v_v*sigma_H_P} over theta=0,

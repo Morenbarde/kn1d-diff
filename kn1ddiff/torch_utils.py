@@ -57,3 +57,46 @@ def poly_torch(x: torch.Tensor, c: torch.Tensor):
     for i in range(n-1, -1, -1):
         y = y*x + c[i]
     return y
+
+
+
+# Interpolation
+
+import torch
+import torch.nn.functional as F
+
+def bilinear_interp_rectgrid(logsigmav, indne, indte):
+    """
+    Gradient-safe replacement for RectBivariateSpline(kx=1, ky=1) + diagonal.
+    
+    Args:
+        logsigmav: (xs, ys) tensor — your log-sigma grid
+        indne:     (N,) tensor — row indices (float, can be fractional)
+        indte:     (N,) tensor — col indices (float, can be fractional)
+    
+    Returns:
+        (N,) tensor — exp of interpolated log-sigma values (i.e. sigma)
+    """
+    xs, ys = logsigmav.shape
+
+    # grid_sample expects input shape (N, C, H, W)
+    grid_input = logsigmav[None, None, :, :]  # (1, 1, xs, ys)
+
+    # Normalize indices to [-1, 1] as required by grid_sample
+    # grid_sample treats dim -1 as x (columns) and dim -2 as y (rows)
+    norm_x = (indte / (ys - 1)) * 2 - 1  # column indices → x
+    norm_y = (indne / (xs - 1)) * 2 - 1  # row indices    → y
+
+    # Build sampling grid: shape (1, N, 1, 2)
+    grid = torch.stack([norm_x, norm_y], dim=-1)[None, :, None, :]
+
+    # Sample — output shape (1, 1, N, 1) → squeeze to (N,)
+    sampled = F.grid_sample(
+        grid_input, grid,
+        mode='bilinear',
+        padding_mode='border',   # matches spline edge behaviour
+        align_corners=True       # index 0 → -1, index max → +1
+    )
+    sampled = sampled[0, 0, :, 0]  # (N,)
+
+    return torch.exp(sampled)

@@ -1,6 +1,7 @@
 import numpy as np
+import torch
 
-def sigmav_rec_h1s(Te):
+def sigmav_rec_h1s(Te: torch.Tensor):
     '''
     Returns maxwellian averaged <sigma V) for electron-ion radiative recombination
     to the atomic hydrogen in the 1s state. Coefficients are taken from 
@@ -10,7 +11,7 @@ def sigmav_rec_h1s(Te):
 
     Parameters
     ----------
-    Te : ndarray or float
+    Te : torch.Tensor
         electron temperature (eV)
 
     Returns
@@ -18,11 +19,9 @@ def sigmav_rec_h1s(Te):
         ndarray
             Sigma V for 0.1 < Te < 2e4. (m^3/s)
     '''
-
-    Te = np.asarray(Te)
     
     # Ensure 0.1 < Te < 2.01e4
-    Te = np.clip(Te, 0.1, 2.01e4)
+    Te = torch.clamp(Te, 0.1, 2.01e4)
 
     #data for nl = 1s
     n = 1
@@ -32,4 +31,4 @@ def sigmav_rec_h1s(Te):
     Xnl = 0.35
 
     Bn = Eion_n/Te
-    return Anl*1e-14*np.sqrt(Eion_n/Ry)*((Bn**1.5)/(Bn + Xnl))*1e-6
+    return Anl*1e-14*torch.sqrt(torch.tensor(Eion_n/Ry))*((Bn**1.5)/(Bn + Xnl))*1e-6
