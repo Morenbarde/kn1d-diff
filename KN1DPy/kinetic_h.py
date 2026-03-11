@@ -1029,7 +1029,7 @@ class KineticH():
         Compute charge exchange source (beta_cx) with Eq. (3.11a) or (3.11b)
         '''
 
-        Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
+        # Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
         if self.COLLISIONS.H_P_CX:
             
             self._debrief_msg('Computing Beta_CX', 1)
@@ -1078,11 +1078,10 @@ class KineticH():
         
         if self.COLLISIONS.H_H_EL or self.COLLISIONS.H_P_EL or self.COLLISIONS.H2_H_EL:
 
-            vx = self.mesh.vx              # (Nvx,)
-            vr = self.mesh.vr              # (Nvr,)
+            vx = self.mesh.vx
+            vr = self.mesh.vr
 
             # --- VxHG ---
-            # fH: (Nvr, Nvx, nx)
 
             weights = self.dvr_vol[:, None, None] * self.dvx[None, :, None]
             VxHG = (self.vth * np.sum(fH * vx[None, :, None] * weights, axis=(0, 1)) / nH)

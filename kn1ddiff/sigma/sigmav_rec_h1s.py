@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from ..torch_utils import dclamp
 
 def sigmav_rec_h1s(Te: torch.Tensor):
     '''
@@ -21,7 +22,8 @@ def sigmav_rec_h1s(Te: torch.Tensor):
     '''
     
     # Ensure 0.1 < Te < 2.01e4
-    Te = torch.clamp(Te, 0.1, 2.01e4)
+    # Te = torch.clamp(Te, 0.1, 2.01e4)
+    Te = dclamp(Te, 0.1, 2.01e4)
 
     #data for nl = 1s
     n = 1

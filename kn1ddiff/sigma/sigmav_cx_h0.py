@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from ..torch_utils import dclamp
 
 def sigmav_cx_h0(T, E):
     '''
@@ -94,8 +95,10 @@ def sigmav_cx_h0(T, E):
     ], dtype=torch.float64, device=T.device)
 
     # Clamp inputs — use torch.clamp (differentiable)
-    E = torch.clamp(E, 0.1, 2.01e4)
-    T = torch.clamp(T, 0.1, 2.01e4)
+    # E = torch.clamp(E, 0.1, 2.01e4)
+    # T = torch.clamp(T, 0.1, 2.01e4)
+    E = dclamp(E, 0.1, 2.01e4)
+    T = dclamp(T, 0.1, 2.01e4)
     # print(E.shape, T.shape)
 
     alogE = torch.log(E).flatten()  # shape: (N,)

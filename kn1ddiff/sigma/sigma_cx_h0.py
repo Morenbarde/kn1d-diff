@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ..utils import poly
-from ..torch_utils import poly_torch
+from ..torch_utils import poly_torch, dclamp
 
 def sigma_cx_h0(E: torch.Tensor, freeman=False):
     '''
@@ -32,11 +32,13 @@ def sigma_cx_h0(E: torch.Tensor, freeman=False):
     
     if freeman:
         #Set values to minimum .1 and maximum 1e5
-        E2 = torch.clamp(E, 0.1, 1e5)
+        # E2 = torch.clamp(E, 0.1, 1e5)
+        E2 = dclamp(E, 0.1, 1e5)
         result = 1.0e-4 * 0.6937e-14*(1.0 - 0.155*torch.log10(E2))**2/(1.0 + 0.1112e-14*E2**3.3)
     else:
         #Sets values to minimum .1 and maximum 2.01e4
-        E2 = torch.clamp(E, 0.1, 2.01e4)
+        # E2 = torch.clamp(E, 0.1, 2.01e4)
+        E2 = dclamp(E, 0.1, 2.01e4)
         alpha = torch.tensor([-3.274123792568e+01, -8.916456579806e-02, -3.016990732025e-02,
                   9.205482406462e-03,  2.400266568315e-03, -1.927122311323e-03,
                   3.654750340106e-04, -2.788866460622e-05,  7.422296363524e-07],

@@ -1,7 +1,7 @@
 import numpy as np 
 from scipy import interpolate
 import torch
-from ..torch_utils import bilinear_interp_rectgrid
+from ..torch_utils import bilinear_interp_rectgrid, dclamp
 
 
 def collrad_sigmav_ion_h0(ne: torch.Tensor, Te: torch.Tensor):
@@ -231,9 +231,12 @@ def collrad_sigmav_ion_h0(ne: torch.Tensor, Te: torch.Tensor):
     dens = ne/1e6 #convert from m^-3 to cm^-3
 
     # compute indices for interpolation on sigmav grid:
-    indte = torch.clamp(10*(torch.log10(Te)+1.2), 0, 59)
+    # indte = torch.clamp(10*(torch.log10(Te)+1.2), 0, 59)
 
-    indne = torch.clamp(2*(torch.log10(dens)-10), 0, 14)
+    # indne = torch.clamp(2*(torch.log10(dens)-10), 0, 14)
+    indte = dclamp(10*(torch.log10(Te)+1.2), 0, 59)
+
+    indne = dclamp(2*(torch.log10(dens)-10), 0, 14)
 
     sigmav = torch.tensor([ #(15, 60)
         [1.00000e-99,  1.93923e-83,  6.89061e-68,  4.81352e-56,  2.12250e-46,  9.93199e-39, \

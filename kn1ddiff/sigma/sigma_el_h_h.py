@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ..utils import poly
-from ..torch_utils import poly_torch
+from ..torch_utils import poly_torch, dclamp
 
 def sigma_el_h_h(E: torch.Tensor, vis = False):
     '''
@@ -29,7 +29,8 @@ def sigma_el_h_h(E: torch.Tensor, vis = False):
     '''
 
     # Ensure 0.03e0 < E < 1.01e4
-    E = torch.clamp(E, 0.03e0, 1.01e4)
+    # E = torch.clamp(E, 0.03e0, 1.01e4)
+    E = dclamp(E, 0.03e0, 1.01e4)
 
     if vis: 
         # calculates viscosity cross section

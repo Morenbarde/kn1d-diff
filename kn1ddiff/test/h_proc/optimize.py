@@ -39,7 +39,7 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.0 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
@@ -49,7 +49,7 @@ NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-3
+INITIAL_LR = 1e-1
 CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
@@ -58,7 +58,7 @@ MIN_LR = 1e-5
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 1
+GIF_FREQ = 25
 
 
 if __name__ == "__main__":
@@ -237,8 +237,8 @@ if __name__ == "__main__":
     Te_param = parameterize(initial_Te)
     initial_ne = init_optimization_tensor(truein_ne, INIT_FACTOR, OFFSET_FACTOR)
     ne_param = parameterize(initial_ne)
-    initial_Tnorm = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
-    Tnorm_param = parameterize(initial_Tnorm)
+    # initial_Tnorm = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
+    # Tnorm_param = parameterize(initial_Tnorm)
 
     initial_vr = init_optimization_tensor(truein_vr, INIT_FACTOR, OFFSET_FACTOR)
     vr_param = parameterize(initial_vr)
@@ -259,7 +259,8 @@ if __name__ == "__main__":
         parameters.extend([THP_param])
     
     if OPTIMIZE_MESH:
-        parameters.extend([Ti_param, Te_param, ne_param, Tnorm_param])
+        parameters.extend([Ti_param, Te_param, ne_param])
+        # parameters.extend([Ti_param, Te_param, ne_param, Tnorm_param])
     if OPTIMIZE_VMESH:
         parameters.extend([vr_param, vx_param])
 
@@ -310,10 +311,10 @@ if __name__ == "__main__":
         if OPTIMIZE_THP:
             THP_gifgen = GIF_Generator(NUM_ITERS, image_dir+"THP/", "THP", truein_THP, fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_MESH:
-            Ti_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Mesh/Ti/", "Ti", truein_Ti, fps=GIF_FPS, frequency=GIF_FREQ)
-            Te_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Mesh/Te/", "Te", truein_Te, fps=GIF_FPS, frequency=GIF_FREQ)
-            ne_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Mesh/ne/", "ne", truein_ne, fps=GIF_FPS, frequency=GIF_FREQ)
-            # Tnorm_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Mesh/Tnorm/", "Tnorm", truein_Tnorm, fps=GIF_FPS, frequency=GIF_FREQ)
+            Ti_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Ti/", "Ti", truein_Ti, fps=GIF_FPS, frequency=GIF_FREQ)
+            Te_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Te/", "Te", truein_Te, fps=GIF_FPS, frequency=GIF_FREQ)
+            ne_gifgen = GIF_Generator(NUM_ITERS, image_dir+"ne/", "ne", truein_ne, fps=GIF_FPS, frequency=GIF_FREQ)
+            # Tnorm_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Tnorm/", "Tnorm", truein_Tnorm, fps=GIF_FPS, frequency=GIF_FREQ)
 
 
     # Capture Best Epoch
@@ -340,12 +341,12 @@ if __name__ == "__main__":
             Ti_in = torch.exp(Ti_param)
             Te_in = torch.exp(Te_param)
             ne_in = torch.exp(ne_param)
-            Tnorm_in = torch.exp(Tnorm_param)
+            # Tnorm_in = torch.exp(Tnorm_param)
 
             mesh.Ti = Ti_in
             mesh.Te = Te_in
             mesh.ne = ne_in
-            mesh.Tnorm = Tnorm_in
+            mesh.Tnorm = torch.nanmean(Ti_in) #Tnorm calculation in mesh
 
             # Reinitialize kinetic_h with mesh
             kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
@@ -506,6 +507,8 @@ if __name__ == "__main__":
         analyze_difference("ne", loss_fun, opt_inputs["ne"], truein_ne)
         print()
         analyze_difference("Tnorm", loss_fun, opt_inputs["Tnorm"], truein_Tnorm)
+        print("Tnorm Opt: ", opt_inputs["Tnorm"].item())
+        print("Tnorm True: ", truein_Tnorm.item())
         print()
 
     # Outputs Analysis
@@ -558,9 +561,9 @@ if __name__ == "__main__":
 
     if OPTIMIZE_MESH:
         x = mesh_output["x"]
-        generate_compare_plot(image_dir+"Mesh/Ti/", "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
-        generate_compare_plot(image_dir+"Mesh/Te/", "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
-        generate_compare_plot(image_dir+"Mesh/ne/", "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
+        generate_compare_plot(image_dir+"Ti/", "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
+        generate_compare_plot(image_dir+"Te/", "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
+        generate_compare_plot(image_dir+"ne/", "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
 
     # --- Gif Generation ---
     if GENERATE_GIF:

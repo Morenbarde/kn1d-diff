@@ -358,9 +358,9 @@ class KineticH():
 
         # Compute Side-Wall collision rate
         gamma_wall = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
-        # for k in range(nx):
-        #     if self.mesh.PipeDia[k] > 0:
-        #         gamma_wall[:,:,k] = 2*self.mesh.vr / self.mesh.PipeDia[k]
+        for k in range(nx):
+            if self.mesh.PipeDia[k] > 0:
+                gamma_wall[:,:,k] = 2*self.mesh.vr / self.mesh.PipeDia[k]
 
 
         # --- Iteration ---
@@ -426,6 +426,26 @@ class KineticH():
         return fH, nH, alpha_c, Beta_CX_sum, collision_freqs, m_sums
     
 
+    # Torch Optimization functions for generation calculation
+    # @torch.compile
+    # def _zero_gen_sweep(nx, vxp, vxn, fH_gen, A, C, F, G):
+    #     for k in range(nx-1):
+    #         fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*A[:,:,k] + F[:,:,k]
+    #     for k in range(nx-1,0,-1):
+    #         fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*C[:,:,k-1] + G[:,:,k-1]
+        
+    #     return fH_gen
+
+    # @torch.compile
+    # def _iterative_gen_sweep(nx, fH_gen, A, B, C, D, beta_omega_offsum):
+    #     for k in range(nx-1):
+    #         fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*A[:,:,k] + B[:,:,k]*beta_omega_offsum[:,vxp,k]
+    #     for k in range(nx-1, 0, -1):
+    #         fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*C[:,:,k-1] + D[:,:,k-1]*beta_omega_offsum[:,vxn,k-1]
+
+    #     return fH_gen
+
+
     def _run_generations(self, fH, alpha_c, collision_freqs):
         '''
         Iterate through and computes generations of collision
@@ -462,6 +482,7 @@ class KineticH():
                     fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.F[:,:,k]
                 for k in range(nx-1,0,-1):
                     fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.G[:,:,k-1]
+                # self._zero_gen_sweep(nx, fH_gen, meq_coeffs.A, meq_coeffs.C, meq_coeffs.F, meq_coeffs.G)
 
             else:
                 # --- Iterative Generations ---
@@ -473,7 +494,6 @@ class KineticH():
                 beta_omega_offsum = (Beta_CX[:,:,1:] + OmegaM[:,:,1:] + Beta_CX[:,:,:-1] + OmegaM[:,:,:-1])
                 for k in range(nx-1):
                     fH_gen[:,vxp,k+1] = fH_gen[:,vxp,k]*meq_coeffs.A[:,:,k] + meq_coeffs.B[:,:,k]*beta_omega_offsum[:,vxp,k]
-                
                 for k in range(nx-1, 0, -1):
                     fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.D[:,:,k-1]*beta_omega_offsum[:,vxn,k-1]
 

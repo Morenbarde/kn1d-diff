@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ..utils import poly
-from ..torch_utils import poly_torch
+from ..torch_utils import poly_torch, dclamp
 
 def sigma_el_p_h(E: torch.Tensor):
     '''
@@ -27,7 +27,8 @@ def sigma_el_p_h(E: torch.Tensor):
     '''
     
     # Ensure that 0.001e0 < E < 1.01e5
-    E = torch.clamp(E, 0.001, 1.01e5)
+    # E = torch.clamp(E, 0.001, 1.01e5)
+    E = dclamp(E, 0.001, 1.01e5)
     
     result = torch.zeros_like(E, dtype=E.dtype, device=E.device)
     logE = torch.log(E)

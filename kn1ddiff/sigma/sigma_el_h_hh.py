@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ..utils import poly
-from ..torch_utils import poly_torch
+from ..torch_utils import poly_torch, dclamp
 
 def sigma_el_h_hh(E: torch.Tensor): 
     '''
@@ -27,7 +27,8 @@ def sigma_el_h_hh(E: torch.Tensor):
     '''
 
     # Ensure 0.03e0 < E < 1.01e4
-    E = torch.clamp(E, 0.03e0, 1.01e4)
+    # E = torch.clamp(E, 0.03e0, 1.01e4)
+    E = dclamp(E, 0.03e0, 1.01e4)
     a = torch.tensor([-3.495671e1, -4.062257e-1, -3.820531e-2, -9.404486e-3, 3.963723e-4], dtype=E.dtype, device=E.device)
     
     result = torch.exp(poly_torch(torch.log(E), a)) * 1e-4
