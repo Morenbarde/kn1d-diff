@@ -240,39 +240,39 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     # Compute mesh differentials
 
-    vthM = np.sqrt(2*CONST.Q*kh2_mesh.Tnorm/(mu*CONST.H_MASS))
-    kh2_differentials = VSpace_Differentials(kh2_mesh.vr, kh2_mesh.vx)
+    # vthM = np.sqrt(2*CONST.Q*kh2_mesh.Tnorm/(mu*CONST.H_MASS))
+    # kh2_differentials = VSpace_Differentials(kh2_mesh.vr, kh2_mesh.vx)
 
-    #NOTE Used in gammalim calculation, will be needed later
-    vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
-    kh_differentials = VSpace_Differentials(kh_mesh.vr, kh_mesh.vx)
+    # #NOTE Used in gammalim calculation, will be needed later
+    # vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
+    # kh_differentials = VSpace_Differentials(kh_mesh.vr, kh_mesh.vx)
 
     #  Test for v0_bar consistency in the numerics by computing it from a half maxwellian at the wall temperature
 
-    nbarHMax = np.sum(kh2_differentials.dvr_vol*(fh2BC @ kh2_differentials.dvx))
-    vbarM = 2*vthM*np.sum(kh2_differentials.dvr_vol*((fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx))))/nbarHMax
-    vbarM_error = abs(vbarM - v0_bar)/max(vbarM, v0_bar)
+    # nbarHMax = np.sum(kh2_differentials.dvr_vol*(fh2BC @ kh2_differentials.dvx))
+    # vbarM = 2*vthM*np.sum(kh2_differentials.dvr_vol*((fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx))))/nbarHMax
+    # vbarM_error = abs(vbarM - v0_bar)/max(vbarM, v0_bar)
 
-    vr2vx2_ran2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size))
+    # vr2vx2_ran2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size))
 
-    mwell = Maxwell[:,:,0]
+    # mwell = Maxwell[:,:,0]
 
-    nbarMax = np.sum(kh2_differentials.dvr_vol*(mwell @ kh2_differentials.dvx))
-    UxMax = vthM*np.sum(kh2_differentials.dvr_vol*(mwell @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarMax
+    # nbarMax = np.sum(kh2_differentials.dvr_vol*(mwell @ kh2_differentials.dvx))
+    # UxMax = vthM*np.sum(kh2_differentials.dvr_vol*(mwell @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarMax
 
-    for i in range(kh2_mesh.vr.size):
-        vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
-    TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*mwell) @ kh2_differentials.dvx))/(3*CONST.Q*nbarMax)
+    # for i in range(kh2_mesh.vr.size):
+    #     vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
+    # TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*mwell) @ kh2_differentials.dvx))/(3*CONST.Q*nbarMax)
 
-    UxHMax = vthM*np.sum(kh2_differentials.dvr_vol*(fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarHMax
-    for i in range(kh2_mesh.vr.size):
-        vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
-    THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*fh2BC) @ kh2_differentials.dvx))/(3*CONST.Q*nbarHMax)
+    # UxHMax = vthM*np.sum(kh2_differentials.dvr_vol*(fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarHMax
+    # for i in range(kh2_mesh.vr.size):
+    #     vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
+    # THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*fh2BC) @ kh2_differentials.dvx))/(3*CONST.Q*nbarHMax)
 
-    if compute_errors and debrief:
-        print(prompt+'VbarM_error: '+sval(vbarM_error))
-        print(prompt+'TWall Maxwellian: '+sval(TMax))
-        print(prompt+'TWall Half Maxwellian: '+sval(THMax))
+    # if compute_errors and debrief:
+    #     print(prompt+'VbarM_error: '+sval(vbarM_error))
+    #     print(prompt+'TWall Maxwellian: '+sval(TMax))
+    #     print(prompt+'TWall Half Maxwellian: '+sval(THMax))
 
 
     # --- Setup Procedure Classes ---

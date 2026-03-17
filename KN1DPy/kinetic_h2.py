@@ -182,17 +182,17 @@ class KineticH2():
                 - 3=very detailed debug
         '''
 
-        file = 'kinetic_h2_in.json'
-        print("Saving to file: " + file)
-        sav_data = {"mu" : mu,
-                    "vxi" : vxi,
-                    "fH2BC" : fH2BC,
-                    "GammaxH2BC" : GammaxH2BC,
-                    "NuLoss" : NuLoss,
-                    "SH2_initial" : SH2_initial}
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
-        input()
+        # file = 'kinetic_h2_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {"mu" : mu,
+        #             "vxi" : vxi,
+        #             "fH2BC" : fH2BC,
+        #             "GammaxH2BC" : GammaxH2BC,
+        #             "NuLoss" : NuLoss,
+        #             "SH2_initial" : SH2_initial}
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
+        # input()
 
         # --- Settings ---
 
@@ -287,69 +287,69 @@ class KineticH2():
         self._init_static_internals(SH2_initial)
 
 
-        file = 'kinetic_h2_params.json'
-        print("Saving to file: " + file)
-        sav_data = {"mu" : self.mu, 
-                    "vxi" : self.vxi, 
-                    "fH2BC" : self.fH2BC, 
-                    "GammaxH2BC" : self.GammaxH2BC, 
-                    "nvr" : self.nvr, 
-                    "nvx" : self.nvx, 
-                    "nx" : self.nx, 
-                    "vx_neg" : self.vx_neg,
-                    "vx_pos" : self.vx_pos, 
-                    "vx_zero" : self.vx_zero, 
-                    "vth" : self.vth, 
-                    "vr2_2vx2_2D" : self.vr2_2vx2_2D,
-                    "dvr_vol" : self.dvr_vol,
-                    "dvr_vol_h_order" : self.dvr_vol_h_order,
-                    "dvx" : self.dvx, 
-                    "fH2BC_input" : self.fH2BC_input,
-                    "Eaxis" : self.Eaxis,
-                    "dEaxis" : self.dEaxis}
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
-        input()
+        # file = 'kinetic_h2_params.json'
+        # print("Saving to file: " + file)
+        # sav_data = {"mu" : self.mu, 
+        #             "vxi" : self.vxi, 
+        #             "fH2BC" : self.fH2BC, 
+        #             "GammaxH2BC" : self.GammaxH2BC, 
+        #             "nvr" : self.nvr, 
+        #             "nvx" : self.nvx, 
+        #             "nx" : self.nx, 
+        #             "vx_neg" : self.vx_neg,
+        #             "vx_pos" : self.vx_pos, 
+        #             "vx_zero" : self.vx_zero, 
+        #             "vth" : self.vth, 
+        #             "vr2_2vx2_2D" : self.vr2_2vx2_2D,
+        #             "dvr_vol" : self.dvr_vol,
+        #             "dvr_vol_h_order" : self.dvr_vol_h_order,
+        #             "dvx" : self.dvx, 
+        #             "fH2BC_input" : self.fH2BC_input,
+        #             "Eaxis" : self.Eaxis,
+        #             "dEaxis" : self.dEaxis}
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        # input()
 
-        # Split for github
-        file = 'kinetic_h2_internal1.json'
-        data = self.Internal
-        print("Saving to file: " + file)
-        sav_data = {'vr2vx2' : data.vr2vx2,
-                    'vr2vx_vxi2' : data.vr2vx_vxi2,
-                    'fw_hat' : data.fw_hat,
-                    'fi_hat' : data.fi_hat,
-                    'fHp_hat' : data.fHp_hat,
-                    'EH2_P' : data.EH2_P,
-                    'sigv' : data.sigv,
-                    'Alpha_Loss' : data.Alpha_Loss,
-                    'v_v2' : data.v_v2,
-                    'v_v' : data.v_v,
-                    'vr2_vx2' : data.vr2_vx2,
-                    'vx_vx' : data.vx_vx}
+        # # Split for github
+        # file = 'kinetic_h2_internal1.json'
+        # data = self.Internal
+        # print("Saving to file: " + file)
+        # sav_data = {'vr2vx2' : data.vr2vx2,
+        #             'vr2vx_vxi2' : data.vr2vx_vxi2,
+        #             'fw_hat' : data.fw_hat,
+        #             'fi_hat' : data.fi_hat,
+        #             'fHp_hat' : data.fHp_hat,
+        #             'EH2_P' : data.EH2_P,
+        #             'sigv' : data.sigv,
+        #             'Alpha_Loss' : data.Alpha_Loss,
+        #             'v_v2' : data.v_v2,
+        #             'v_v' : data.v_v,
+        #             'vr2_vx2' : data.vr2_vx2,
+        #             'vx_vx' : data.vx_vx}
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        # input()
 
 
-        file = 'kinetic_h2_internal2.json'
-        data = self.Internal
-        print("Saving to file: " + file)
-        sav_data = {'Vr2pidVrdVx' : data.Vr2pidVrdVx,
-                    'SIG_CX' : data.SIG_CX,
-                    'SIG_H2_H2' : data.SIG_H2_H2,
-                    'SIG_H2_H' : data.SIG_H2_H,
-                    'SIG_H2_P' : data.SIG_H2_P,
-                    'Alpha_CX' : data.Alpha_CX,
-                    'Alpha_H2_H' : data.Alpha_H2_H,
-                    'Alpha_H2_P' : data.Alpha_H2_P,
-                    'MH2_H2_sum' : data.MH2_H2_sum,
-                    'Delta_nH2s' : data.Delta_nH2s}
+        # file = 'kinetic_h2_internal2.json'
+        # data = self.Internal
+        # print("Saving to file: " + file)
+        # sav_data = {'Vr2pidVrdVx' : data.Vr2pidVrdVx,
+        #             'SIG_CX' : data.SIG_CX,
+        #             'SIG_H2_H2' : data.SIG_H2_H2,
+        #             'SIG_H2_H' : data.SIG_H2_H,
+        #             'SIG_H2_P' : data.SIG_H2_P,
+        #             'Alpha_CX' : data.Alpha_CX,
+        #             'Alpha_H2_H' : data.Alpha_H2_H,
+        #             'Alpha_H2_P' : data.Alpha_H2_P,
+        #             'MH2_H2_sum' : data.MH2_H2_sum,
+        #             'Delta_nH2s' : data.Delta_nH2s}
 
-        sav_data = make_json_compatible(sav_data)
-        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
-        input()
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        # input()
 
         return
 
@@ -426,6 +426,20 @@ class KineticH2():
                 Energy coordinate for ESH (eV)
         '''
 
+
+        # file = 'kh2_proc_in.json'
+        # print("Saving to file: " + file)
+        # sav_data = {'fH' : fH,
+        #             'SH2' : SH2,
+        #             'fH2'  : fH2,
+        #             'nHP' : nHP,
+        #             'THP' : THP,
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
+        # input()
+
+
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
 
         # --- Initialize Inputs ---
@@ -444,8 +458,8 @@ class KineticH2():
 
         # if fh is zero, then turn off elastic H2 <-> H collisions
         self.COLLISIONS.H2_H_EL = self.config['collisions']['H2_H_EL']
-        if np.sum(fH) <= 0:
-            self.COLLISIONS.H2_H_EL = False
+        # if np.sum(fH) <= 0:
+        #     self.COLLISIONS.H2_H_EL = False
 
         # Scale input molecular distribution function to agree with desired flux
         fH2[:,self.vx_pos,0] = self.fH2BC_input[:,self.vx_pos]
@@ -491,8 +505,40 @@ class KineticH2():
         self.Input.THP_s = results.THP
         self.Input.ni_correct_s = self.ni_correct
 
+
         
         self._debrief_msg("Finished", 0)
+
+        # file = 'kh2_proc_out.json'
+        # print("Saving to file: " + file)
+        # sav_data = {"fH2" : results.fH2,
+        #             "nHP" : results.nHP,
+        #             "THP" : results.THP,
+        #             "nH2" : results.nH2,
+        #             "GammaxH2" : results.GammaxH2,
+        #             "VxH2" : results.VxH2,
+        #             "pH2" : results.pH2,
+        #             "TH2" : results.TH2,
+        #             "qxH2" : results.qxH2,
+        #             "qxH2_total" : results.qxH2_total,
+        #             "Sloss" : results.Sloss,
+        #             "QH2" : results.QH2,
+        #             "RxH2" : results.RxH2,
+        #             "QH2_total" : results.QH2_total,
+        #             "AlbedoH2" : results.AlbedoH2,
+        #             "WallH2" : results.WallH2,
+        #             "fSH" : results.fSH,
+        #             "SH" : results.SH,
+        #             "SP" : results.SP,
+        #             "SHP" : results.SHP,
+        #             "NuE" : results.NuE,
+        #             "NuDis" : results.NuDis,
+        #             "ESH" : results.ESH,
+        #             "Eaxis" : results.Eaxis,
+        #             }
+        # sav_data = make_json_compatible(sav_data)
+        # sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
+        # input()
 
         return results
 
@@ -540,14 +586,11 @@ class KineticH2():
             collision_freqs = self._compute_omega_values(fH2, nH2)
             # Total Collision Frequency
             alpha_c = self._compute_collision_frequency(collision_freqs, gamma_wall)
-            
-            # Generate Coefficients
-            meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c, SH2)
 
 
             # --- Iterative Generations ---
 
-            fH2, Swall_sum, Beta_CX_sum, m_sums = self._run_generations(fH2, nHP, gamma_wall, meq_coeffs, collision_freqs)
+            fH2, Swall_sum, Beta_CX_sum, m_sums = self._run_generations(fH2, nHP, gamma_wall, SH2, alpha_c, collision_freqs)
             self.Internal.MH2_H2_sum = m_sums.H2_H2
 
             # Compute needed results for iteration
@@ -567,7 +610,7 @@ class KineticH2():
         return fH2, alpha_c, Beta_CX_sum, Swall_sum, collision_freqs, m_sums
 
 
-    def _run_generations(self, fH2, nHP, gamma_wall, meq_coeffs, collision_freqs):
+    def _run_generations(self, fH2, nHP, gamma_wall, SH2, alpha_c, collision_freqs):
         '''
         Iterate through and compute generations of collision
         '''
@@ -583,6 +626,10 @@ class KineticH2():
         Beta_CX_sum = np.zeros((nvr,nvx,nx))
         m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
 
+
+        # Generate Coefficients
+        meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c, SH2)
+        
         # while True:
         for i in range(self.generation_count):
 
@@ -859,20 +906,21 @@ class KineticH2():
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         dvr_vol, dvx = self.dvr_vol, self.dvx
 
-        Omega_H2_P = np.zeros(nx)
-        Omega_H2_H = np.zeros(nx)
-        Omega_H2_H2 = np.zeros(nx)
+        # Omega_H2_P = np.zeros(nx)
+        # Omega_H2_H = np.zeros(nx)
+        # Omega_H2_H2 = np.zeros(nx)
 
         # Compute Omega values if nH is non-zero
-        if np.any(nH2 <= 0):
-            return CollisionType(Omega_H2_H2, Omega_H2_P, Omega_H2_H)
+        # if np.any(nH2 <= 0):
+        #     return CollisionType(Omega_H2_H2, Omega_H2_P, Omega_H2_H)
+        epsilon = 1e-8
 
         # compute VxH2
         # VxH2 = np.zeros((nx))
         if self.COLLISIONS.H2_P_EL or self.COLLISIONS.H2_H_EL or self.COLLISIONS.H2_H2_EL:
             # for k in range(nx):
             #     VxH2[k] = self.vth*np.sum(self.dvr_vol*(fH2[:,:,k] @ (self.mesh.vx*self.dvx))) / nH2[k]
-            VxH2 = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH2, self.mesh.vx*dvx) / nH2
+            VxH2 = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH2, self.mesh.vx*dvx) / (nH2+epsilon)
 
         # compute Omega_H2_P for present fH2 and Alpha_H2_P if H2_P elastic collisions are included
         if self.COLLISIONS.H2_P_EL:
@@ -886,7 +934,7 @@ class KineticH2():
 
             DeltaVx = (VxH2 - self.vxi) / self.vth
             DeltaVx = np.sign(DeltaVx) * np.clip(np.abs(DeltaVx), min=self.DeltaVx_tol)
-            Omega_H2_P = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_P, fH2, dvx) / (nH2*DeltaVx)
+            Omega_H2_P = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_P, fH2, dvx) / (nH2*DeltaVx + epsilon)
             Omega_H2_P = np.clip(Omega_H2_P, min=0)
 
         # Compute Omega_H2_H for present fH2 and Alpha_H2_H if H2_H elastic collisions are included
@@ -901,7 +949,7 @@ class KineticH2():
 
             DeltaVx = (VxH2 - self.H_Moments.VxH) / self.vth
             DeltaVx = np.sign(DeltaVx) * np.clip(np.abs(DeltaVx), min=self.DeltaVx_tol)
-            Omega_H2_H = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_H, fH2, dvx) / (nH2*DeltaVx)
+            Omega_H2_H = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_H, fH2, dvx) / (nH2*DeltaVx + epsilon)
             Omega_H2_H = np.clip(Omega_H2_H, min=0)
 
         # Compute Omega_H2_H2 for present fH2 if H2_H2 elastic collisions are included
@@ -915,7 +963,7 @@ class KineticH2():
             else:
                 fH2_mod = self.vr2_2vx2_2D[:,:,None]*(self.Internal.MH2_H2_sum - fH2)
                 Wperp_sign = -1
-            Wperp_paraH2 = Wperp_sign*np.einsum('i,ijk,j->k', dvr_vol, fH2_mod, dvx) / nH2
+            Wperp_paraH2 = Wperp_sign*np.einsum('i,ijk,j->k', dvr_vol, fH2_mod, dvx) / (nH2 + epsilon)
 
             # Wperp_paraH2 = np.zeros(nx)
             # vr2_2vx_ran2 = np.zeros((nvr,nvx))
@@ -932,7 +980,7 @@ class KineticH2():
             Work = fH2.reshape((nvr*nvx, nx), order='F')
             Alpha_H2_H2 = (self.Internal.SIG_H2_H2 @ Work).reshape((nvr,nvx,nx), order='F')
             Wpp = np.sign(Wperp_paraH2)*np.clip(Wperp_paraH2, min=self.Wpp_tol)
-            Omega_H2_H2 = np.einsum('i,ijk,ijk,j->k', dvr_vol, Alpha_H2_H2, fH2, dvx) / (nH2*Wpp)
+            Omega_H2_H2 = np.einsum('i,ijk,ijk,j->k', dvr_vol, Alpha_H2_H2, fH2, dvx) / (nH2*Wpp + epsilon)
             Omega_H2_H2 = np.clip(Omega_H2_H2, min=0)
 
             # for k in range(nx):
@@ -1757,14 +1805,23 @@ class KineticH2():
 
         self._debrief_msg('Computing vx and T moments of fH', 1)
 
+        vx, vr = self.mesh.vx, self.mesh.vr
+        dvx, dvr_vol = self.dvx, self.dvr_vol
+        epsilon = 1e-8
+
         # Compute x flow velocity and temperature of atomic species
-        for k in range(0, self.nx):
-            self.H_Moments.nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
-            if self.H_Moments.nH[k] <= 0:
-                continue
-            self.H_Moments.VxH[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / self.H_Moments.nH[k]
-            vr2vx2_ran2 = self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - self.H_Moments.VxH[k]/self.vth)**2
-            self.H_Moments.TH[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*np.sum((self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx))) / (3*CONST.Q*self.H_Moments.nH[k])
+        self.H_Moments.nH = np.einsum('i,ijk,j->k', dvr_vol, fH, dvx)
+        self.H_Moments.VxH = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH, (vx*dvx)) / (self.H_Moments.nH + epsilon)
+        vr2vx2_ran2 = vr[:,None,None]**2 + (vx[None,:,None] - self.H_Moments.VxH[None,None,:]/self.vth)**2
+        th_mom_coef = (self.mu*CONST.H_MASS)*(self.vth**2) / (3*CONST.Q*self.H_Moments.nH + epsilon)
+        self.H_Moments.TH = th_mom_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran2, fH, self.dvx)
+        # for k in range(0, self.nx):
+            # self.H_Moments.nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
+            # if self.H_Moments.nH[k] <= 0:
+            #     continue
+            # self.H_Moments.VxH[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / self.H_Moments.nH[k]
+            # vr2vx2_ran2 = self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - self.H_Moments.VxH[k]/self.vth)**2
+            # self.H_Moments.TH[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*np.sum((self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx))) / (3*CONST.Q*self.H_Moments.nH[k])
 
         return
     
@@ -1802,11 +1859,11 @@ class KineticH2():
             #     Work = (self.Internal.fHp_hat[:,:,k]*nHP[k]).reshape((self.nvr*self.nvx), order='F')
             #     self.Internal.Alpha_CX[:,:,k] = (self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F')
 
-            if self.Do_Alpha_CX_Test: # NOTE Not tested/implemented
-                Alpha_CX_Test = sigmav_cx_hh(THP_mu, self.Internal.EH2_P) / self.vth
-                for k in range(0, self.nx):
-                    Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*nHP[k]
-                    print('Compare alpha_cx and alpha_cx_test')
+            # if self.Do_Alpha_CX_Test: # NOTE Not tested/implemented
+            #     Alpha_CX_Test = sigmav_cx_hh(THP_mu, self.Internal.EH2_P) / self.vth
+            #     for k in range(0, self.nx):
+            #         Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*nHP[k]
+            #         print('Compare alpha_cx and alpha_cx_test')
 
         return
 

@@ -11,16 +11,6 @@ from kn1ddiff.kinetic_h import *
 from kn1ddiff.test.utils import *
 
 
-
-now = datetime.now()
-folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")
-
-local_dir = "kn1ddiff/test/h_proc/"
-run_dir = local_dir+"Runs/"+folder_name+"/"
-image_dir = run_dir+"Images/"
-in_file = "kh_proc_in.json"
-out_file = "kh_proc_out.json"
-
 # Torch
 dtype = torch.float64
 USE_CPU = True
@@ -39,26 +29,40 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 0.9 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 1000
+NUM_ITERS = 2000
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 5e-3
+INITIAL_LR = 1e-3
 CYCLE_LR = False
-LR_CYCLE_COUNT = 8
+LR_CYCLE_COUNT = 5
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 5
+GIF_FREQ = 50
+
+
+# Folder Settings
+now = datetime.now()
+exp = np.floor(np.log10(np.abs(INITIAL_LR)))
+base = int(INITIAL_LR*(10**(-exp)))
+exp = int(exp)
+folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")+"_"+str(NUM_ITERS)+f'_{base}e{exp}'+"_Cycle-"+str(CYCLE_LR)
+
+local_dir = "kn1ddiff/test/h_proc/"
+run_dir = local_dir+"Runs/"+folder_name+"/"
+image_dir = run_dir+"Images/"
+in_file = "kh_proc_in.json"
+out_file = "kh_proc_out.json"
 
 
 if __name__ == "__main__":

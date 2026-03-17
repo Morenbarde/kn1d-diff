@@ -23,8 +23,8 @@ from .sigma.sigma_el_p_hh import sigma_el_p_hh
 from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .utils import sval, get_config, path_interp_2d, torch_reshape_fortran
-from .torch_utils import path_interp_2d_torch
+from .utils import sval, get_config, path_interp_2d
+from .torch_utils import path_interp_2d_torch, torch_reshape_fortran, dclamp
 
 from .common.Kinetic_H2 import *
 from .common import constants as CONST
@@ -362,21 +362,21 @@ class KineticH2():
         # --- Initialize Inputs ---
         
         if fH is None:
-            fH = np.arange((nvr,nvx,nx))
+            fH = torch.arange((nvr,nvx,nx), dtype=self.dtype, device=self.device)
         if fH2 is None:
-            fH2 = np.zeros((nvr,nvx,nx))
+            fH2 = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
         if SH2 is None:
-            SH2 = np.zeros(nx)
+            SH2 = torch.zeros(nx, dtype=self.dtype, device=self.device)
         if nHP is None:
-            nHP = np.zeros(nx)
+            nHP = torch.zeros(nx, dtype=self.dtype, device=self.device)
         if THP is None:
-            THP = np.full(nx, 3.0)
-        self._test_input_parameters(fH, fH2, SH2, nHP, THP)
+            THP = torch.full(nx, 3.0, dtype=self.dtype, device=self.device)
+        # self._test_input_parameters(fH, fH2, SH2, nHP, THP)
 
         # if fh is zero, then turn off elastic H2 <-> H collisions
         self.COLLISIONS.H2_H_EL = self.config['collisions']['H2_H_EL']
-        if np.sum(fH) <= 0:
-            self.COLLISIONS.H2_H_EL = False
+        # if torch.sum(fH) <= 0:
+        #     self.COLLISIONS.H2_H_EL = False
 
         # Scale input molecular distribution function to agree with desired flux
         fH2[:,self.vx_pos,0] = self.fH2BC_input[:,self.vx_pos]
@@ -390,11 +390,11 @@ class KineticH2():
         # nH2 = np.zeros((nx))
         # for k in range(0, nx):
         #     nH2[k] = np.sum(self.dvr_vol*(np.matmul(fH2[:,:,k], self.dvx)))
-        nH2 = np.einsum("i,ijk,j->k", self.dvr_vol, fH2, self.dvx)
+        nH2 = torch.einsum("i,ijk,j->k", self.dvr_vol, fH2, self.dvx)
             
 
         # Compute Side-Wall collision rate
-        gamma_wall = np.zeros((nvr,nvx,nx))
+        gamma_wall = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
         for k in range(nx):
             if self.mesh.PipeDia[k] > 0:
                 gamma_wall[:,:,k] = 2*self.mesh.vr / self.mesh.PipeDia[k]
@@ -409,8 +409,8 @@ class KineticH2():
 
         results = self._compile_results(fH2, SH2, gamma_wall, alpha_c, Beta_CX_sum, Swall_sum, collision_freqs, m_sums)
 
-        if self.compute_errors:
-            self._compute_final_errors(results, SH2, Beta_CX_sum, Swall_sum, m_sums, alpha_c, collision_freqs)
+        # if self.compute_errors:
+        #     self._compute_final_errors(results, SH2, Beta_CX_sum, Swall_sum, m_sums, alpha_c, collision_freqs)
             
             
         # --- Save input Variables ---
@@ -440,28 +440,17 @@ class KineticH2():
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
 
-        # Set iteration Scheme 
-        # fH2_iterate = False
-        # if self.COLLISIONS.H2_H2_EL or self.COLLISIONS.H2_P_CX or self.COLLISIONS.H2_H_EL or self.COLLISIONS.H2_P_EL or self.ni_correct:
-        #     fH2_iterate = True
 
         # Begin Iteration
         
-        # while True:
         for _ in range(self.iteration_count):
-
-            # nH_input = np.copy(nH2)
 
             # --- Update Frequncies ---
 
-            # Compute Alpha_CX for present THP and nHP, if it is needed and has not
-            # already been computed with the present parameters
-            # if Do_Alpha_CX:
+            # Compute Alpha_CX for present THP and nHP
             self._compute_alpha_cx(nHP, THP)
 
             # Compute Alpha_H2_P for present Ti and ni (optionally correcting for nHP), 
-            # if it is needed and has not already been computed with the present parameter
-            # if Do_Alpha_H2_P:
             self._compute_alpha_h2_p(nHP)
             
 
@@ -471,14 +460,11 @@ class KineticH2():
             collision_freqs = self._compute_omega_values(fH2, nH2)
             # Total Collision Frequency
             alpha_c = self._compute_collision_frequency(collision_freqs, gamma_wall)
-            
-            # Generate Coefficients
-            meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c, SH2)
 
 
             # --- Iterative Generations ---
 
-            fH2, Swall_sum, Beta_CX_sum, m_sums = self._run_generations(fH2, nHP, gamma_wall, meq_coeffs, collision_freqs)
+            fH2, Swall_sum, Beta_CX_sum, m_sums = self._run_generations(fH2, nHP, gamma_wall, SH2, alpha_c, collision_freqs)
             self.Internal.MH2_H2_sum = m_sums.H2_H2
 
             # Compute needed results for iteration
@@ -487,37 +473,36 @@ class KineticH2():
 
             # --- End Iteration ---
 
-            # if fH2_iterate:
-            #     # Compute 'seed error': Delta_nH2s=(|nH2s-nH2|)/max(nH2) 
-            #     # If Delta_nH2s is greater than 10*truncate then iterate fH2
-
-            #     self.Internal.Delta_nH2s = np.max(np.abs(nH_input - nH2)) / np.max(nH2)
-            #     # if self.Internal.Delta_nH2s <= 10*self.truncate:
-            #     #     break
-
         return fH2, alpha_c, Beta_CX_sum, Swall_sum, collision_freqs, m_sums
 
 
-    def _run_generations(self, fH2, nHP, gamma_wall, meq_coeffs, collision_freqs):
+    def _run_generations(self, fH2, nHP, gamma_wall, SH2, alpha_c, collision_freqs):
         '''
         Iterate through and compute generations of collision
         '''
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         vxp, vxn = self.vx_pos, self.vx_neg
+        dtype, device = self.dtype, self.device
 
-        fH_gen = np.zeros((nvr,nvx,nx))
-        fH_total = np.zeros((nvr,nvx,nx))
-        nH_gen = np.zeros((nx))
+        fH_total = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
         
-        Swall_sum = np.zeros((nvr,nvx,nx))
-        Beta_CX_sum = np.zeros((nvr,nvx,nx))
-        m_sums = CollisionType(np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)), np.zeros((nvr,nvx,nx)))
+        Swall_sum = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
+        Beta_CX_sum = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
+        m_sums = CollisionType(torch.zeros((nvr,nvx,nx), dtype=dtype, device=device), 
+                               torch.zeros((nvr,nvx,nx), dtype=dtype, device=device), 
+                               torch.zeros((nvr,nvx,nx), dtype=dtype, device=device))
 
+
+        # Generate Coefficients
+        meq_coeffs = self._compute_mesh_equation_coefficients(alpha_c, SH2)
+        
         # while True:
         for i in range(self.generation_count):
 
             self._debrief_msg('Computing molecular neutral generation#'+sval(i), 0)
+
+            fH_gen = torch.zeros((nvr,nvx,nx), dtype=dtype, device=device)
         
             if i == 0:
                 # --- 0th Generation ---
@@ -541,27 +526,27 @@ class KineticH2():
                 for k in range(nx-1, 0, -1):
                     fH_gen[:,vxn,k-1] = fH_gen[:,vxn,k]*meq_coeffs.C[:,:,k-1] + meq_coeffs.D[:,:,k-1]*beta_omega_offsum[:,vxn,k-1]
                 
-            fH_total += fH_gen
+            fH_total = fH_total + fH_gen
 
             # for k in range(nx):
             #     nH_gen[k] = np.sum(self.dvr_vol*(fH_gen[:,:,k] @ self.dvx))
-            nH_gen = np.einsum('i,ijk,j->k', self.dvr_vol, fH_gen, self.dvx)
+            nH_gen = torch.einsum('i,ijk,j->k', self.dvr_vol, fH_gen, self.dvx)
 
             #Compute Swall from previous generation
             Swall = self._compute_swall(fH_gen, gamma_wall)
             #Sum wall collision source over all generations
-            Swall_sum += Swall
+            Swall_sum = Swall_sum + Swall
 
             #Compute Beta_CX from previous generation
             Beta_CX = self._compute_beta_cx(fH_gen, nHP)
             #Sum charge exchange source over all generations
-            Beta_CX_sum += Beta_CX
+            Beta_CX_sum = Beta_CX_sum + Beta_CX
 
             # Elastic collision maxwellians
             m_vals = self._compute_mh_values(fH_gen, nH_gen)
-            m_sums.H2_H += m_vals.H2_H
-            m_sums.H2_P += m_vals.H2_P
-            m_sums.H2_H2 += m_vals.H2_H2
+            m_sums.H2_H = m_sums.H2_H + m_vals.H2_H
+            m_sums.H2_P = m_sums.H2_P + m_vals.H2_P
+            m_sums.H2_H2 = m_sums.H2_H2 + m_vals.H2_H2
             
 
         return fH_total, Swall_sum, Beta_CX_sum, m_sums
@@ -576,44 +561,32 @@ class KineticH2():
         vx, vr = self.mesh.vx, self.mesh.vr
 
         # Compute H2 density profile
-        # nH2 = np.zeros(self.nx)
-        # for k in range(self.nx): #NOTE Should the rest of this be in the loop? KH, nH2 is only thing computed in the loop
-        #     nH2[k] = np.sum(self.dvr_vol*(fH2[:,:,k] @ self.dvx))
-        nH2 = np.einsum('i,ijk,j->k', dvr_vol, fH2, dvx)
+        nH2 = torch.einsum('i,ijk,j->k', dvr_vol, fH2, dvx)
 
         # GammaxH2 - particle flux in x direction
-        # GammaxH2 = np.zeros(self.nx)
-        # for k in range(self.nx):
-        #     GammaxH2[k] = self.vth*np.sum(dvr_vol*(fH2[:,:,k] @ (vx*dvx)))
-        GammaxH2 = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH2, vx*dvx)
+        GammaxH2 = self.vth*torch.einsum('i,ijk,j->k', dvr_vol, fH2, vx*dvx)
 
         # VxH2 - x velocity
         VxH2 = GammaxH2 / nH2
         VxH2_vth = VxH2 / self.vth 
 
         # Magnitude of random velocity at each mesh point 
-        # vr2vx2_ran.shape = (self.nvr, self.nvx, self.nx)
-        # vr2vx2_ran[i,j,k] = vr[i]**2 + (vx[j] - VxH2[k])**2
         vr2vx2_ran = vr[:,None,None]**2 + (vx[None,:,None] - VxH2_vth[None,None,:])**2
 
         # pH2 - pressure 
         pH2_coef = (2*self.mu*CONST.H_MASS)*(self.vth**2) / (3*CONST.Q)
-        # pH2 = np.zeros(self.nx)
-        # for k in range(0, self.nx):
-        #     pH2[k] = np.sum(dvr_vol*((vr2vx2_ran[:,:,k]*fH2[:,:,k]) @ dvx))
-        # pH2 *= pH2_coef
         
-        pH2 = pH2_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran, fH2, dvx)
+        pH2 = pH2_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran, fH2, dvx)
         
 
         #TH2 - temperature 
         TH2 = pH2/nH2
 
         # Compute NuDis - Dissociation frequency 
-        NuDis = self.mesh.ne*np.sum(self.Internal.sigv[:,7:11], 1)
+        NuDis = self.mesh.ne*torch.sum(self.Internal.sigv[:,7:11], dim=1)
         
         # Compute NuE (assume np=ne) - Energy equilibration frequency H(+) <-> H2(+)
-        NuE = (7.7e-7*self.mesh.ne*1.0e-6)/(np.sqrt(self.mu)*(self.mesh.Ti**1.5))
+        NuE = (7.7e-7*self.mesh.ne*1.0e-6)/(torch.sqrt(self.mu)*(self.mesh.Ti**1.5))
         
         # Compute H2(+) density profile
         nHP = (nH2*self.mesh.ne*self.Internal.sigv[:,1])/(NuDis + self.NuLoss)
@@ -645,28 +618,17 @@ class KineticH2():
 
         # piH2_xx, piH2_yy, piH2_zz
         piH_coef = 2*(self.mu*CONST.H_MASS)*(self.vth**2) / CONST.Q
-        # for k in range(self.nx):
-            # self.Output.piH2_xx[k] = np.sum(dvr_vol*(fH2[:,:,k] @ (dvx*(vx - VxH2_vth[k])**2)))
-            # self.Output.piH2_yy[k] = np.sum((dvr_vol*(vr**2))*(fH2[:,:,k] @ dvx))
-        self.Output.piH2_xx = np.einsum('i,ijk,jk->k', dvr_vol, fH2, dvx[:,None]*(vx_vxh2_diff**2))
+        self.Output.piH2_xx = torch.einsum('i,ijk,jk->k', dvr_vol, fH2, dvx[:,None]*(vx_vxh2_diff**2))
         self.Output.piH2_xx = piH_coef*self.Output.piH2_xx - pH2
-        self.Output.piH2_yy = np.einsum('i,ijk,j->k',dvr_vol*(vr**2), fH2, dvx)
+        self.Output.piH2_yy = torch.einsum('i,ijk,j->k',dvr_vol*(vr**2), fH2, dvx)
         self.Output.piH2_yy = 0.5*piH_coef*self.Output.piH2_yy - pH2
-        self.Output.piH2_zz = np.copy(self.Output.piH2_yy)
+        self.Output.piH2_zz = self.Output.piH2_yy
 
         # qxH2
-        # qxH2 = np.zeros(self.nx)
         qxH2_coef = 0.5*(2*self.mu*CONST.H_MASS)*(self.vth**3)
-        # for k in range(0, self.nx):
-        #     qxH2[k] = np.sum(dvr_vol*((vr2vx2_ran[:,:,k]*fH2[:,:,k]) @ (dvx*(vx - VxH2_vth[k]))))
-        # qxH2 *= qxH2_coef
-        qxH2 = qxH2_coef*np.einsum('i,ijk,ijk,jk->k', dvr_vol, vr2vx2_ran, fH2, w_vx)
+        qxH2 = qxH2_coef*torch.einsum('i,ijk,ijk,jk->k', dvr_vol, vr2vx2_ran, fH2, w_vx)
 
         # C = RHS of Boltzman equation for total fH2
-        # Sloss = np.zeros(self.nx)
-        # WallH2 = np.zeros(self.nx)
-        # QH2 = np.zeros(self.nx)
-        # RxH2 = np.zeros(self.nx)
 
         E_coef = 0.5*(2*self.mu*CONST.H_MASS)*(self.vth**2)
         Rx_coef = (2*self.mu*CONST.H_MASS)*self.vth
@@ -684,76 +646,40 @@ class KineticH2():
 
         # --- Main Outputs ---
 
-        QH2 = E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran, C, dvx)
-        RxH2 = Rx_coef*np.einsum('i,ijk,jk->k', dvr_vol, C, w_vx)
-        Sloss = -np.einsum('i,ijk,j->k', dvr_vol, C, dvx) + SH2
-        WallH2 = np.einsum('i,ijk,ijk,j->k', dvr_vol, gamma_wall, fH2, dvx)
+        QH2 = E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran, C, dvx)
+        RxH2 = Rx_coef*torch.einsum('i,ijk,jk->k', dvr_vol, C, w_vx)
+        Sloss = -torch.einsum('i,ijk,j->k', dvr_vol, C, dvx) + SH2
+        WallH2 = torch.einsum('i,ijk,ijk,j->k', dvr_vol, gamma_wall, fH2, dvx)
 
         # --- CX block ---
         if self.COLLISIONS.H2_P_CX:
             CH2_HP_CX = self.vth*(Beta_CX_sum - self.Internal.Alpha_CX*fH2)
-            self.Output.RxH2CX = Rx_coef*np.einsum('i,ijk,jk->k', dvr_vol, CH2_HP_CX, w_vx)
-            self.Output.EH2CX = E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_HP_CX, dvx)
+            self.Output.RxH2CX = Rx_coef*torch.einsum('i,ijk,jk->k', dvr_vol, CH2_HP_CX, w_vx)
+            self.Output.EH2CX = E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_HP_CX, dvx)
 
         # --- H2-H elastic ---
         if self.COLLISIONS.H2_H_EL:
             CH2_H = self.vth*collision_freqs.H2_H[None,None,:]*(m_sums.H2_H - fH2)
-            self.Output.RxH_H2 = Rx_coef*np.einsum('i,ijk,jk->k', dvr_vol, CH2_H, w_vx)
-            self.Output.EH_H2 = E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_H, dvx)
+            self.Output.RxH_H2 = Rx_coef*torch.einsum('i,ijk,jk->k', dvr_vol, CH2_H, w_vx)
+            self.Output.EH_H2 = E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_H, dvx)
 
         # --- H2-P elastic ---
         if self.COLLISIONS.H2_P_EL:
             CH2_P = self.vth*collision_freqs.H2_P[None,None,:]*(m_sums.H2_P - fH2)
-            self.Output.RxP_H2 = Rx_coef*np.einsum('i,ijk,jk->k', dvr_vol, CH2_P, w_vx)
-            self.Output.EP_H2 = E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_P, dvx)
+            self.Output.RxP_H2 = Rx_coef*torch.einsum('i,ijk,jk->k', dvr_vol, CH2_P, w_vx)
+            self.Output.EP_H2 = E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CH2_P, dvx)
 
         # --- Wall Term ---
         CW_H2 = self.vth*(Swall_sum - gamma_wall*fH2)
-        self.Output.RxW_H2 = Rx_coef*np.einsum('i,ijk,jk->k', dvr_vol, CW_H2, w_vx)
-        self.Output.EW_H2 = E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CW_H2, dvx)
+        self.Output.RxW_H2 = Rx_coef*torch.einsum('i,ijk,jk->k', dvr_vol, CW_H2, w_vx)
+        self.Output.EW_H2 = E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.vr2vx2, CW_H2, dvx)
 
         # --- H2-H2 elastic ---
         if self.COLLISIONS.H2_H2_EL:
             CH2_H2 = self.vth*collision_freqs.H2_H2[None,None,:]*(m_sums.H2_H2 - fH2)
             vr2_2vx_ran2 = vr[:,None,None]**2 - 2*(vx_vxh2_diff**2)
-            self.Output.Epara_PerpH2_H2 = -E_coef*np.einsum('i,ijk,ijk,j->k', dvr_vol, vr2_2vx_ran2, CH2_H2, dvx)
+            self.Output.Epara_PerpH2_H2 = -E_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, vr2_2vx_ran2, CH2_H2, dvx)
         
-        
-
-        # for k in range(0, self.nx):
-            # C = self.vth*((self.Internal.fw_hat[:,:]*SH2[k]/self.vth) + Swall_sum[:,:,k] + Beta_CX_sum[:,:,k] - (alpha_c[:,:,k]*fH2[:,:,k])
-            #                 + collision_freqs.H2_P[k]*m_sums.H2_P[:,:,k] + collision_freqs.H2_H[k]*m_sums.H2_H[:,:,k] + collision_freqs.H2_H2[k]*m_sums.H2_H2[:,:,k])
-            
-            # QH2[k] = E_coef*np.sum(dvr_vol*((vr2vx2_ran[:,:,k]*C[:,:,k]) @ dvx))
-            # RxH2[k] = Rx_coef*np.sum(dvr_vol*(C[:,:,k] @ (dvx*(vx - VxH2_vth[k]))))
-            # Sloss[k] = -np.sum(dvr_vol*(C[:,:,k] @ dvx)) + SH2[k]
-            # WallH2[k] = np.sum(dvr_vol*((gamma_wall[:,:,k]*fH2[:,:,k]) @ dvx))
-
-            # if self.COLLISIONS.H2_P_CX:
-            #     CH2_HP_CX = self.vth*(Beta_CX_sum[:,:,k] - self.Internal.Alpha_CX[:,:,k]*fH2[:,:,k])
-            #     self.Output.RxH2CX[k] = Rx_coef*np.sum(dvr_vol*(CH2_HP_CX @ (dvx*(vx - VxH2_vth[k]))))
-            #     self.Output.EH2CX[k] = E_coef*np.sum(dvr_vol*((self.Internal.vr2vx2[:,:,k]*CH2_HP_CX) @ dvx))
-
-            # if self.COLLISIONS.H2_H_EL:
-            #     CH2_H = self.vth*collision_freqs.H2_H[k]*(m_sums.H2_H[:,:,k] - fH2[:,:,k])
-            #     self.Output.RxH_H2[k] = Rx_coef*np.sum(dvr_vol*(CH2_H @ (dvx*(vx - VxH2_vth[k]))))
-            #     self.Output.EH_H2[k] = E_coef*np.sum(dvr_vol*((self.Internal.vr2vx2[:,:,k]*CH2_H) @ dvx))
-
-            # if self.COLLISIONS.H2_P_EL:
-            #     CH2_P = self.vth*collision_freqs.H2_P[k]*(m_sums.H2_P[:,:,k] - fH2[:,:,k])
-            #     self.Output.RxP_H2[k] = Rx_coef*np.sum(dvr_vol*(CH2_P @ (dvx*(vx - VxH2_vth[k]))))
-            #     self.Output.EP_H2[k] = E_coef*np.sum(dvr_vol*((self.Internal.vr2vx2[:,:,k]*CH2_P) @ dvx))
-
-            # CW_H2 = self.vth*(Swall_sum[:,:,k] - gamma_wall[:,:,k]*fH2[:,:,k])
-            # self.Output.RxW_H2[k] = Rx_coef*np.sum(dvr_vol*(CW_H2 @ (dvx*(vx - VxH2_vth[k]))))
-            # self.Output.EW_H2[k] = E_coef*np.sum(dvr_vol*((self.Internal.vr2vx2[:,:,k]*CW_H2) @ dvx))
-
-            # if self.COLLISIONS.H2_H2_EL:
-            #     vr2_2vx_ran2 = np.zeros((self.nvr,self.nvx))
-            #     CH2_H2 = self.vth*collision_freqs.H2_H2[k]*(m_sums.H2_H2[:,:,k] - fH2[:,:,k])
-            #     # vr2vx2_ran2[i,j] = vr[i]**2 + 2*(vx[j] - VxH2_vth[k])**2
-            #     vr2_2vx_ran2 = vr[:,None]**2 - 2*(vx[None,:] - VxH2_vth[k])**2
-            #     self.Output.Epara_PerpH2_H2[k] = -E_coef*np.sum(dvr_vol*((vr2_2vx_ran2*CH2_H2) @ dvx))
 
         # qxH2_total
         qxH2_total = (0.5*nH2*(2*self.mu*CONST.H_MASS)*VxH2*VxH2 + 2.5*pH2*CONST.Q)*VxH2 + CONST.Q*self.Output.piH2_xx*VxH2 + qxH2
@@ -762,8 +688,8 @@ class KineticH2():
         QH2_total = QH2 + RxH2*VxH2 - 0.5*(2*self.mu*CONST.H_MASS)*(Sloss - SH2)*VxH2*VxH2
 
         # Albedo
-        gammax_plus = self.vth*np.sum(dvr_vol*(fH2[:,self.vx_pos,0] @ (vx[self.vx_pos]*dvx[self.vx_pos]))) 
-        gammax_minus = self.vth*np.sum(dvr_vol*(fH2[:,self.vx_neg,0] @ (vx[self.vx_neg]*dvx[self.vx_neg])))
+        gammax_plus = self.vth*torch.sum(dvr_vol*(fH2[:,self.vx_pos,0] @ (vx[self.vx_pos]*dvx[self.vx_pos]))) 
+        gammax_minus = self.vth*torch.sum(dvr_vol*(fH2[:,self.vx_neg,0] @ (vx[self.vx_neg]*dvx[self.vx_neg])))
         AlbedoH2 = 0.0
         if np.abs(gammax_plus) > 0:
             AlbedoH2 = -gammax_minus/gammax_plus
@@ -790,90 +716,49 @@ class KineticH2():
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
         dvr_vol, dvx = self.dvr_vol, self.dvx
 
-        Omega_H2_P = np.zeros(nx)
-        Omega_H2_H = np.zeros(nx)
-        Omega_H2_H2 = np.zeros(nx)
-
-        # Compute Omega values if nH is non-zero
-        if np.any(nH2 <= 0):
-            return CollisionType(Omega_H2_H2, Omega_H2_P, Omega_H2_H)
+        epsilon = 1e-8
 
         # compute VxH2
         # VxH2 = np.zeros((nx))
         if self.COLLISIONS.H2_P_EL or self.COLLISIONS.H2_H_EL or self.COLLISIONS.H2_H2_EL:
-            # for k in range(nx):
-            #     VxH2[k] = self.vth*np.sum(self.dvr_vol*(fH2[:,:,k] @ (self.mesh.vx*self.dvx))) / nH2[k]
-            VxH2 = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH2, self.mesh.vx*dvx) / nH2
+            VxH2 = self.vth*torch.einsum('i,ijk,j->k', dvr_vol, fH2, self.mesh.vx*dvx) / (nH2+epsilon)
 
         # compute Omega_H2_P for present fH2 and Alpha_H2_P if H2_P elastic collisions are included
         if self.COLLISIONS.H2_P_EL:
             self._debrief_msg('Computing Omega_H2_P', 1)
-            # for k in range(nx):
-            #     DeltaVx = (VxH2[k] - self.vxi[k])/self.vth
-            #     MagDeltaVx = np.maximum(np.abs(DeltaVx), self.DeltaVx_tol)
-            #     DeltaVx = np.sign(DeltaVx)*MagDeltaVx
-            #     Omega_H2_P[k] = np.sum(self.dvr_vol*(((self.Internal.Alpha_H2_P[:,:,k]*fH2[:,:,k]) @ self.dvx)))/(nH2[k]*DeltaVx)
-            # Omega_H2_P =  np.maximum(Omega_H2_P, 0)
 
             DeltaVx = (VxH2 - self.vxi) / self.vth
-            DeltaVx = np.sign(DeltaVx) * np.clip(np.abs(DeltaVx), min=self.DeltaVx_tol)
-            Omega_H2_P = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_P, fH2, dvx) / (nH2*DeltaVx)
-            Omega_H2_P = np.clip(Omega_H2_P, min=0)
+            DeltaVx = DeltaVx.sign() * dclamp(DeltaVx.abs(), min=self.DeltaVx_tol)
+            Omega_H2_P = torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_P, fH2, dvx) / (nH2*DeltaVx + epsilon)
+            Omega_H2_P = dclamp(Omega_H2_P, min=0)
 
         # Compute Omega_H2_H for present fH2 and Alpha_H2_H if H2_H elastic collisions are included
         if self.COLLISIONS.H2_H_EL:
             self._debrief_msg('Computing Omega_H2_H', 1)
-            # for k in range(nx):
-            #     DeltaVx = (VxH2[k] - self.H_Moments.VxH[k])/self.vth
-            #     MagDeltaVx = np.maximum(np.abs(DeltaVx), self.DeltaVx_tol)
-            #     DeltaVx = np.sign(DeltaVx)*MagDeltaVx
-            #     Omega_H2_H[k] = np.sum(self.dvr_vol*((self.Internal.Alpha_H2_H[:,:,k]*fH2[:,:,k]) @ self.dvx)/(nH2[k]*DeltaVx))
-            # Omega_H2_H = np.maximum(Omega_H2_H, 0)
 
             DeltaVx = (VxH2 - self.H_Moments.VxH) / self.vth
-            DeltaVx = np.sign(DeltaVx) * np.clip(np.abs(DeltaVx), min=self.DeltaVx_tol)
-            Omega_H2_H = np.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_H, fH2, dvx) / (nH2*DeltaVx)
-            Omega_H2_H = np.clip(Omega_H2_H, min=0)
+            DeltaVx = DeltaVx.sign() * torch.clamp(DeltaVx.abs(), min=self.DeltaVx_tol)
+            Omega_H2_H = torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_H, fH2, dvx) / (nH2*DeltaVx + epsilon)
+            Omega_H2_H = dclamp(Omega_H2_H, min=0)
 
         # Compute Omega_H2_H2 for present fH2 if H2_H2 elastic collisions are included
         if self.COLLISIONS.H2_H2_EL:
             self._debrief_msg('Computing Omega_H2_H2', 1)
 
-            if np.sum(self.Internal.MH2_H2_sum) < 0:
+            if torch.sum(self.Internal.MH2_H2_sum) < 0:
                 vr2_2vx_ran2 = self.mesh.vr[:,None,None]**2 - 2*(self.mesh.vx[None,:,None] - VxH2[None,None,:])**2
                 fH2_mod = vr2_2vx_ran2*fH2
                 Wperp_sign = 1
             else:
                 fH2_mod = self.vr2_2vx2_2D[:,:,None]*(self.Internal.MH2_H2_sum - fH2)
                 Wperp_sign = -1
-            Wperp_paraH2 = Wperp_sign*np.einsum('i,ijk,j->k', dvr_vol, fH2_mod, dvx) / nH2
+            Wperp_paraH2 = Wperp_sign*torch.einsum('i,ijk,j->k', dvr_vol, fH2_mod, dvx) / (nH2 + epsilon)
 
-            # Wperp_paraH2 = np.zeros(nx)
-            # vr2_2vx_ran2 = np.zeros((nvr,nvx))
-            # if np.sum(self.Internal.MH2_H2_sum) < 0:
-            #     for k in range(nx):
-            #         # vr2vx2_ran2[i,j] = vr[i]**2 + 2*(vx[j] - VxH2[k])**2
-            #         vr2_2vx_ran2 = self.mesh.vr[:,None]**2 - 2*(self.mesh.vx[None,:] - VxH2[k])**2
-            #         Wperp_paraH2[k] = np.sum(self.dvr_vol*((vr2_2vx_ran2*fH2[:,:,k]) @ self.dvx))/nH2[k]
-            # else:
-            #     for k in range(nx):
-            #         M_fH2 = self.Internal.MH2_H2_sum[:,:,k] - fH2[:,:,k]
-            #         Wperp_paraH2[k] = -np.sum(self.dvr_vol*((self.vr2_2vx2_2D*M_fH2) @ self.dvx))/nH2[k]
-
-            Work = fH2.reshape((nvr*nvx, nx), order='F')
-            Alpha_H2_H2 = (self.Internal.SIG_H2_H2 @ Work).reshape((nvr,nvx,nx), order='F')
-            Wpp = np.sign(Wperp_paraH2)*np.clip(Wperp_paraH2, min=self.Wpp_tol)
-            Omega_H2_H2 = np.einsum('i,ijk,ijk,j->k', dvr_vol, Alpha_H2_H2, fH2, dvx) / (nH2*Wpp)
-            Omega_H2_H2 = np.clip(Omega_H2_H2, min=0)
-
-            # for k in range(nx):
-            #     Work = fH2[:,:,k].reshape((nvr*nvx), order='F')
-            #     Alpha_H2_H2 = (self.Internal.SIG_H2_H2 @ Work).reshape((nvr,nvx), order='F')
-            #     Wpp = Wperp_paraH2[k]
-            #     MagWpp = np.maximum(abs(Wpp), self.Wpp_tol)
-            #     Wpp = np.sign(Wpp)*MagWpp  
-            #     Omega_H2_H2[k] = np.sum(self.dvr_vol*((Alpha_H2_H2*Work.reshape((nvr,nvx), order='F')) @ self.dvx))/(nH2[k]*Wpp) 
-            # Omega_H2_H2 = np.maximum(Omega_H2_H2, 0)
+            Work = torch_reshape_fortran(fH2, (nvr*nvx, nx))
+            Alpha_H2_H2 = torch_reshape_fortran((self.Internal.SIG_H2_H2 @ Work), (nvr,nvx,nx))
+            Wpp = Wperp_paraH2.sign() * dclamp(Wperp_paraH2, min=self.Wpp_tol)
+            Omega_H2_H2 = torch.einsum('i,ijk,ijk,j->k', dvr_vol, Alpha_H2_H2, fH2, dvx) / (nH2*Wpp + epsilon)
+            Omega_H2_H2 = dclamp(Omega_H2_H2, min=0)
 
         return CollisionType(Omega_H2_H2, Omega_H2_P, Omega_H2_H)
     
@@ -895,6 +780,8 @@ class KineticH2():
             alpha_c = self.Internal.Alpha_CX + self.Internal.Alpha_Loss[None,None,:] + Omega_EL[None,None,:] + gamma_wall
             
         else: 
+            print("NOTE: alpha_c calculation without HP_CX Collisions has not been tested or optimized yet.")
+            input()
             # for k in range(0, self.nx):
             #     alpha_c[:,:,k] = self.Internal.Alpha_Loss[k] + Omega_EL[k] + gamma_wall[:,:,k]
             alpha_c = self.Internal.Alpha_Loss[None,None,:] + Omega_EL[None,None,:] + gamma_wall
@@ -908,26 +795,6 @@ class KineticH2():
         '''
         Define parameters Ak, Bk, Ck, Dk, Fk, Gk using Eqs. (2.22), (2.25), (2.30), (2.33) 
         '''
-
-        # Ak = np.zeros((self.nvr,self.nvx,self.nx))
-        # Bk = np.zeros((self.nvr,self.nvx,self.nx))
-        # Ck = np.zeros((self.nvr,self.nvx,self.nx))
-        # Dk = np.zeros((self.nvr,self.nvx,self.nx))
-        # Fk = np.zeros((self.nvr,self.nvx,self.nx))
-        # Gk = np.zeros((self.nvr,self.nvx,self.nx))
-
-        # for k in range(0, self.nx-1):
-        #     x_diffs = self.mesh.x[k+1] - self.mesh.x[k]
-        #     for j in self.vx_pos:
-        #         denom = 2*self.mesh.vx[j] + (x_diffs)*alpha_c[:,j,k+1]
-        #         Ak[:,j,k] = (2*self.mesh.vx[j] - (x_diffs)*alpha_c[:,j,k]) / denom
-        #         Bk[:,j,k] = (x_diffs) / denom
-        #         Fk[:,j,k] = (x_diffs)*self.Internal.fw_hat[:,j]*(SH2[k+1]+SH2[k]) / (self.vth*denom)
-        #     for j in self.vx_neg:
-        #         denom = -2*self.mesh.vx[j] + (x_diffs)*alpha_c[:,j,k]
-        #         Ck[:,j,k+1] = (-2*self.mesh.vx[j] - (x_diffs)*alpha_c[:,j,k+1]) / denom
-        #         Dk[:,j,k+1] = (x_diffs) / denom
-        #         Gk[:,j,k+1] = (x_diffs)*self.Internal.fw_hat[:,j]*(SH2[k+1]+SH2[k]) / (self.vth*denom)
         
         vxp, vxn = self.vx_pos, self.vx_neg
         vx_pslice = self.mesh.vx[vxp]
@@ -956,15 +823,12 @@ class KineticH2():
         Compute swall using Eq. (2.15c)
         '''
 
-        Swall = np.zeros((self.nvr, self.nvx, self.nx))
-        if np.sum(gamma_wall) > 0:
+        Swall = torch.zeros((self.nvr, self.nvx, self.nx), dtype=self.dtype, device=self.device)
+        if torch.sum(gamma_wall) > 0:
 
             self._debrief_msg('Computing Swall', 1)
 
-            Swall = self.Internal.fw_hat[:,:,None]*np.einsum('i,ijk,ijk,j->k', self.dvr_vol, gamma_wall, fH2, self.dvx)
-
-            # for k in range(0, self.nx): 
-            #     Swall[:,:k] = self.Internal.fw_hat*np.sum(self.dvr_vol*((gamma_wall[:,:,k]*fH2[:,:,k]) @ self.dvx))
+            Swall = self.Internal.fw_hat[:,:,None]*torch.einsum('i,ijk,ijk,j->k', self.dvr_vol, gamma_wall, fH2, self.dvx)
         
         return Swall
     
@@ -974,7 +838,7 @@ class KineticH2():
         Compute charge exchange source (beta_cx) with Eq. (2.11a) or (2.11b)
         '''
 
-        Beta_CX = np.zeros((self.nvr,self.nvx,self.nx))
+        Beta_CX = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
         if self.COLLISIONS.H2_P_CX:
 
             self._debrief_msg('Computing Beta_CX', 1)
@@ -983,21 +847,15 @@ class KineticH2():
                 # Option (B): Compute charge exchange source with assumption that CX source neutrals have  molecular ion distribution function
                 # Eq.(2.11b)
 
-                Beta_CX = self.Internal.fHp_hat*np.einsum('i,ijk,ijk,j->k', self.dvr_vol, self.Internal.Alpha_CX, fH2, self.dvx)
-
-                # for k in range(0, self.nx): 
-                #     Beta_CX[:,:,k] = self.Internal.fHp_hat[:,:,k]*np.sum(self.dvr_vol*((self.Internal.Alpha_CX[:,:,k]*fH2[:,:,k]) @ self.dvx))
+                Beta_CX = self.Internal.fHp_hat*torch.einsum('i,ijk,ijk,j->k', self.dvr_vol, self.Internal.Alpha_CX, fH2, self.dvx)
 
             else: 
                 # Option (A): Compute charge exchange source using fH2 and vr x sigma x v_v at each velocity mesh point
                 # Eq.(2.11a)
 
-                Work = fH2.reshape((self.nvr*self.nvx, self.nx), order='F')
-                sig_work = (self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx,self.nx), order='F')
+                Work = torch_reshape_fortran(fH2, (self.nvr*self.nvx, self.nx))
+                sig_work = torch_reshape_fortran((self.Internal.SIG_CX @ Work), (self.nvr,self.nvx,self.nx))
                 Beta_CX = nHP[None,None,:]*self.Internal.fHp_hat*sig_work
-                # for k in range(0, self.nx):
-                #     Work = fH2[:,:,k].reshape((self.nvr*self.nvx), order='F')
-                #     Beta_CX[:,:,k] = nHP[k]*self.Internal.fHp_hat[:,:,k]*((self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F'))
 
         return Beta_CX
     
@@ -1007,25 +865,14 @@ class KineticH2():
         Compute collision distributions using Eqs. (2.6)-(2.8)
         '''
         
-        MH2_H2 = np.zeros((self.nvr,self.nvx,self.nx))
-        MH2_P = np.zeros((self.nvr,self.nvx,self.nx))
-        MH2_H = np.zeros((self.nvr,self.nvx,self.nx))
-        VxH2G = np.zeros(self.nx)
-        TH2G = np.zeros(self.nx)
         if self.COLLISIONS.H2_H2_EL or self.COLLISIONS.H2_P_EL or self.COLLISIONS.H2_H_EL:
 
             vx, vr = self.mesh.vx, self.mesh.vr
             dvr_vol, dvx = self.dvr_vol, self.dvx
 
-            VxH2G = self.vth*np.einsum('i,ijk,j->k', dvr_vol, fH2, vx*dvx) / (nH + CONST.EPSILON)
+            VxH2G = self.vth*torch.einsum('i,ijk,j->k', dvr_vol, fH2, vx*dvx) / (nH + CONST.EPSILON)
             vr2vx2_ran2 = vr[:, None, None]**2 + (vx[None, :, None] - VxH2G[None, None, :] / self.vth)**2
-            TH2G = (2*self.mu*CONST.H_MASS)*(self.vth**2)*np.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran2, fH2, dvx) / (3*CONST.Q*nH + CONST.EPSILON)
-            
-            # Compute VxH2G, TH2G
-            # for k in range(0, self.nx):
-                # VxH2G[k] = self.vth*np.sum(self.dvr_vol*(fH2[:,:,k] @ (self.mesh.vx * self.dvx))) / (nH[k] + CONST.EPSILON)
-                # vr2vx2_ran2 = self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - VxH2G[k]/self.vth)**2
-                # TH2G[k] = (2*self.mu*CONST.H_MASS)*(self.vth**2)*np.sum(self.dvr_vol*((vr2vx2_ran2*fH2[:,:,k]) @ self.dvx)) / (3*CONST.Q*nH[k] + CONST.EPSILON)
+            TH2G = (2*self.mu*CONST.H_MASS)*(self.vth**2)*torch.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran2, fH2, dvx) / (3*CONST.Q*nH + CONST.EPSILON)
 
             if self.COLLISIONS.H2_H2_EL:
 
@@ -1116,11 +963,11 @@ class KineticH2():
 
         nvr, nvx, nx = self.nvr, self.nvx, self.nx
 
-        fSH = np.zeros((nvr,nvx,nx))
-        SH = np.zeros(nx)
-        SP = np.zeros(nx)
-        SHP = np.zeros(nx)
-        ESH = np.zeros((nvr,nx))
+        fSH = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
+        SH = torch.zeros(nx, dtype=self.dtype, device=self.device)
+        SP = torch.zeros(nx, dtype=self.dtype, device=self.device)
+        SHP = torch.zeros(nx, dtype=self.dtype, device=self.device)
+        ESH = torch.zeros((nvr,nx), dtype=self.dtype, device=self.device)
 
         if not self.compute_h_source:
             # Stop Computation, return 0 arrays
@@ -1129,10 +976,10 @@ class KineticH2():
         self._debrief_msg('Computing Velocity Distributions of H products...', 1)
 
         # Set SFCn values for reactions R2, R3, R4, R5, R6, R7, R8, R10
-        SFCn = np.zeros((nvr,nvx,nx,8))
-        Vfc = np.zeros((nvr,nvx,nx))
-        Tfc = np.zeros((nvr,nvx,nx))
-        magV = np.sqrt(self.Internal.vr2vx2)
+        SFCn = torch.zeros((nvr,nvx,nx,8), dtype=self.dtype, device=self.device)
+        Vfc = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
+        Tfc = torch.zeros((nvr,nvx,nx), dtype=self.dtype, device=self.device)
+        magV = torch.sqrt(self.Internal.vr2vx2)
         
         # Generate Lookup Table
         nFC, Eave, Emax, Emin = self._generate_h_source_table()
@@ -1142,31 +989,7 @@ class KineticH2():
 
         Rn = np.array([2, 3, 4, 5, 6, 7, 8, 10])
         for reaction in Rn:
-            # ii = nFC[reaction]
-            # Tfc[0,0,:] = 0.25*(Emax[:,ii] - Emin[:,ii]) / self.mesh.Tnorm # Franck-Condon 'effective temperature'
-            # Vfc[0,0,:] = np.sqrt(Eave[:,ii] / self.mesh.Tnorm) # Velocity corresponding to Franck-Condon 'mean evergy'
-            # for k in range(nx):
-            #     Vfc[:,:,k] = Vfc[0,0,k]
-            #     Tfc[:,:,k] = Tfc[0,0,k]
-
-            # if reaction <= 6:
-            #     # For R2-R6, the Franck-Condon 'mean energy' is taken equal to Eave
-            #     #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
-            #     #          and the temperature of the H2 molecules, TH2. (Note: directed neutral molecule velocity
-            #     #	   is not included and assumed to be small)
-            #     arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_TH2)
-            #     SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
-            # else: 
-            #     #   For R7, R8 and R10, the Franck-Condon 'mean energy' is taken equal to Eave
-            #     #	   and the 'temperature' corresponds to the sum of the Franck-Condon 'temperature', Tfc,
-            #     #          and the temperature of the H2(+) molecular ions, THP. (Note: directed molecular ion velocity
-            #     #	   is not included and assumed to be small)    
-            #     arg = -(magV - Vfc + 1.5*Tfc/Vfc)**2 / (Tfc + 0.5*_THP)
-            #     SFCn[:,:,:,ii] = np.exp(np.maximum(arg, -80))
-
-            # for k in range(nx):
-            #     SFCn[:,:,k,ii] = SFCn[:,:,k,ii] / (np.sum(self.dvr_vol*(SFCn[:,:,k,ii] @ self.dvx)))
-
+            
             ii = nFC[reaction]
 
             Tfc = 0.25 * (Emax[:, ii] - Emin[:, ii]) / self.mesh.Tnorm  # shape (nx,)
@@ -1186,26 +1009,26 @@ class KineticH2():
             #	   is not included and assumed to be small)
             T_denom = Tfc_3d + 0.5 * (_THP if reaction > 6 else _TH2)
             arg = -(magV - Vfc_3d + 1.5 * Tfc_3d / Vfc_3d)**2 / T_denom
-            SFCn[:, :, :, ii] = np.exp(np.maximum(arg, -80))
+            SFCn[:, :, :, ii] = torch.exp(torch.clamp(arg, min=-80))
 
             # Normalize across k
-            norms = np.einsum('ijk,i,j->k', SFCn[:, :, :, ii], self.dvr_vol, self.dvx)
+            norms = torch.einsum('ijk,i,j->k', SFCn[:, :, :, ii], self.dvr_vol, self.dvx)
             SFCn[:, :, :, ii] = SFCn[:, :, :, ii] / norms[None, None, :]
         
 
-        if self.compute_errors:
-            self.Errors.vbar_error = np.zeros(nx)
-            # Test: The average speed of a non-shifted maxwellian should be 2*Vth*sqrt(Ti(x)/Tnorm)/sqrt(!pi)
-            TFC = np.min(Eave[0,:]) + ((np.max(Eave[0,:]) - np.min(Eave[0,:]))*np.arange(0, nx) / (nx - 1))
-            vx_shift = np.zeros_like(TFC)
-            Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, TFC, vx_shift, self.mu, 1, self.mesh.Tnorm)
-            vbar_test = self.vth*np.sqrt(self.Internal.vr2vx2[:,:,0])
+        # if self.compute_errors:
+        #     self.Errors.vbar_error = np.zeros(nx)
+        #     # Test: The average speed of a non-shifted maxwellian should be 2*Vth*sqrt(Ti(x)/Tnorm)/sqrt(!pi)
+        #     TFC = np.min(Eave[0,:]) + ((np.max(Eave[0,:]) - np.min(Eave[0,:]))*np.arange(0, nx) / (nx - 1))
+        #     vx_shift = np.zeros_like(TFC)
+        #     Maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, TFC, vx_shift, self.mu, 1, self.mesh.Tnorm)
+        #     vbar_test = self.vth*np.sqrt(self.Internal.vr2vx2[:,:,0])
 
-            for k in range(nx):
-                vbar = np.sum(self.dvr_vol*((vbar_test*Maxwell[:,:,k]) @ self.dvx))
-                vbar_exact = 2*self.vth*np.sqrt(TFC[k] / self.mesh.Tnorm) / np.sqrt(np.pi)
-                self.Errors.vbar_error[k] = np.abs(vbar - vbar_exact) / vbar_exact
-            self._debrief_msg('Maximum Vbar error over FC energy range = '+sval(np.max(self.Errors.vbar_error)), 0)
+        #     for k in range(nx):
+        #         vbar = np.sum(self.dvr_vol*((vbar_test*Maxwell[:,:,k]) @ self.dvx))
+        #         vbar_exact = 2*self.vth*np.sqrt(TFC[k] / self.mesh.Tnorm) / np.sqrt(np.pi)
+        #         self.Errors.vbar_error[k] = np.abs(vbar - vbar_exact) / vbar_exact
+        #     self._debrief_msg('Maximum Vbar error over FC energy range = '+sval(np.max(self.Errors.vbar_error)), 0)
 
         # Compute atomic hydrogen source distribution function
         # using normalized FC source distributions SFCn
@@ -1232,7 +1055,7 @@ class KineticH2():
         # for k in range(nx):
         #     SH[k] = np.sum(self.dvr_vol*(fSH[:,:,k] @ self.dvx))
         #     SP[k] = SH_coef[k]*self.Internal.sigv[k,4] + self.mesh.ne[k]*nHP[k]*(self.Internal.sigv[k,7] + self.Internal.sigv[k,8] + 2*self.Internal.sigv[k,9])
-        SH = np.einsum('i,ijk,j->k', self.dvr_vol, fSH, self.dvx)
+        SH = torch.einsum('i,ijk,j->k', self.dvr_vol, fSH, self.dvx)
         SP = SH_coef*self.Internal.sigv[:,4] + self.mesh.ne*nHP*(self.Internal.sigv[:,7] + self.Internal.sigv[:,8] + 2*self.Internal.sigv[:,9])
 
         # Compute total HP source
@@ -1243,25 +1066,25 @@ class KineticH2():
         #     ESH[:,k] = (self.Eaxis*fSH[:,self.vx_pos[0],k]*self.dvr_vol_h_order) / self.dEaxis
         #     ESH[:,k] = ESH[:,k] / np.max(ESH[:,k])
         ESH = (self.Eaxis[:,None]*fSH[:,self.vx_pos[0],:]*self.dvr_vol_h_order[:,None]) / self.dEaxis[:,None]
-        ESH = ESH/np.max(ESH, axis=0)[None,:]
+        ESH = ESH/torch.amax(ESH, dim=0, keepdim=True)
 
         # Compute Source Error
-        if self.compute_errors:
-            Source_Error = np.zeros(nx)
-            self._debrief_msg('Computing Source Error', 1)
-            # Test Mass Balance
-            # The relationship, 2 dGammaxH2/dx - 2 SH2 + SH + SP + 2 nHp x Nuloss = 0, should be satisfied.
-            dGammaxH2dx = np.zeros((nx-1))
-            SH_p = np.zeros(nx-1)
-            for k in range(nx-1):
-                dGammaxH2dx[k] = (GammaxH2[k+1] - GammaxH2[k]) / (self.mesh.x[k+1] - self.mesh.x[k])
-            for k in range(nx-1):
-                SH_p[k] = 0.5*(SH[k+1] + SP[k+1] + 2*self.NuLoss[k+1]*nHP[k+1] - 2*SH2[k+1] + SH[k] + SP[k] + 2*self.NuLoss[k]*nHP[k] - 2*SH2[k])
-            max_source = np.max(np.array([SH, 2*SH2]))
-            for k in range(nx-1):
-                Source_Error[k] = np.abs(2*dGammaxH2dx[k] + SH_p[k]) / np.max(np.abs(np.array([2*dGammaxH2dx[k], SH_p[k], max_source])))
-            if self.debrief > 0:
-                print(self.prompt, 'Maximum Normalized Source_error =', np.max(Source_Error))
+        # if self.compute_errors:
+        #     Source_Error = np.zeros(nx)
+        #     self._debrief_msg('Computing Source Error', 1)
+        #     # Test Mass Balance
+        #     # The relationship, 2 dGammaxH2/dx - 2 SH2 + SH + SP + 2 nHp x Nuloss = 0, should be satisfied.
+        #     dGammaxH2dx = np.zeros((nx-1))
+        #     SH_p = np.zeros(nx-1)
+        #     for k in range(nx-1):
+        #         dGammaxH2dx[k] = (GammaxH2[k+1] - GammaxH2[k]) / (self.mesh.x[k+1] - self.mesh.x[k])
+        #     for k in range(nx-1):
+        #         SH_p[k] = 0.5*(SH[k+1] + SP[k+1] + 2*self.NuLoss[k+1]*nHP[k+1] - 2*SH2[k+1] + SH[k] + SP[k] + 2*self.NuLoss[k]*nHP[k] - 2*SH2[k])
+        #     max_source = np.max(np.array([SH, 2*SH2]))
+        #     for k in range(nx-1):
+        #         Source_Error[k] = np.abs(2*dGammaxH2dx[k] + SH_p[k]) / np.max(np.abs(np.array([2*dGammaxH2dx[k], SH_p[k], max_source])))
+        #     if self.debrief > 0:
+        #         print(self.prompt, 'Maximum Normalized Source_error =', np.max(Source_Error))
 
         return fSH, SH, SP, SHP, ESH
     
@@ -1271,10 +1094,10 @@ class KineticH2():
         Create lookup table to select reaction Rn in SFCn, used for h_source computation
         '''
         #   Rn=2 3 4 5 6 7 8   10
-        nFC = np.array([0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 7])
-        Eave = np.zeros((self.nx, 8))
-        Emax = np.zeros((self.nx, 8))
-        Emin = np.zeros((self.nx, 8))
+        nFC = torch.tensor([0, 0, 0, 1, 2, 3, 4, 5, 6, 0, 7], dtype=torch.long, device=self.device)
+        Eave = torch.zeros((self.nx, 8), dtype=self.dtype, device=self.device)
+        Emax = torch.zeros((self.nx, 8), dtype=self.dtype, device=self.device)
+        Emin = torch.zeros((self.nx, 8), dtype=self.dtype, device=self.device)
 
         # Reaction R2: e + H2 -> e + H(1s) + H(1s)
         ii = nFC[2]
@@ -1291,15 +1114,15 @@ class KineticH2():
         # Reaction R4:  e + H2 -> e + H(+) + H(1s) + e
         ii = nFC[4]
         Ee = 3*self.mesh.Te/2     # Note the FC energy depends on electron energy
-        kk = np.argwhere(Ee <= 26.0)
-        if kk.size > 0:
+        kk = torch.argwhere(Ee <= 26.0)
+        if kk.numel() > 0:
             Eave[kk,ii] = 0.25
-        kk = np.argwhere((Ee > 26.0) & (Ee <= 41.6))
-        if kk.size > 0:
+        kk = torch.argwhere((Ee > 26.0) & (Ee <= 41.6))
+        if kk.numel() > 0:
             Eave[kk,ii] = 0.5*(Ee[kk] - 26)
-            Eave[kk,ii] = np.maximum(Eave[kk, ii], 0.25)
-        kk = np.argwhere(Ee > 41.6)
-        if kk.size > 0:
+            Eave[kk,ii] = torch.clamp(Eave[kk, ii], min=0.25)
+        kk = torch.argwhere(Ee > 41.6)
+        if kk.numel() > 0:
             Eave[kk,ii] = 7.8
         Emax[:,ii] = 1.5*Eave[:,ii]   # Note the max/min values here are a guess
         Emin[:,ii] = 0.5*Eave[:,ii]   # Note the max/min values here are a guess
@@ -1334,16 +1157,22 @@ class KineticH2():
         # Compute relative cross-sections for populating a specific n level for reaction R10
         # (see page 62 in Janev, "Elementary Processes in Hydrogen-Helium Plasmas", Springer-Verlag, 1987)
         #   n=2   3    4    5    6
-        R10rel = np.array([0.1, 0.45, 0.22, 0.12, 0.069])
-        for k in range(7, 11): 
-            R10rel = np.append(R10rel, 10/(k**3))
-        En = 13.58/((2 + np.arange(9))**2) # Energy of Levels
 
-        truncate_point = np.minimum(len(Ee), len(En))
-        EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/np.sum(R10rel)
-        EHn = np.maximum(EHn, 0)
+        # R10rel = torch.tensor([0.1, 0.45, 0.22, 0.12, 0.069], dtype=self.dtype, device=self.device)
+        # for k in range(7, 11): 
+        #     R10rel = np.append(R10rel, 10/(k**3))
+        k = torch.arange(7, 11, dtype=self.dtype, device=self.device)
+        R10rel = torch.cat([
+            torch.tensor([0.1, 0.45, 0.22, 0.12, 0.069], dtype=self.dtype, device=self.device),
+            10 / (k**3)
+        ])
+        En = 13.58/((2 + torch.arange(9))**2) # Energy of Levels
 
-        Eave[:,ii] = np.maximum(np.sum(EHn), 0.25)
+        truncate_point = np.minimum(Ee.numel(), En.numel())
+        EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/torch.sum(R10rel)
+        EHn = torch.clamp(EHn, min=0)
+
+        Eave[:,ii] = torch.clamp(torch.sum(EHn), min=0.25)
         Emax[:,ii] = 1.5*Eave[:,ii] # Note the max/min values here are a guess
         Emin[:,ii] = 0.5*Eave[:,ii] # Note the max/min values here are a guess
 
@@ -1674,43 +1503,21 @@ class KineticH2():
         '''
         Determines which internal variables need to be recomputed based on changes in input across iterations
         '''
-        
-        # Set flags to make use of previously computed local parameters
-        New_fH = True
-        if (self.Input.fH_s is not None) and np.array_equal(self.Input.fH_s, fH):
-            New_fH = False
-
-        New_H2_Seed = True
-        if (self.Input.fH2_s is not None) and np.array_equal(self.Input.fH2_s, fH2):
-            New_H2_Seed = False
-
-        New_HP_Seed = True
-        if (self.Input.nHP_s is not None) and np.array_equal(self.Input.nHP_s, nHP) and np.array_equal(self.Input.THP_s, THP):
-            New_HP_Seed = False
-
-        New_ni_correct = True
-        if (self.Input.ni_correct_s is not None) and (self.Input.ni_correct_s != self.ni_correct):
-            New_ni_correct = False 
-
-
-        Do_Alpha_CX =   ((self.Internal.Alpha_CX is None) | New_HP_Seed) & self.COLLISIONS.H2_P_CX
-        Do_Alpha_H2_H = ((self.Internal.Alpha_H2_H is None) | New_fH) & self.COLLISIONS.H2_H_EL
-        Do_Alpha_H2_P = ((self.Internal.Alpha_H2_P is None) | New_ni_correct) & self.COLLISIONS.H2_P_EL
 
         # Reset H Moments
-        self.H_Moments.nH = np.zeros(self.nx)
-        self.H_Moments.VxH = np.zeros(self.nx)
-        self.H_Moments.TH = np.full(self.nx, 1.0)
+        self.H_Moments.nH = torch.zeros(self.nx, dtype=self.dtype, device=self.device)
+        self.H_Moments.VxH = torch.zeros(self.nx, dtype=self.dtype, device=self.device)
+        self.H_Moments.TH = torch.full((self.nx,), 1.0, dtype=self.dtype, device=self.device)
 
         # if (New_fH) and (np.sum(fH) > 0.0):
         self._compute_fh_moments(fH) 
         # if Do_Alpha_H2_H:
         self._compute_alpha_h_h2(fH)
         # if New_H2_Seed:
-        self.Internal.MH2_H2_sum = np.zeros((self.nvr,self.nvx,self.nx))
+        self.Internal.MH2_H2_sum = torch.zeros((self.nvr,self.nvx,self.nx), dtype=self.dtype, device=self.device)
         self.Internal.Delta_nH2s = 1.0
 
-        return Do_Alpha_CX, Do_Alpha_H2_P
+        return True, True #Do_Alpha_CX, Do_Alpha_H2_P
     
 
     def _compute_fh_moments(self, fH):
@@ -1720,14 +1527,16 @@ class KineticH2():
 
         self._debrief_msg('Computing vx and T moments of fH', 1)
 
+        vx, vr = self.mesh.vx, self.mesh.vr
+        dvx, dvr_vol = self.dvx, self.dvr_vol
+        epsilon = 1e-8
+
         # Compute x flow velocity and temperature of atomic species
-        for k in range(0, self.nx):
-            self.H_Moments.nH[k] = np.sum(self.dvr_vol*(fH[:,:,k] @ self.dvx))
-            if self.H_Moments.nH[k] <= 0:
-                continue
-            self.H_Moments.VxH[k] = self.vth*np.sum(self.dvr_vol*(fH[:,:,k] @ (self.mesh.vx*self.dvx))) / self.H_Moments.nH[k]
-            vr2vx2_ran2 = self.mesh.vr[:, None]**2 + (self.mesh.vx[None, :] - self.H_Moments.VxH[k]/self.vth)**2
-            self.H_Moments.TH[k] = (self.mu*CONST.H_MASS)*(self.vth**2)*np.sum((self.dvr_vol*((vr2vx2_ran2*fH[:,:,k]) @ self.dvx))) / (3*CONST.Q*self.H_Moments.nH[k])
+        self.H_Moments.nH = torch.einsum('i,ijk,j->k', dvr_vol, fH, dvx)
+        self.H_Moments.VxH = self.vth*torch.einsum('i,ijk,j->k', dvr_vol, fH, (vx*dvx)) / (self.H_Moments.nH + epsilon)
+        vr2vx2_ran2 = vr[:,None,None]**2 + (vx[None,:,None] - self.H_Moments.VxH[None,None,:]/self.vth)**2
+        th_mom_coef = (self.mu*CONST.H_MASS)*(self.vth**2) / (3*CONST.Q*self.H_Moments.nH + epsilon)
+        self.H_Moments.TH = th_mom_coef*torch.einsum('i,ijk,ijk,j->k', dvr_vol, vr2vx2_ran2, fH, self.dvx)
 
         return
     
@@ -1747,7 +1556,7 @@ class KineticH2():
             
             # THP/mu at each mesh point
             # THP_mu[i,j,k] = THP[k] / mu
-            THP_mu = np.broadcast_to(THP[None,None,:]/self.mu, (self.nvr, self.nvx, self.nx))
+            THP_mu = torch.broadcast_to(THP[None,None,:]/self.mu, (self.nvr, self.nvx, self.nx))
 
             # Molecular Charge Exchange sink rate
             self.Internal.Alpha_CX = sigmav_cx_hh(THP_mu, self.Internal.EH2_P) / self.vth
@@ -1757,19 +1566,19 @@ class KineticH2():
 
         else:
             # Option (A): Compute SigmaV_CX from sigma directly via SIG_CX
-            Work = (self.Internal.fHp_hat*nHP[None,None,:]).reshape((self.nvr*self.nvx, self.nx), order='F')
-            self.Internal.Alpha_CX = (self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx,self.nx), order='F')
+            Work = torch_reshape_fortran((self.Internal.fHp_hat*nHP[None,None,:]), (self.nvr*self.nvx, self.nx))
+            self.Internal.Alpha_CX = torch_reshape_fortran((self.Internal.SIG_CX @ Work), (self.nvr,self.nvx,self.nx))
 
             # self.Internal.Alpha_CX = np.zeros((self.nvr, self.nvx, self.nx))
             # for k in range(0, self.nx):
             #     Work = (self.Internal.fHp_hat[:,:,k]*nHP[k]).reshape((self.nvr*self.nvx), order='F')
             #     self.Internal.Alpha_CX[:,:,k] = (self.Internal.SIG_CX @ Work).reshape((self.nvr,self.nvx), order='F')
 
-            if self.Do_Alpha_CX_Test: # NOTE Not tested/implemented
-                Alpha_CX_Test = sigmav_cx_hh(THP_mu, self.Internal.EH2_P) / self.vth
-                for k in range(0, self.nx):
-                    Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*nHP[k]
-                    print('Compare alpha_cx and alpha_cx_test')
+            # if self.Do_Alpha_CX_Test: # NOTE Not tested/implemented
+            #     Alpha_CX_Test = sigmav_cx_hh(THP_mu, self.Internal.EH2_P) / self.vth
+            #     for k in range(0, self.nx):
+            #         Alpha_CX_Test[:,:,k] = Alpha_CX_Test[:,:,k]*nHP[k]
+            #         print('Compare alpha_cx and alpha_cx_test')
 
         return
 
@@ -1784,8 +1593,8 @@ class KineticH2():
         # Compute Alpha_H2_H for inputed fH, if it is needed and has not
         #   already been computed with the present input parameters
 
-        Work = fH.reshape((self.nvr*self.nvx, self.nx), order='F')
-        self.Internal.Alpha_H2_H = (self.Internal.SIG_H2_H @ Work).reshape((self.nvr,self.nvx,self.nx), order='F')
+        Work = torch_reshape_fortran(fH, (self.nvr*self.nvx, self.nx))
+        self.Internal.Alpha_H2_H = torch_reshape_fortran((self.Internal.SIG_H2_H @ Work), (self.nvr,self.nvx,self.nx))
         # self.Internal.Alpha_H2_H = np.zeros((self.nvr, self.nvx, self.nx))
         # for k in range(0, self.nx):
         #     Work = fH[:,:,k].reshape((self.nvr*self.nvx), order='F')
@@ -1803,10 +1612,11 @@ class KineticH2():
 
         ni = self.mesh.ne
         if self.ni_correct:
-            ni = np.maximum((self.mesh.ne-nHP), 0)
+            # ni = np.maximum((self.mesh.ne-nHP), 0)
+            ni = torch.clamp((self.mesh.ne-nHP), min=0)
 
-        Work = (self.Internal.fi_hat*ni[None,None,:]).reshape((self.nvr*self.nvx, self.nx), order='F')
-        self.Internal.Alpha_H2_P = (self.Internal.SIG_H2_P @ Work).reshape((self.nvr,self.nvx,self.nx), order='F')
+        Work = torch_reshape_fortran((self.Internal.fi_hat*ni[None,None,:]), (self.nvr*self.nvx, self.nx))
+        self.Internal.Alpha_H2_P = torch_reshape_fortran((self.Internal.SIG_H2_P @ Work), (self.nvr,self.nvx,self.nx))
         # self.Internal.Alpha_H2_P = np.zeros((self.nvr, self.nvx, self.nx))
         # for k in range(0, self.nx):
         #     Work = (self.Internal.fi_hat[:,:,k]*ni[k]).reshape((self.nvr*self.nvx), order='F')
@@ -2126,6 +1936,7 @@ class KineticH2():
             raise Exception(self.prompt + " Number of elements in fH2[0,:,0] and vx do not agree!")
         if len(fH2[0,0,:]) != self.nx:
             raise Exception(self.prompt + " Number of elements in fH2[0,0,:] and x do not agree!")
+        print(np.size(SH2))
         if np.size(SH2) != self.nx:
             raise Exception(self.prompt + " Number of elements in SH2 and x do not agree!")
         if np.size(nHP) != self.nx:

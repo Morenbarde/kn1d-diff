@@ -3,7 +3,7 @@ import torch
 
 from .make_dvr_dvx import VSpace_Differentials
 from .common import constants as CONST
-from .utils import numpy_to_torch
+from .torch_utils import numpy_to_torch
 
 def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energy, nb = 1, assume_pos = True):
     '''

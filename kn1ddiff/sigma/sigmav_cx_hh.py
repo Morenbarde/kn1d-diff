@@ -93,4 +93,4 @@ def sigmav_cx_hh(T: torch.Tensor, E: torch.Tensor):
     #         # Using alpha[j,i] instead of alpha[i,j] since alpha is reversed
     #         result = result + alpha[j,i]*(Ei)*(alogT**j)
 
-    return torch.exp(result)*1e-6
+    return torch.exp(result.reshape(T.shape))*1e-6

@@ -67,7 +67,7 @@ class KineticMesh:
         #             "E0" : E0,
         #             "fctr" : fctr}
         # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        # sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
         # input()
 
 
@@ -202,7 +202,7 @@ class KineticMesh:
         #             "vr" : self.vr,
         #             "Tnorm" : self.Tnorm}
         # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        # sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
         # input()
 
 

@@ -3,8 +3,8 @@ import numpy as np
 from numpy.typing import NDArray
 import torch
 
-from .utils import sval, get_config, torch_reshape_fortran
-from .torch_utils import dclamp
+from .utils import sval, get_config
+from .torch_utils import dclamp, torch_reshape_fortran
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .kinetic_mesh import KineticMesh

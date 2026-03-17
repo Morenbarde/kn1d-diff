@@ -13,11 +13,11 @@ from kn1ddiff.test.utils import *
 now = datetime.now()
 folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")
 
-local_dir = "kn1ddiff/test/h_gens_ac/"
+local_dir = "kn1ddiff/test/h2_gens_ac/"
 run_dir = local_dir+"Runs/"+folder_name+"/"
 image_dir = run_dir+"Images/"
-in_file = "kh_gens_ac_in.json"
-out_file = "kh_gens_ac_out.json"
+in_file = "kh2_gens_ac_in.json"
+out_file = "kh2_gens_ac_out.json"
 
 # Torch
 dtype = torch.float64
@@ -219,12 +219,12 @@ if __name__ == "__main__":
     #     )
     # loss_fun = lambda pred, true : ((torch.log(pred + EPSILON) - torch.log(true + EPSILON))**2).mean()
 
-    # def symmetric_log(x):
-    #     return torch.sign(x) * torch.log1p(torch.abs(x))
-    # loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
+    def symmetric_log(x):
+        return torch.sign(x) * torch.log1p(torch.abs(x))
+    loss_fun = lambda pred, true : ((symmetric_log(pred) - symmetric_log(true))**2).mean()
 
 
-    loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
+    # loss_fun = lambda pred, true : torch.log1p((pred-true)**2).mean()
 
 
 

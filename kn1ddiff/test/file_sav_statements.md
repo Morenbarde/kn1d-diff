@@ -261,3 +261,52 @@ sav_data = make_json_compatible(sav_data)
 sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
 input()
 ```
+
+
+
+
+### KH2_Proc input/output
+```
+file = 'kh2_proc_in.json'
+print("Saving to file: " + file)
+sav_data = {'fH' : fH,
+            'SH2' : SH2,
+            'fH2'  : fH2,
+            'nHP' : nHP,
+            'THP' : THP,
+            }
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
+input()
+
+file = 'kh2_proc_out.json'
+print("Saving to file: " + file)
+sav_data = {"fH2" : results.fH2,
+            "nHP" : results.nHP,
+            "THP" : results.THP,
+            "nH2" : results.nH2,
+            "GammaxH2" : results.GammaxH2,
+            "VxH2" : results.VxH2,
+            "pH2" : results.pH2,
+            "TH2" : results.TH2,
+            "qxH2" : results.qxH2,
+            "qxH2_total" : results.qxH2_total,
+            "Sloss" : results.Sloss,
+            "QH2" : results.QH2,
+            "RxH2" : results.RxH2,
+            "QH2_total" : results.QH2_total,
+            "AlbedoH2" : results.AlbedoH2,
+            "WallH2" : results.WallH2,
+            "fSH" : results.fSH,
+            "SH" : results.SH,
+            "SP" : results.SP,
+            "SHP" : results.SHP,
+            "NuE" : results.NuE,
+            "NuDis" : results.NuDis,
+            "ESH" : results.ESH,
+            "Eaxis" : results.Eaxis,
+            }
+sav_data = make_json_compatible(sav_data)
+sav_to_json("kn1ddiff/test/h2_proc/"+file, sav_data)
+input()
+```

@@ -2,7 +2,8 @@ import numpy as np
 from numpy.typing import NDArray
 import torch
 
-from .utils import get_config, interp_1d, reverse, numpy_to_torch, torch_to_numpy
+from .utils import get_config, interp_1d, reverse
+from .torch_utils import numpy_to_torch, torch_to_numpy
 from .sigma.sigmav_ion_h0 import sigmav_ion_h0
 from .sigma.sigmav_cx_h0 import sigmav_cx_h0
 from .sigma.sigmav_ion_hh import sigmav_ion_hh

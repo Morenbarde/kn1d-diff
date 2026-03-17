@@ -7,19 +7,9 @@ import math
 from dataclasses import asdict
 
 from kn1ddiff.kinetic_mesh import *
-from kn1ddiff.kinetic_h import *
+from kn1ddiff.kinetic_h2 import *
 from kn1ddiff.test.utils import *
 
-
-
-now = datetime.now()
-folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")
-
-local_dir = "kn1ddiff/test/h_proc/"
-run_dir = local_dir+"Runs/"+folder_name+"/"
-image_dir = run_dir+"Images/"
-in_file = "kh_proc_in.json"
-out_file = "kh_proc_out.json"
 
 # Torch
 dtype = torch.float64
@@ -29,9 +19,9 @@ USE_CPU = True
 EPSILON = 10e-10
 
 # Optimization Choices
-OPTIMIZE_FH2 = False
-OPTIMIZE_FSH = False
 OPTIMIZE_FH = False
+OPTIMIZE_SH2 = False
+OPTIMIZE_FH2 = False
 OPTIMIZE_NHP = False
 OPTIMIZE_THP = False
 # Mesh/Program Input
@@ -60,11 +50,24 @@ GENERATE_GIF = True
 GIF_FPS = 5
 GIF_FREQ = 25
 
+# Folder Settings
+now = datetime.now()
+exp = np.floor(np.log10(np.abs(INITIAL_LR)))
+base = int(INITIAL_LR*(10**(-exp)))
+exp = int(exp)
+folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")+"_"+str(NUM_ITERS)+f'_{base}e{exp}'+"_Cycle-"+str(CYCLE_LR)
+
+local_dir = "kn1ddiff/test/h2_proc/"
+run_dir = local_dir+"Runs/"+folder_name+"/"
+image_dir = run_dir+"Images/"
+in_file = "kh2_proc_in.json"
+out_file = "kh2_proc_out.json"
+
 
 if __name__ == "__main__":
 
     # Start logging to run file
-    setup_log(run_dir)
+    # setup_log(run_dir)
 
     print("Process PID: ", os.getpid())
 
@@ -80,9 +83,9 @@ if __name__ == "__main__":
 
     print()
     print("Optimizing: ")
-    print("    FH2: ", OPTIMIZE_FH2)
-    print("    FSH: ", OPTIMIZE_FSH)
     print("    FH: ", OPTIMIZE_FH)
+    print("    SH2: ", OPTIMIZE_SH2)
+    print("    FH2: ", OPTIMIZE_FH)
     print("    NHP: ", OPTIMIZE_NHP)
     print("    THP: ", OPTIMIZE_THP)
     print("    MESH: ", OPTIMIZE_MESH)
@@ -114,7 +117,7 @@ if __name__ == "__main__":
             out_data[key] = torch.tensor(value, dtype=dtype, device=device)
 
     # --- Load Mesh Outputs ---
-    with open(local_dir+"h_mesh_out.json", 'r') as f:
+    with open(local_dir+"h2_mesh_out.json", 'r') as f:
         mesh_output = json.load(f)
         for key, value in mesh_output.items():
             mesh_output[key] = torch.tensor(value, dtype=dtype, device=device)
@@ -123,12 +126,12 @@ if __name__ == "__main__":
     # Fixed
 
     # Gradient
-    truein_fH2 = in_data["fH2"]
-    print_torch_range(truein_fH2, "fH2")
-    truein_fSH = in_data["fSH"]
-    print_torch_range(truein_fSH, "fSH")
     truein_fH = in_data["fH"]
     print_torch_range(truein_fH, "fH")
+    truein_SH2 = in_data["SH2"]
+    print_torch_range(truein_SH2, "SH2")
+    truein_fH2 = in_data["fH2"]
+    print_torch_range(truein_fH2, "fH2")
     truein_nHP = in_data["nHP"]
     print_torch_range(truein_nHP, "nHP")
     truein_THP = in_data["THP"]
@@ -153,67 +156,85 @@ if __name__ == "__main__":
 
     # Desired Outputs
     
-    trueout_fH = out_data["fH"]
-    trueout_nH = out_data["nH"]
-    trueout_GammaxH = out_data["GammaxH"]
-    trueout_VxH = out_data["VxH"]
-    trueout_pH = out_data["pH"]
-    trueout_TH = out_data["TH"]
-    trueout_qxH = out_data["qxH"]
-    trueout_qxH_total = out_data["qxH_total"]
-    trueout_NetHSource = out_data["NetHSource"]
-    trueout_Sion = out_data["Sion"]
-    trueout_QH = out_data["QH"]
-    trueout_RxH = out_data["RxH"]
-    trueout_QH_total = out_data["QH_total"]
-    trueout_AlbedoH = out_data["AlbedoH"]
-    trueout_SideWallH = out_data["SideWallH"]
+    trueout_fH2 = out_data["fH2"]
+    trueout_nHP = out_data["nHP"]
+    trueout_THP = out_data["THP"]
+    trueout_nH2 = out_data["nH2"]
+    trueout_GammaxH2 = out_data["GammaxH2"]
+    trueout_VxH2 = out_data["VxH2"]
+    trueout_pH2 = out_data["pH2"]
+    trueout_TH2 = out_data["TH2"]
+    trueout_qxH2 = out_data["qxH2"]
+    trueout_qxH2_total = out_data["qxH2_total"]
+    trueout_Sloss = out_data["Sloss"]
+    trueout_QH2 = out_data["QH2"]
+    trueout_RxH2 = out_data["RxH2"]
+    trueout_QH2_total = out_data["QH2_total"]
+    trueout_AlbedoH2 = out_data["AlbedoH2"]
+    trueout_WallH2 = out_data["WallH2"]
+    trueout_fSH = out_data["fSH"]
+    trueout_SH = out_data["SH"]
+    trueout_SP = out_data["SP"]
+    trueout_SHP = out_data["SHP"]
+    trueout_NuE = out_data["NuE"]
+    trueout_NuDis = out_data["NuDis"]
+    trueout_ESH = out_data["ESH"]
+    trueout_Eaxis = out_data["Eaxis"]
 
 
     # --- Set up Kinetic_H ---
     
     # --- Set up Kinetic_H ---
 
-    with open(local_dir+"h_mesh_in.json", 'r') as f:
+    with open(local_dir+"h2_mesh_in.json", 'r') as f:
         mesh_input = json.load(f)
         for key, value in mesh_input.items():
             mesh_input[key] = np.asarray(value)
 
-    with open(local_dir+"kinetic_h_in.json", 'r') as f:
-        kh_in = json.load(f)
-        for key, value in kh_in.items():
-            kh_in[key] = torch.tensor(value, dtype=dtype, device=device)
+    with open(local_dir+"kinetic_h2_in.json", 'r') as f:
+        kh2_in = json.load(f)
+        for key, value in kh2_in.items():
+            kh2_in[key] = torch.tensor(value, dtype=dtype, device=device)
     
-    mesh = KineticMesh('h', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], device=device, dtype=dtype)
+    mesh = KineticMesh('h2', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], device=device, dtype=dtype)
     
-    kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
-                        ni_correct=True, truncate=1.0e-3, max_gen=100, 
+    kinetic_h2 = KineticH2(mesh, kh2_in["mu"], kh2_in["vxi"], kh2_in["fH2BC"], kh2_in["GammaxH2BC"], kh2_in["NuLoss"], kh2_in["SH2_initial"], 
+                        compute_h_source=True, ni_correct=True, truncate=1.0e-3, max_gen=100, 
                         compute_errors=True, debrief=False, debug=False, 
                         device=device, dtype=dtype)
 
 
     # --- Test Input Data ---
 
-    kh_results = kinetic_h.run_procedure(truein_fH2, truein_fSH, truein_fH, truein_nHP, truein_THP)
-    check_close("fH", kh_results.fH, trueout_fH)
-    check_close("nH", kh_results.nH, trueout_nH)
-    check_close("GammaxH", kh_results.GammaxH, trueout_GammaxH)
-    check_close("VxH", kh_results.VxH, trueout_VxH)
-    check_close("pH", kh_results.pH, trueout_pH)
-    check_close("TH", kh_results.TH, trueout_TH)
-    check_close("qxH", kh_results.qxH, trueout_qxH)
-    check_close("qxH_total", kh_results.qxH_total, trueout_qxH_total)
-    check_close("NetHSource", kh_results.NetHSource, trueout_NetHSource)
-    check_close("Sion", kh_results.Sion, trueout_Sion)
-    check_close("QH", kh_results.QH, trueout_QH)
-    check_close("RxH", kh_results.RxH, trueout_RxH)
-    check_close("QH_total", kh_results.QH_total, trueout_QH_total)
-    check_close("AlbedoH", kh_results.AlbedoH, trueout_AlbedoH)
-    check_close("SideWallH", kh_results.SideWallH, trueout_SideWallH)
+    kh2_results = kinetic_h2.run_procedure(truein_fH, truein_SH2, truein_fH2, truein_nHP, truein_THP)
+    check_close("fH2", kh2_results.fH2, trueout_fH2)
+    check_close("nHP", kh2_results.nHP, trueout_nHP)
+    check_close("THP", kh2_results.THP, trueout_THP)
+    check_close("nH2", kh2_results.nH2, trueout_nH2)
+    check_close("GammaxH2", kh2_results.GammaxH2, trueout_GammaxH2)
+    check_close("VxH2", kh2_results.VxH2, trueout_VxH2)
+    check_close("pH2", kh2_results.pH2, trueout_pH2)
+    check_close("TH2", kh2_results.TH2, trueout_TH2)
+    check_close("qxH2", kh2_results.qxH2, trueout_qxH2)
+    check_close("qxH2_total", kh2_results.qxH2_total, trueout_qxH2_total)
+    check_close("Sloss", kh2_results.Sloss, trueout_Sloss)
+    check_close("QH2", kh2_results.QH2, trueout_QH2)
+    check_close("RxH2", kh2_results.RxH2, trueout_RxH2)
+    check_close("QH2_total", kh2_results.QH2_total, trueout_QH2_total)
+    check_close("AlbedoH2", kh2_results.AlbedoH2, trueout_AlbedoH2)
+    check_close("WallH2", kh2_results.WallH2, trueout_WallH2)
+    check_close("fSH", kh2_results.fSH, trueout_fSH)
+    check_close("SH", kh2_results.SH, trueout_SH)
+    check_close("SP", kh2_results.SP, trueout_SP)
+    check_close("SHP", kh2_results.SHP, trueout_SHP)
+    check_close("NuE", kh2_results.NuE, trueout_NuE)
+    check_close("NuDis", kh2_results.NuDis, trueout_NuDis)
+    check_close("ESH", kh2_results.ESH, trueout_ESH)
+    check_close("Eaxis", kh2_results.Eaxis, trueout_Eaxis)
     print()
-    # input()
+    input()
 
-    trueout_results = kh_results
+    trueout_results = kh2_results
 
 
     # --- Optimization Parameters ---
