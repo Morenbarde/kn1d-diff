@@ -1,8 +1,10 @@
 import numpy as np
+import torch
 
 from ..utils import poly
+from  ..torch_utils import poly_torch, dclamp
 
-def sigma_el_hh_hh(E, vis = False):
+def sigma_el_hh_hh(E: torch.tensor, vis = False):
     '''
     Computes momentum transfer cross section for elastic collisions of H2 onto H2 
     for specified energy of H2. Data are taken from 
@@ -25,18 +27,19 @@ def sigma_el_hh_hh(E, vis = False):
             Sigma for 0.03 < E < 1e4. For E outside this range, 
             the value of Sigma at the 0.03 or 1e4 eV boundary is returned. (m^-2)
     '''
-    E = np.asarray(E, dtype=float)
+    # E = np.asarray(E, dtype=float)
 
     # Ensure 0.03e0 < E < 1.01e4
-    E = np.clip(E, 0.03e0, 1.01e4)
+    # E = np.clip(E, 0.03e0, 1.01e4)
+    E = torch.clamp(E, 0.03e0, 1.01e4)
 
     if vis: #NOTE I am confused, why are these seperate statements, and why is this a warning?
         print('WARNING in SIGMA_EL_HH_HH => using momentum transfer as viscosity cross-section')
         # calculates viscosity cross section
-        a = np.array([-3.430345e1, -2.960406e-1, -6.382532e-2, -7.557519e-3, 2.606259e-4])
+        a = torch.tensor([-3.430345e1, -2.960406e-1, -6.382532e-2, -7.557519e-3, 2.606259e-4], dtype=E.dtype, device=E.device)
     else: 
         # calculates momentum transfer cross section 
-        a = np.array([-3.430345e1, -2.960406e-1, -6.382532e-2, -7.557519e-3, 2.606259e-4])
+        a = torch.tensor([-3.430345e1, -2.960406e-1, -6.382532e-2, -7.557519e-3, 2.606259e-4], dtype=E.dtype, device=E.device)
     
-    result = np.exp(poly(np.log(E), a)) * 1e-4 
+    result = torch.exp(poly_torch(torch.log(E), a)) * 1e-4 
     return result

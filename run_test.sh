@@ -1,0 +1,1 @@
+python -m kn1ddiff.test.init_kinetic_h2.check_kh2_state

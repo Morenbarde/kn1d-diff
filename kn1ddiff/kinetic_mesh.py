@@ -74,7 +74,9 @@ class KineticMesh:
 
         elif mesh_type == 'h2':
             #Estimate total reaction rate for destruction of molecules and for interation with side walls
-            react_rate = n*sigmav_ion_hh(Te) + n*sigmav_h1s_h1s_hh(Te) + n*sigmav_h1s_h2s_hh(Te)
+            Te_torch = numpy_to_torch(Te, device, dtype)
+            n_torch = numpy_to_torch(n, device, dtype)
+            react_rate = torch_to_numpy(n_torch*sigmav_ion_hh(Te_torch) + n_torch*sigmav_h1s_h1s_hh(Te_torch) + n_torch*sigmav_h1s_h2s_hh(Te_torch))
             #directed random velocity of diatomic molecule
             v0 = np.sqrt(8.0*CONST.TWALL*CONST.Q / (np.pi*2*mu*CONST.H_MASS))
 
@@ -132,7 +134,9 @@ class KineticMesh:
             react_rate = nfine*(ioniz_rate + torch_to_numpy(sigmav_cx_h0(numpy_to_torch(Tifine, device, dtype), numpy_to_torch(np.full(xfine.shape, minE0), device, dtype)))) + gamma_wall
 
         elif mesh_type == 'h2':
-            react_rate = nfine*(sigmav_ion_hh(Tefine) + sigmav_h1s_h1s_hh(Tefine) + sigmav_h1s_h2s_hh(Tefine) + 0.1*sigmav_cx_hh(Tifine,Tifine)) + gamma_wall
+            Tefine_torch = numpy_to_torch(Tefine, device, dtype)
+            Tifine_torch = numpy_to_torch(Tifine, device, dtype)
+            react_rate = nfine*torch_to_numpy((sigmav_ion_hh(Tefine_torch) + sigmav_h1s_h1s_hh(Tefine_torch) + sigmav_h1s_h2s_hh(Tefine_torch) + 0.1*sigmav_cx_hh(Tifine_torch,Tifine_torch))) + gamma_wall
         
         # Compute local maximum grid spacing dx_max = 2
         dx_max = np.minimum(fctr*0.8*(2*vth*min(vr)/react_rate), 0.02*fctr)

@@ -22,7 +22,7 @@ from .sigma.sigma_el_p_hh import sigma_el_p_hh
 from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .utils import sval, get_config, path_interp_2d
+from .utils import sval, get_config, path_interp_2d, make_json_compatible, sav_to_json
 
 from .common.Kinetic_H2 import *
 from .common import constants as CONST
@@ -182,6 +182,18 @@ class KineticH2():
                 - 3=very detailed debug
         '''
 
+        file = 'kinetic_h2_in.json'
+        print("Saving to file: " + file)
+        sav_data = {"mu" : mu,
+                    "vxi" : vxi,
+                    "fH2BC" : fH2BC,
+                    "GammaxH2BC" : GammaxH2BC,
+                    "NuLoss" : NuLoss,
+                    "SH2_initial" : SH2_initial}
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        input()
+
         # --- Settings ---
 
         # Configuration Options
@@ -241,7 +253,7 @@ class KineticH2():
         self.vth = np.sqrt(2 * CONST.Q * self.mesh.Tnorm / (self.mu * CONST.H_MASS))
 
         # Vr^2-2*Vx^2
-        self.vr2_2vx2_2D = np.asarray([(vr**2) - 2*(self.mesh.vx**2) for vr in self.mesh.vr])
+        self.vr2_2vx2_2D = self.mesh.vr[:, None]**2 - 2*self.mesh.vx[None,:]**2
 
         # Differential Values
         differentials = VSpace_Differentials(self.mesh.vr, self.mesh.vx)
@@ -273,6 +285,71 @@ class KineticH2():
         # Initial Computations
         # Some may not be used depending on inputs
         self._init_static_internals(SH2_initial)
+
+
+        file = 'kinetic_h2_params.json'
+        print("Saving to file: " + file)
+        sav_data = {"mu" : self.mu, 
+                    "vxi" : self.vxi, 
+                    "fH2BC" : self.fH2BC, 
+                    "GammaxH2BC" : self.GammaxH2BC, 
+                    "nvr" : self.nvr, 
+                    "nvx" : self.nvx, 
+                    "nx" : self.nx, 
+                    "vx_neg" : self.vx_neg,
+                    "vx_pos" : self.vx_pos, 
+                    "vx_zero" : self.vx_zero, 
+                    "vth" : self.vth, 
+                    "vr2_2vx2_2D" : self.vr2_2vx2_2D,
+                    "dvr_vol" : self.dvr_vol,
+                    "dvr_vol_h_order" : self.dvr_vol_h_order,
+                    "dvx" : self.dvx, 
+                    "fH2BC_input" : self.fH2BC_input,
+                    "Eaxis" : self.Eaxis,
+                    "dEaxis" : self.dEaxis}
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        input()
+
+        # Split for github
+        file = 'kinetic_h2_internal1.json'
+        data = self.Internal
+        print("Saving to file: " + file)
+        sav_data = {'vr2vx2' : data.vr2vx2,
+                    'vr2vx_vxi2' : data.vr2vx_vxi2,
+                    'fw_hat' : data.fw_hat,
+                    'fi_hat' : data.fi_hat,
+                    'fHp_hat' : data.fHp_hat,
+                    'EH2_P' : data.EH2_P,
+                    'sigv' : data.sigv,
+                    'Alpha_Loss' : data.Alpha_Loss,
+                    'v_v2' : data.v_v2,
+                    'v_v' : data.v_v,
+                    'vr2_vx2' : data.vr2_vx2,
+                    'vx_vx' : data.vx_vx}
+
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        input()
+
+
+        file = 'kinetic_h2_internal2.json'
+        data = self.Internal
+        print("Saving to file: " + file)
+        sav_data = {'Vr2pidVrdVx' : data.Vr2pidVrdVx,
+                    'SIG_CX' : data.SIG_CX,
+                    'SIG_H2_H2' : data.SIG_H2_H2,
+                    'SIG_H2_H' : data.SIG_H2_H,
+                    'SIG_H2_P' : data.SIG_H2_P,
+                    'Alpha_CX' : data.Alpha_CX,
+                    'Alpha_H2_H' : data.Alpha_H2_H,
+                    'Alpha_H2_P' : data.Alpha_H2_P,
+                    'MH2_H2_sum' : data.MH2_H2_sum,
+                    'Delta_nH2s' : data.Delta_nH2s}
+
+        sav_data = make_json_compatible(sav_data)
+        sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
+        input()
 
         return
 
@@ -1670,7 +1747,7 @@ class KineticH2():
         self.Internal.MH2_H2_sum = np.zeros((self.nvr,self.nvx,self.nx))
         self.Internal.Delta_nH2s = 1.0
 
-        return Do_Alpha_CX, Do_Alpha_H2_P
+        return True, True #Do_Alpha_CX, Do_Alpha_H2_P
     
 
     def _compute_fh_moments(self, fH):

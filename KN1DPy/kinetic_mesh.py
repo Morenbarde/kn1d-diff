@@ -67,7 +67,7 @@ class KineticMesh:
         #             "E0" : E0,
         #             "fctr" : fctr}
         # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
         # input()
 
 
@@ -96,7 +96,7 @@ class KineticMesh:
 
 
         # Determine x range for atoms by finding distance into plasma where density persists.
-        y = np.zeros(np.size(x), float)
+        y = np.zeros(np.size(x), dtype=np.float64)
         for k in range(1, np.size(x)): 
             y[k] = y[k-1] - ((x[k] - x[k-1])*0.5*(react_rate[k] + react_rate[k-1]))/v0
         if mesh_type == 'h':
@@ -202,7 +202,7 @@ class KineticMesh:
         #             "vr" : self.vr,
         #             "Tnorm" : self.Tnorm}
         # sav_data = make_json_compatible(sav_data)
-        # sav_to_json("kn1ddiff/test/h_proc/"+file, sav_data)
+        # sav_to_json("kn1ddiff/test/init_kinetic_h2/"+file, sav_data)
         # input()
 
 

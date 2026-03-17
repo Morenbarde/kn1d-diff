@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
+import torch
 
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import create_shifted_maxwellian
@@ -22,7 +23,8 @@ from .sigma.sigma_el_p_hh import sigma_el_p_hh
 from .sigma.sigma_el_hh_hh import sigma_el_hh_hh
 from .sigma.sigmav_cx_hh import sigmav_cx_hh
 
-from .utils import sval, get_config, path_interp_2d
+from .utils import sval, get_config, path_interp_2d, torch_reshape_fortran
+from .torch_utils import path_interp_2d_torch
 
 from .common.Kinetic_H2 import *
 from .common import constants as CONST
@@ -129,18 +131,14 @@ class KineticH2():
     atomic neutral (H), molecular neutral (H2), molecular ion (HP), proton (i) or (P)
     '''
 
-    # Theta-prime Coordinate
-    ntheta = 5 # use 5 theta mesh points for theta integration
-    dtheta = np.ones(ntheta) / ntheta
-    cos_theta = np.cos(np.pi*(np.arange(ntheta) + 0.5) / ntheta)
-
     # Internal Print Formatting
     prompt = 'Kinetic_H2 => '
 
 
-    def __init__(self, mesh: KineticMesh, mu: int, vxi: NDArray, fH2BC: NDArray, GammaxH2BC: float, NuLoss: NDArray, SH2_initial: NDArray,
+    def __init__(self, mesh: KineticMesh, mu: int, vxi: torch.Tensor, fH2BC: torch.Tensor, GammaxH2BC: float, NuLoss: torch.Tensor, SH2_initial: torch.Tensor,
                     sawada: bool = True, compute_h_source: bool = False, ni_correct: bool = False, truncate: float = 1.0e-4, max_gen: int = 50, 
-                    compute_errors: bool = False, debrief: int = 0, debug: int = 0):
+                    compute_errors: bool = False, debrief: int = 0, debug: int = 0,
+                    dtype: torch.dtype = torch.float64, device: str = 'cpu'):
         '''
         Parameters
         ----------
@@ -212,6 +210,10 @@ class KineticH2():
         self.debrief = debrief
         self.debug = debug
 
+        # Torch Settings
+        self.dtype = dtype
+        self.device = device
+
         # Override settings for debug
         if self.debug > 0:
             self.debrief = np.maximum(self.debrief, 1)
@@ -227,21 +229,26 @@ class KineticH2():
         self.NuLoss = NuLoss
 
         # Shorthand sizes for main mesh variables
-        self.nvr = mesh.vr.size
-        self.nvx = self.mesh.vx.size
-        self.nx = self.mesh.x.size
+        self.nvr = mesh.vr.numel()
+        self.nvx = self.mesh.vx.numel()
+        self.nx = self.mesh.x.numel()
 
-        self.vx_neg = np.nonzero(self.mesh.vx < 0)[0]
-        self.vx_pos = np.nonzero(self.mesh.vx > 0)[0]
-        self.vx_zero = np.nonzero(self.mesh.vx == 0)[0]
+        self.vx_neg = torch.nonzero(self.mesh.vx < 0, as_tuple=True)[0].cpu()
+        self.vx_pos = torch.nonzero(self.mesh.vx > 0, as_tuple=True)[0].cpu()
+        self.vx_zero = torch.nonzero(self.mesh.vx == 0, as_tuple=True)[0].cpu()
 
 
         # --- Internal Variables ---
 
-        self.vth = np.sqrt(2 * CONST.Q * self.mesh.Tnorm / (self.mu * CONST.H_MASS))
+        # Theta-prime Coordinate
+        self.ntheta = 5 # use 5 theta mesh points for theta integration
+        self.dtheta = torch.ones(self.ntheta, dtype=dtype, device=device) / self.ntheta
+        self.cos_theta = torch.cos(torch.pi*(torch.arange(self.ntheta, dtype=dtype, device=device) + 0.5) / self.ntheta)
+
+        self.vth = torch.sqrt(2*CONST.Q*self.mesh.Tnorm / (self.mu*CONST.H_MASS))
 
         # Vr^2-2*Vx^2
-        self.vr2_2vx2_2D = np.asarray([(vr**2) - 2*(self.mesh.vx**2) for vr in self.mesh.vr])
+        self.vr2_2vx2_2D = self.mesh.vr[:, None]**2 - 2*self.mesh.vx[None,:]**2
 
         # Differential Values
         differentials = VSpace_Differentials(self.mesh.vr, self.mesh.vx)
@@ -253,10 +260,11 @@ class KineticH2():
         self._init_fh2bc_input()
 
         # Determine Energy Space Differentials 
+        #NOTE This can be simplified, fix
         self.Eaxis = (self.vth**2)*0.5*self.mu*CONST.H_MASS*(self.mesh.vr**2) / CONST.Q
-        _Eaxis = np.append(self.Eaxis, 2*self.Eaxis[self.nvr - 1] - self.Eaxis[self.nvr - 2])
-        Eaxis_mid = np.append(0.0, 0.5*( _Eaxis + np.roll(_Eaxis, -1) ))
-        self.dEaxis = np.roll(Eaxis_mid, -1) - Eaxis_mid
+        _Eaxis = torch.cat((self.Eaxis, (2*self.Eaxis[self.nvr-1] - self.Eaxis[self.nvr-2]).unsqueeze(0)), dim=0)
+        Eaxis_mid = torch.cat((torch.tensor(0, dtype=dtype, device=device).unsqueeze(0), (0.5*( _Eaxis + torch.roll(_Eaxis, -1)))), dim=0)
+        self.dEaxis = torch.roll(Eaxis_mid, -1) - Eaxis_mid
         self.dEaxis = self.dEaxis[0:self.nvr]
 
 
@@ -268,7 +276,7 @@ class KineticH2():
         self.Errors = Kinetic_H2_Errors()
 
 
-        self._test_init_parameters()
+        # self._test_init_parameters()
 
         # Initial Computations
         # Some may not be used depending on inputs
@@ -1354,11 +1362,11 @@ class KineticH2():
         Computes fH2BC_input, used to scale molecular distribution function (fH2) to desired flux
         '''
 
-        self.fH2BC_input = np.zeros(self.fH2BC.shape)
+        self.fH2BC_input = torch.zeros(self.fH2BC.shape, dtype=self.dtype, device=self.device)
         self.fH2BC_input[:,self.vx_pos] = self.fH2BC[:,self.vx_pos]
         gamma_input = 1.0
         if abs(self.GammaxH2BC) > 0:
-            gamma_input = self.vth*np.sum(self.dvr_vol*(self.fH2BC_input @ (self.mesh.vx*self.dvx)))
+            gamma_input = self.vth*torch.sum(self.dvr_vol*(self.fH2BC_input @ (self.mesh.vx*self.dvx)))
         ratio = abs(self.GammaxH2BC)/gamma_input
         self.fH2BC_input = self.fH2BC_input*ratio
         if abs(ratio - 1) > 0.01*self.truncate:
@@ -1396,7 +1404,7 @@ class KineticH2():
         # Magnitude of total normalized v^2 at each mesh point
         # vr2vx2.shape = (self.nvr,self.nvx,self.nx)
         # vr2vx2[i,j,k] = vr[i]**2 + vx[j]**2, repeated over k
-        self.Internal.vr2vx2 = np.broadcast_to(vr[:,None,None]**2 + vx[None,:,None]**2, (self.nvr,self.nvx,self.nx))
+        self.Internal.vr2vx2 = torch.tile((vr[:,None]**2 + vx[None,:]**2)[:,:,None], (1, 1, self.nx))
 
         # Magnitude of total normalized (v-vxi)^2 at each mesh point
         # vr2vx_vxi2.shape = (self.nvr,self.nvx,self.nx)
@@ -1406,13 +1414,13 @@ class KineticH2():
         # Molecular hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.EH2_P = CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2) / CONST.Q
         # sigmav_cx does not handle neutral energies below 0.1 eV or above 20 keV
-        self.Internal.EH2_P = np.clip(self.Internal.EH2_P, 0.1, 2.0e4)
+        self.Internal.EH2_P = torch.clamp(self.Internal.EH2_P, 0.1, 2.0e4)
 
         # Compute Maxwellian H2 distribution at the wall temperature (fw_hat)
-        if (np.sum(SH2_initial) > 0) | (np.sum(self.mesh.PipeDia) > 0):
+        if (torch.sum(SH2_initial) > 0) | (torch.sum(self.mesh.PipeDia) > 0):
             self._debrief_msg('Computing fw_hat', 1)
-            vx_shift = np.array([0.0])
-            Tmaxwell = np.array([CONST.TWALL])
+            vx_shift = torch.tensor([0.0], dtype=self.dtype, device=self.device)
+            Tmaxwell = torch.tensor([CONST.TWALL], dtype=self.dtype, device=self.device)
             _maxwell = create_shifted_maxwellian(self.mesh.vr, self.mesh.vx, Tmaxwell, vx_shift, self.mu, 2, self.mesh.Tnorm)
             self.Internal.fw_hat = _maxwell[:,:,0]
 
@@ -1439,7 +1447,7 @@ class KineticH2():
 
         self._debrief_msg('Computing sigv', 1)
 
-        sigv = np.zeros((self.nx,11))
+        sigv = torch.zeros((self.nx,11), dtype=self.dtype, device=self.device)
 
         # Reaction R1:  e + H2 -> e + H2(+) + e 
         sigv[:,1] = sigmav_ion_hh(self.mesh.Te)
@@ -1450,15 +1458,23 @@ class KineticH2():
         sigv[:,2] = sigmav_h1s_h1s_hh(self.mesh.Te)
         if self.sawada:
             # Construct Table 
-            Te_table = np.log([5,20,100])
-            Ne_table = np.log([1e14,1e17,1e18,1e19,1e20,1e21,1e22])
-            fctr_table = np.zeros((7, 3))
-            fctr_table[:,0] = np.array([2.2, 2.2, 2.1, 1.9, 1.2,  1.1,  1.05]) / 5.3
-            fctr_table[:,1] = np.array([5.1, 5.1, 4.3, 3.1, 1.5,  1.25, 1.25]) / 10.05
-            fctr_table[:,2] = np.array([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22]) / 2.1
-            _Te = np.clip(self.mesh.Te, 5, 100)
-            _n = np.clip(self.mesh.ne, 1e14, 1e22)
-            fctr = path_interp_2d(fctr_table, Ne_table, Te_table, np.log(_n), np.log(_Te))
+            Te_table = torch.log(torch.tensor([5., 20., 100.], dtype=self.dtype, device=self.device))
+            Ne_table = torch.log(torch.tensor([1e14, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22], dtype=self.dtype, device=self.device))
+            fctr_table = torch.zeros((7, 3), dtype=self.dtype, device=self.device)
+            fctr_table[:,0] = torch.tensor([2.2, 2.2, 2.1, 1.9, 1.2,  1.1,  1.05], dtype=self.dtype, device=self.device) / 5.3
+            fctr_table[:,1] = torch.tensor([5.1, 5.1, 4.3, 3.1, 1.5,  1.25, 1.25], dtype=self.dtype, device=self.device) / 10.05
+            fctr_table[:,2] = torch.tensor([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22], dtype=self.dtype, device=self.device) / 2.1
+            _Te = torch.clamp(self.mesh.Te, 5., 100.)
+            _n  = torch.clamp(self.mesh.ne, 1e14, 1e22)
+            # Te_table = np.log([5,20,100])
+            # Ne_table = np.log([1e14,1e17,1e18,1e19,1e20,1e21,1e22])
+            # fctr_table = np.zeros((7, 3))
+            # fctr_table[:,0] = np.array([2.2, 2.2, 2.1, 1.9, 1.2,  1.1,  1.05]) / 5.3
+            # fctr_table[:,1] = np.array([5.1, 5.1, 4.3, 3.1, 1.5,  1.25, 1.25]) / 10.05
+            # fctr_table[:,2] = np.array([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22]) / 2.1
+            # _Te = np.clip(self.mesh.Te, 5, 100)
+            # _n = np.clip(self.mesh.ne, 1e14, 1e22)
+            fctr = path_interp_2d_torch(fctr_table, Ne_table, Te_table, torch.log(_n), torch.log(_Te))
             sigv[:,2] = (1.0 + fctr)*sigv[:,2]
         
         # Reaction R3:  e + H2 -> e + H(1s) + H*(2s)
@@ -1490,7 +1506,7 @@ class KineticH2():
         self.Internal.sigv = sigv
         
         # Total H2 destruction rate (normalized by vth) = sum of reactions 1-6
-        self.Internal.Alpha_Loss = self.mesh.ne*np.sum(sigv[:,1:7], axis = 1) / self.vth
+        self.Internal.Alpha_Loss = self.mesh.ne*torch.sum(sigv[:,1:7], dim = 1) / self.vth
 
         return
     
@@ -1523,17 +1539,17 @@ class KineticH2():
         self.Internal.vr2_vx2 = v_starter[:,None,:,None,:] - 2*vx_diff2[None,:,None,:,None]
 
         #	v_v=|v-v_prime| at each double velocity space mesh point, including theta angle
-        self.Internal.v_v = np.sqrt(self.Internal.v_v2)
+        self.Internal.v_v = torch.sqrt(self.Internal.v_v2)
 
         # vx_vx=(vx-vx_prime) at each double velocity space mesh point
         # self.Internal.vx_vx.shape = (nvr,nvx,nvr,nvx))
         # vr_vx[:,j,:,l] = (vx[j] - vx[l])
-        self.Internal.vx_vx = np.tile(vx_diff[None,:,None,:], (self.nvr,1,self.nvr,1))
+        self.Internal.vx_vx = torch.tile(vx_diff[None,:,None,:], (self.nvr,1,self.nvr,1))
 
         # Set Vr'2pidVr'*dVx' for each double velocity space mesh point
         # self.Internal.Vr2pidVrdVx.shape = (nvr,nvx,nvr,nvx)
         # Vr2pidVrdVx[i,j,k,l] = dvr_vol[k] * dvx[l], repeated over i,j
-        self.Internal.Vr2pidVrdVx = np.tile(self.dvr_vol[None,None,:,None]*self.dvx[None,None,None,:], (self.nvr,self.nvx,1,1))
+        self.Internal.Vr2pidVrdVx = torch.tile(self.dvr_vol[None,None,:,None]*self.dvx[None,None,None,:], (self.nvr,self.nvx,1,1))
 
         return
     
@@ -1547,12 +1563,18 @@ class KineticH2():
         self._debrief_msg('Computing SIG_CX', 1)
 
         # compute SIGMA_CX * v_v at all possible relative velocities
-        _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
-        _Sig[:] = (self.Internal.v_v*sigma_cx_hh(self.Internal.v_v2*(CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        # _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
+        # _Sig = (self.Internal.v_v*sigma_cx_hh(self.Internal.v_v2*(CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        _Sig = (self.Internal.v_v*sigma_cx_hh(self.Internal.v_v2*(CONST.H_MASS*(self.vth**2)/CONST.Q)))
+        _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
 
         # Set SIG_CX = vr' x Integral{v_v*sigma_cx} over theta=0,2pi times differential velocity space element Vr'2pidVr'*dVx'
-        SIG_CX = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
-        self.Internal.SIG_CX = (self.Internal.Vr2pidVrdVx*((_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F'))).reshape(SIG_CX.shape, order='F') 
+        # SIG_CX = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
+        # self.Internal.SIG_CX = (self.Internal.Vr2pidVrdVx*((_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F'))).reshape(SIG_CX.shape, order='F') 
+
+        sig_dtheta = torch_reshape_fortran(((_Sig @ self.dtheta)), self.Internal.Vr2pidVrdVx.shape)
+        
+        self.Internal.SIG_CX = torch_reshape_fortran((self.Internal.Vr2pidVrdVx*sig_dtheta), (self.nvr*self.nvx, self.nvr*self.nvx)) 
 
         # SIG_CX is now vr' * sigma_cx(v_v) * v_v (intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
@@ -1567,14 +1589,20 @@ class KineticH2():
         self._debrief_msg('Computing SIG_H_H', 1)
 
         # Compute sigma_H2_H2 * vr2_vx2 * v_v at all possible relative velocities 
-        _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
-        _Sig[:] = (self.Internal.vr2_vx2*self.Internal.v_v*sigma_el_hh_hh(self.Internal.v_v2*(CONST.H_MASS*self.mu*(self.vth**2)/CONST.Q), vis = 1)/8.0).reshape(_Sig.shape, order='F')
+        # _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
+        # _Sig[:] = (self.Internal.vr2_vx2*self.Internal.v_v*sigma_el_hh_hh(self.Internal.v_v2*(CONST.H_MASS*self.mu*(self.vth**2)/CONST.Q), vis = 1)/8.0).reshape(_Sig.shape, order='F')
+        sig_in = self.Internal.v_v2*(CONST.H_MASS*self.mu*(self.vth**2)/CONST.Q)
+        sig_out = sigma_el_hh_hh(sig_in, vis=1)
+        _Sig = self.Internal.vr2_vx2*self.Internal.v_v*sig_out / 8.0
+        _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
 
         # Note : For viscosity, the cross section for D -> D is the same function of center of mass energy as H -> H.
 
         # Set SIG_H2_H2 = vr' x Integral{vr2_vx2*v_v*sigma_H2_H2} over theta=0,2pi times differential velocity space element Vr'2pidVr'*dVx'
-        SIG_H2_H2 = np.zeros((self.nvr * self.nvx, self.nvr * self.nvx))
-        self.Internal.SIG_H2_H2 = (self.Internal.Vr2pidVrdVx*((_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F'))).reshape(SIG_H2_H2.shape, order='F')
+        # SIG_H2_H2 = np.zeros((self.nvr * self.nvx, self.nvr * self.nvx))
+        # self.Internal.SIG_H2_H2 = (self.Internal.Vr2pidVrdVx*((_Sig @ self.dtheta).reshape(self.Internal.Vr2pidVrdVx.shape, order='F'))).reshape(SIG_H2_H2.shape, order='F')
+        sig_dtheta = torch_reshape_fortran((_Sig @ self.dtheta), self.Internal.Vr2pidVrdVx.shape)
+        self.Internal.SIG_H2_H2 = torch_reshape_fortran((self.Internal.Vr2pidVrdVx*sig_dtheta), (self.nvr*self.nvx, self.nvr*self.nvx))
         # SIG_H2_H2 is now vr' * sigma_H2_H2(v_v) * vr2_vx2 * v_v (intergated over theta) for all possible ([vr,vx],[vr',vx'])
 
         return
@@ -1588,15 +1616,21 @@ class KineticH2():
         self._debrief_msg('Computing SIG_H2_H', 1)
 
         # Compute sigma_H2_H * v_v at all possible relative velocities
-        _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
-        _Sig[:] = (self.Internal.v_v*sigma_el_h_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        # _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
+        # _Sig[:] = (self.Internal.v_v*sigma_el_h_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        sig_in = self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q)
+        _Sig = self.Internal.v_v*sigma_el_h_hh(sig_in)
+        _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
 
         # Note: using H energy here for cross-section tabulated as H -> H2
 
         # Set SIG_H2_H = vr' x vx_vx x Integral{v_v * sigma_H2_H} over theta = 0, 
         #   2pi times differential velocity space element Vr'2pidVr'*dVx
-        SIG_H2_H = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
-        self.Internal.SIG_H2_H = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*((_Sig @ self.dtheta).reshape(self.Internal.vx_vx.shape, order='F'))).reshape(SIG_H2_H.shape, order='F')
+        # SIG_H2_H = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
+        # self.Internal.SIG_H2_H = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*((_Sig @ self.dtheta).reshape(self.Internal.vx_vx.shape, order='F'))).reshape(SIG_H2_H.shape, order='F')
+        sig_dtheta = torch_reshape_fortran((_Sig @ self.dtheta), self.Internal.vx_vx.shape)
+        sig_h2_h = self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*sig_dtheta
+        self.Internal.SIG_H2_H = torch_reshape_fortran(sig_h2_h, (self.nvr*self.nvx, self.nvr*self.nvx))
 
         # SIG_H2_H is now vr' * vx_vx * sigma_H2_H(v_V) 
         #   (integrated over theta) for all possible ([vr, vx], [vr', vx'])
@@ -1612,15 +1646,21 @@ class KineticH2():
         self._debrief_msg('Computing SIG_H2_P', 1)
 
         # Compute sigma_H2_P * v_v at all possible relative velocities
-        _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
-        _Sig[:] = (self.Internal.v_v*sigma_el_p_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        # _Sig = np.zeros((self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
+        # _Sig[:] = (self.Internal.v_v*sigma_el_p_hh(self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q))).reshape(_Sig.shape, order='F')
+        sig_in = self.Internal.v_v2*(0.5*CONST.H_MASS*(self.vth**2)/CONST.Q)
+        _Sig = self.Internal.v_v*sigma_el_p_hh(sig_in)
+        _Sig = torch_reshape_fortran(_Sig, (self.nvr*self.nvx*self.nvr*self.nvx, self.ntheta))
 
         # Note: using H energy here for cross-section tabulated as p -> H2
 
         # Set SIG_H2_P = vr' x vx_vx x Integral{v_v * sigma_H2_P} over theta = 0, 
         #   2pi times differential velocity space element Vr'2pidVr' * dVx
-        SIG_H2_P = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
-        self.Internal.SIG_H2_P = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*(_Sig @ self.dtheta).reshape(self.Internal.vx_vx.shape, order='F')).reshape(SIG_H2_P.shape, order='F')
+        # SIG_H2_P = np.zeros((self.nvr*self.nvx, self.nvr*self.nvx))
+        # self.Internal.SIG_H2_P = (self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*(_Sig @ self.dtheta).reshape(self.Internal.vx_vx.shape, order='F')).reshape(SIG_H2_P.shape, order='F')
+        sig_dtheta = torch_reshape_fortran((_Sig @ self.dtheta), self.Internal.vx_vx.shape)
+        sig_h2_p = self.Internal.Vr2pidVrdVx*self.Internal.vx_vx*sig_dtheta
+        self.Internal.SIG_H2_P = torch_reshape_fortran(sig_h2_p, (self.nvr*self.nvx, self.nvr*self.nvx))
 
         # SIG_H2_P is now vr' * vx_vx * sigma_h2_P(v_v) * v_v (integrated over theta) 
         #   for all possible ([vr, vx], [vr', vx'])

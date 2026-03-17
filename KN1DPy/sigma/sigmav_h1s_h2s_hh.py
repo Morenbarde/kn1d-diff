@@ -22,7 +22,7 @@ def sigmav_h1s_h2s_hh(Te):
             Sigma V for 0.1 < Te < 2e4. (m^3/s)
     '''
 
-    Te = np.asarray(Te)
+    Te = np.asarray(Te, dtype=np.float64)
 
     b = [-3.454175591367e+1,
           1.412655911280e+1,

@@ -21,7 +21,7 @@ def sigmav_ion_hh(Te):
             Sigma V for 0.1 < Te < 2e4. (m^3/s)
     '''
 
-    Te = np.asarray(Te)
+    Te = np.asarray(Te, dtype=np.float64)
 
     b = [-3.568640293666e+1,
           1.733468989961e+1, 

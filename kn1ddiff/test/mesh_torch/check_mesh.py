@@ -9,7 +9,7 @@ from kn1ddiff.make_dvr_dvx import VSpace_Differentials
 from KN1DPy.make_dvr_dvx import VSpace_Differentials as OG_DIFF
 
 directory = "kn1ddiff/test/mesh_torch/"
-mesh_type = 'h'
+mesh_type = 'h2'
 
 in_data_file = mesh_type+"_mesh_in.json"
 out_data_file = mesh_type+"_mesh_out.json"
@@ -19,7 +19,7 @@ dtype = torch.float64
 
 if __name__ == "__main__":
 
-    use_cuda = torch.cuda.is_available()
+    use_cuda = False #torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     print("device: ", device)
 
@@ -44,7 +44,8 @@ if __name__ == "__main__":
 
     for key, value in out_data.items():
         print("Checking "+key+":")
-        print(torch.allclose(value, getattr(mesh, key)))
+        print("Num Elements = ", value.numel())
+        print(np.allclose(value, getattr(mesh, key)))
         print("L2: ", rel_L2_torch(value, getattr(mesh, key)))
 
     print()

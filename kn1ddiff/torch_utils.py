@@ -100,3 +100,76 @@ def bilinear_interp_rectgrid(logsigmav, indne, indte):
     sampled = sampled[0, 0, :, 0]  # (N,)
 
     return torch.exp(sampled)
+
+
+# def path_interp_2d_torch(p, px, py, x, y):
+#     """
+#     Gradient-safe bilinear interpolation on a regular 2D grid.
+    
+#     Args:
+#         p:  (H, W) tensor — the values on the grid
+#         px: (H,)   tensor — grid coordinates along dim 0
+#         py: (W,)   tensor — grid coordinates along dim 1
+#         x:  (N,)   tensor — query points along dim 0
+#         y:  (N,)   tensor — query points along dim 1
+    
+#     Returns:
+#         (N,) tensor of interpolated values
+#     """
+#     # Normalize query points to [-1, 1] as required by grid_sample
+#     x_norm = 2.0 * (x - px[0]) / (px[-1] - px[0]) - 1.0
+#     y_norm = 2.0 * (y - py[0]) / (py[-1] - py[0]) - 1.0
+
+#     # grid_sample expects (N, C, H, W) input and (N, H_out, W_out, 2) grid
+#     p_4d = p.unsqueeze(0).unsqueeze(0)                          # (1, 1, H, W)
+#     grid = torch.stack([x_norm, y_norm], dim=-1)                # (N, 2) — note xy order
+#     grid = grid.unsqueeze(0).unsqueeze(0)                       # (1, 1, N, 2)
+
+#     result = F.grid_sample(p_4d, grid, mode='bilinear', 
+#                            align_corners=True, padding_mode='border')
+#     return result.squeeze()                                      # (N,)
+
+
+def path_interp_2d_torch(p, px, py, x, y):
+    """
+    Gradient-safe bilinear interpolation on a regular 2D grid.
+    Matches scipy RegularGridInterpolator((px, py), p) exactly.
+
+    Args:
+        p:  (Nx, Ny) tensor — grid values where Nx=len(px), Ny=len(py)
+        px: (Nx,)    tensor — grid coords for axis 0 (rows)
+        py: (Ny,)    tensor — grid coords for axis 1 (cols)
+        x:  (N,)     tensor — query coords along axis 0
+        y:  (N,)     tensor — query coords along axis 1
+
+    Returns:
+        (N,) tensor of interpolated values
+    """
+    # --- axis 0 (px) ---
+    # Find lower bin index for each query point
+    ix = torch.searchsorted(px.contiguous(), x.contiguous(), right=True) - 1
+    ix = torch.clamp(ix, 0, len(px) - 2)
+
+    # Compute interpolation weight along axis 0
+    x0 = px[ix]
+    x1 = px[ix + 1]
+    tx = (x - x0) / (x1 - x0)          # in [0,1]
+
+    # --- axis 1 (py) ---
+    iy = torch.searchsorted(py.contiguous(), y.contiguous(), right=True) - 1
+    iy = torch.clamp(iy, 0, len(py) - 2)
+
+    y0 = py[iy]
+    y1 = py[iy + 1]
+    ty = (y - y0) / (y1 - y0)          # in [0,1]
+
+    # --- Bilinear interpolation from the four corners ---
+    p00 = p[ix,     iy    ]
+    p10 = p[ix + 1, iy    ]
+    p01 = p[ix,     iy + 1]
+    p11 = p[ix + 1, iy + 1]
+
+    return (p00 * (1 - tx) * (1 - ty) +
+            p10 *      tx  * (1 - ty) +
+            p01 * (1 - tx) *      ty  +
+            p11 *      tx  *      ty)

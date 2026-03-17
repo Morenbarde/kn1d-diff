@@ -1,10 +1,10 @@
 {
-    "iteration_count" : 5,
+    "iteration_count" : 2,
 
     "kinetic_h": {
         "mesh_size" : 10,
         "ion_rate" : "collrad",
-        "fixed_iterations" : 5,
+        "fixed_iterations" : 2,
         "fixed_generations" : 10,
         "dvx_tolerance" : 0.01,
         "wpp_tolerance" : 0.001,
@@ -14,8 +14,8 @@
 
     "kinetic_h2" : {
         "mesh_size" : 6,
-        "fixed_iterations" : 3,
-        "fixed_generations" : 4,
+        "fixed_iterations" : 2,
+        "fixed_generations" : 3,
         "dvx_tolerance" : 0.01,
         "wpp_tolerance" : 0.001,
         "ci_test" : true,

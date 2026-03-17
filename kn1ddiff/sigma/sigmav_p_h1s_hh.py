@@ -1,8 +1,10 @@
 import numpy as np
+import torch
 
 from ..utils import poly
+from ..torch_utils import poly_torch
 
-def sigmav_p_h1s_hh(Te):
+def sigmav_p_h1s_hh(Te: torch.Tensor):
     '''
     Returns maxwellian averaged <sigma V) for electron impact ionization 
     and disociation of Molecular hydrogen resulting in one proton and 
@@ -22,20 +24,23 @@ def sigmav_p_h1s_hh(Te):
             Sigma V for 0.1 < Te < 2e4. (m^3/s)
     '''
 
-    Te = np.asarray(Te)
+    # Te = np.asarray(Te)
     
-    b = [-3.834597006782e+1, 
-          1.426322356722e+1, 
-         -5.826468569506e+0, 
-          1.727940947913e+0, 
-         -3.598120866343e-1, 
-          4.822199350494e-2, 
-         -3.909402993006e-3, 
-          1.738776657690e-4, 
-         -3.252844486351e-6]
+    b = torch.tensor([
+            -3.834597006782e+1, 
+            1.426322356722e+1, 
+            -5.826468569506e+0, 
+            1.727940947913e+0, 
+            -3.598120866343e-1, 
+            4.822199350494e-2, 
+            -3.909402993006e-3, 
+            1.738776657690e-4, 
+            -3.252844486351e-6
+        ], dtype=Te.dtype, device=Te.device)
+
     
     # Ensure 0.1 < Te < 2.01e4
-    Te = np.clip(Te, 0.1, 2.01e4)
+    Te = torch.clamp(Te, 0.1, 2.01e4)
 
-    result = np.exp(poly(np.log(Te), b))*1e-6
+    result = torch.exp(poly_torch(torch.log(Te), b))*1e-6
     return result

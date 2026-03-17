@@ -39,26 +39,26 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.0 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 100
+NUM_ITERS = 1000
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
+INITIAL_LR = 5e-3
 CYCLE_LR = False
-LR_CYCLE_COUNT = 1
+LR_CYCLE_COUNT = 8
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-5
+MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 25
+GIF_FREQ = 5
 
 
 if __name__ == "__main__":
