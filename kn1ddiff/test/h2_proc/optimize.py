@@ -29,18 +29,18 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.0 # initial variables are multiplied by this factor as a starting point
-OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
+INIT_FACTOR = 1.2 # initial variables are multiplied by this factor as a starting point
+OFFSET_FACTOR = 0.5 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 100
+NUM_ITERS = 500
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-1
-CYCLE_LR = False
+INITIAL_LR = 1e-2
+CYCLE_LR = True
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-5
@@ -67,7 +67,7 @@ out_file = "kh2_proc_out.json"
 if __name__ == "__main__":
 
     # Start logging to run file
-    # setup_log(run_dir)
+    setup_log(run_dir)
 
     print("Process PID: ", os.getpid())
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     check_close("ESH", kh2_results.ESH, trueout_ESH)
     check_close("Eaxis", kh2_results.Eaxis, trueout_Eaxis)
     print()
-    input()
+    # input()
 
     trueout_results = kh2_results
 
@@ -241,12 +241,13 @@ if __name__ == "__main__":
     
     parameterize = lambda tensor : torch.nn.Parameter(torch.log(torch.abs(tensor)))
 
-    initial_fH2 = init_optimization_tensor(truein_fH2, INIT_FACTOR, OFFSET_FACTOR)
-    fH2_param = parameterize(initial_fH2)
-    initial_fSH = init_optimization_tensor(truein_fSH, INIT_FACTOR, OFFSET_FACTOR)
-    fSH_param = parameterize(initial_fSH)
+
     initial_fH = init_optimization_tensor(truein_fH, INIT_FACTOR, OFFSET_FACTOR)
     fH_param = parameterize(initial_fH)
+    initial_SH2 = init_optimization_tensor(truein_SH2, INIT_FACTOR, OFFSET_FACTOR)
+    SH2_param = parameterize(initial_SH2)
+    initial_fH2 = init_optimization_tensor(truein_fH2, INIT_FACTOR, OFFSET_FACTOR)
+    fH2_param = parameterize(initial_fH2)
     initial_nHP = init_optimization_tensor(truein_nHP, INIT_FACTOR, OFFSET_FACTOR)
     nHP_param = parameterize(initial_nHP)
     initial_THP = init_optimization_tensor(truein_THP, INIT_FACTOR, OFFSET_FACTOR)
@@ -268,12 +269,13 @@ if __name__ == "__main__":
 
 
     parameters = []
-    if OPTIMIZE_FH2:
-        parameters.append(fH2_param)
-    if OPTIMIZE_FSH:
-        parameters.extend([fSH_param])
+
     if OPTIMIZE_FH:
-        parameters.extend([fH_param])
+        parameters.append(fH_param)
+    if OPTIMIZE_SH2:
+        parameters.extend([SH2_param])
+    if OPTIMIZE_FH2:
+        parameters.extend([fH2_param])
     if OPTIMIZE_NHP:
         parameters.extend([nHP_param])
     if OPTIMIZE_THP:
@@ -321,12 +323,12 @@ if __name__ == "__main__":
 
     # Init Gif Generator
     if GENERATE_GIF:
-        if OPTIMIZE_FH2:
-            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH2/", "fH2", truein_fH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
-        if OPTIMIZE_FSH:
-            fSH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fSH/", "fSH", truein_fSH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_FH:
             fH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_SH2:
+            SH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"SH2/", "SH2", truein_SH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_FH2:
+            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH2/", "fH2", truein_fH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_NHP:
             nHP_gifgen = GIF_Generator(NUM_ITERS, image_dir+"nHP/", "nHP", truein_nHP, fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_THP:
@@ -352,9 +354,9 @@ if __name__ == "__main__":
 
         # --- Bound Inputs ---
 
-        fH2_in = torch.sign(initial_fH2)*torch.exp(fH2_param) if OPTIMIZE_FH2 else truein_fH2
-        fSH_in = torch.sign(initial_fSH)*torch.exp(fSH_param) if OPTIMIZE_FSH else truein_fSH
         fH_in = torch.sign(initial_fH)*torch.exp(fH_param) if OPTIMIZE_FH else truein_fH
+        SH2_in = torch.sign(initial_SH2)*torch.exp(SH2_param) if OPTIMIZE_SH2 else truein_SH2
+        fH2_in = torch.sign(initial_fH2)*torch.exp(fH2_param) if OPTIMIZE_FH2 else truein_fH2
         nHP_in = torch.exp(nHP_param) if OPTIMIZE_NHP else truein_nHP
         THP_in = torch.exp(THP_param) if OPTIMIZE_THP else truein_THP
 
@@ -370,14 +372,14 @@ if __name__ == "__main__":
             mesh.Tnorm = torch.nanmean(Ti_in) #Tnorm calculation in mesh
 
             # Reinitialize kinetic_h with mesh
-            kinetic_h = KineticH(mesh, kh_in["mu"], kh_in["vxi"], kh_in["fHBC"], kh_in["GammaxHBC"], 
-                        ni_correct=True, truncate=1.0e-3, max_gen=100, 
+            kinetic_h2 = KineticH2(mesh, kh2_in["mu"], kh2_in["vxi"], kh2_in["fH2BC"], kh2_in["GammaxH2BC"], kh2_in["NuLoss"], kh2_in["SH2_initial"], 
+                        compute_h_source=True, ni_correct=True, truncate=1.0e-3, max_gen=100, 
                         compute_errors=True, debrief=False, debug=False, 
                         device=device, dtype=dtype)
 
 
         # --- Run Function ---
-        kh_results = kinetic_h.run_procedure(fH2_in, fSH_in, fH_in, nHP_in, THP_in)
+        kh_results = kinetic_h2.run_procedure(fH_in, SH2_in, fH2_in, nHP_in, THP_in)
 
         forward_done = time.time()
         forward_time = forward_done - epoch_start
@@ -386,23 +388,33 @@ if __name__ == "__main__":
         # --- Optimize ---
 
         # Compute Loss
-        loss1 = loss_fun(kh_results.fH, trueout_results.fH)
-        loss2 = loss_fun(kh_results.nH, trueout_results.nH)
-        loss3 = loss_fun(kh_results.GammaxH, trueout_results.GammaxH)
-        loss4 = loss_fun(kh_results.VxH, trueout_results.VxH)
-        loss5 = loss_fun(kh_results.pH, trueout_results.pH)
-        loss6 = loss_fun(kh_results.TH, trueout_results.TH)
-        loss7 = loss_fun(kh_results.qxH, trueout_results.qxH)
-        loss8 = loss_fun(kh_results.qxH_total, trueout_results.qxH_total)
-        loss9 = loss_fun(kh_results.NetHSource, trueout_results.NetHSource)
-        loss10 = loss_fun(kh_results.Sion, trueout_results.Sion)
-        loss11 = loss_fun(kh_results.QH, trueout_results.QH)
-        loss12 = loss_fun(kh_results.RxH, trueout_results.RxH)
-        loss13 = loss_fun(kh_results.QH_total, trueout_results.QH_total)
-        loss14 = loss_fun(kh_results.AlbedoH, trueout_results.AlbedoH)
-        loss15 = loss_fun(kh_results.SideWallH, trueout_results.SideWallH)
+        loss1 = loss_fun(kh_results.fH2, trueout_results.fH2)
+        loss2 = loss_fun(kh_results.nHP, trueout_results.nHP)
+        loss3 = loss_fun(kh_results.THP, trueout_results.THP)
+        loss4 = loss_fun(kh_results.nH2, trueout_results.nH2)
+        loss5 = loss_fun(kh_results.GammaxH2, trueout_results.GammaxH2)
+        loss6 = loss_fun(kh_results.VxH2, trueout_results.VxH2)
+        loss7 = loss_fun(kh_results.pH2, trueout_results.pH2)
+        loss8 = loss_fun(kh_results.TH2, trueout_results.TH2)
+        loss9 = loss_fun(kh_results.qxH2, trueout_results.qxH2)
+        loss10 = loss_fun(kh_results.qxH2_total, trueout_results.qxH2_total)
+        loss11 = loss_fun(kh_results.Sloss, trueout_results.Sloss)
+        loss12 = loss_fun(kh_results.QH2, trueout_results.QH2)
+        loss13 = loss_fun(kh_results.RxH2, trueout_results.RxH2)
+        loss14 = loss_fun(kh_results.QH2_total, trueout_results.QH2_total)
+        loss15 = loss_fun(kh_results.AlbedoH2, trueout_results.AlbedoH2)
+        loss16 = loss_fun(kh_results.WallH2, trueout_results.WallH2)
+        loss17 = loss_fun(kh_results.fSH, trueout_results.fSH)
+        loss18 = loss_fun(kh_results.SH, trueout_results.SH)
+        loss19 = loss_fun(kh_results.SP, trueout_results.SP)
+        loss20 = loss_fun(kh_results.SHP, trueout_results.SHP)
+        loss21 = loss_fun(kh_results.NuE, trueout_results.NuE)
+        loss22 = loss_fun(kh_results.NuDis, trueout_results.NuDis)
+        loss23 = loss_fun(kh_results.ESH, trueout_results.ESH)
+        loss24 = loss_fun(kh_results.Eaxis, trueout_results.Eaxis)
         
-        loss = loss1+loss2+loss3+loss4+loss5+loss6+loss7+loss8+loss9+loss10+loss11+loss12+loss13+loss14+loss15
+        loss = (loss1+loss2+loss3+loss4+loss5+loss6+loss7+loss8+loss9+loss10+loss11+loss12+loss13
+                +loss14+loss15+loss16+loss17+loss18+loss19+loss20+loss21+loss22+loss23+loss24)
 
         # Backprop
         optimizer.zero_grad()
@@ -426,9 +438,9 @@ if __name__ == "__main__":
         if loss.item() < best_loss:
             best_loss = loss.item()
             best_inputs = {
-                            "fH2" : fH2_in.detach().cpu(),
-                            "fSH" : fSH_in.detach().cpu(),
                             "fH" : fH_in.detach().cpu(),
+                            "SH2" : SH2_in.detach().cpu(),
+                            "fH2" : fH2_in.detach().cpu(),
                             "nHP" : nHP_in.detach().cpu(),
                             "THP" : THP_in.detach().cpu(),
 
@@ -438,22 +450,31 @@ if __name__ == "__main__":
                             "Tnorm" : mesh.Tnorm.detach().cpu(),
                             }
             
-            best_pred = KHResults(
-                                    kh_results.fH.detach().cpu(),
-                                    kh_results.nH.detach().cpu(), 
-                                    kh_results.GammaxH.detach().cpu(), 
-                                    kh_results.VxH.detach().cpu(), 
-                                    kh_results.pH.detach().cpu(), 
-                                    kh_results.TH.detach().cpu(), 
-                                    kh_results.qxH.detach().cpu(), 
-                                    kh_results.qxH_total.detach().cpu(), 
-                                    kh_results.NetHSource.detach().cpu(), 
-                                    kh_results.Sion.detach().cpu(), 
-                                    kh_results.QH.detach().cpu(), 
-                                    kh_results.RxH.detach().cpu(), 
-                                    kh_results.QH_total.detach().cpu(), 
-                                    kh_results.AlbedoH.detach().cpu(), 
-                                    kh_results.SideWallH.detach().cpu()
+            best_pred = KH2Results(
+                                kh_results.fH2,
+                                kh_results.nHP,
+                                kh_results.THP,
+                                kh_results.nH2,
+                                kh_results.GammaxH2,
+                                kh_results.VxH2,
+                                kh_results.pH2,
+                                kh_results.TH2,
+                                kh_results.qxH2,
+                                kh_results.qxH2_total,
+                                kh_results.Sloss,
+                                kh_results.QH2,
+                                kh_results.RxH2,
+                                kh_results.QH2_total,
+                                kh_results.AlbedoH2,
+                                kh_results.WallH2,
+                                kh_results.fSH,
+                                kh_results.SH,
+                                kh_results.SP,
+                                kh_results.SHP,
+                                kh_results.NuE,
+                                kh_results.NuDis,
+                                kh_results.ESH,
+                                kh_results.Eaxis,
                                 )
             best_epoch = epoch
 
@@ -469,12 +490,12 @@ if __name__ == "__main__":
 
         # Update Gif data
         if GENERATE_GIF:
-            if OPTIMIZE_FH2:
-                fH2_gifgen.update(fH2_in[0,10,:], epoch)
-            if OPTIMIZE_FSH:
-                fSH_gifgen.update(fSH_in[0,10,:], epoch)
             if OPTIMIZE_FH:
                 fH_gifgen.update(fH_in[0,10,:], epoch)
+            if OPTIMIZE_SH2:
+                SH2_gifgen.update(SH2_in[0,10,:], epoch)
+            if OPTIMIZE_FH2:
+                fH2_gifgen.update(fH2_in[0,10,:], epoch)
             if OPTIMIZE_NHP:
                 nHP_gifgen.update(nHP_in, epoch)
             if OPTIMIZE_THP:
@@ -504,14 +525,15 @@ if __name__ == "__main__":
     print("### Inputs Analysis ###")
 
     # Optimized Inputs Analysis
-    if OPTIMIZE_FH2:
-        analyze_difference("fH2", loss_fun, opt_inputs["fH2"], truein_fH2)
-        print()
-    if OPTIMIZE_FSH:
-        analyze_difference("fSH", loss_fun, opt_inputs["fSH"], truein_fSH)
-        print()
+
     if OPTIMIZE_FH:
         analyze_difference("fH", loss_fun, opt_inputs["fH"], truein_fH)
+        print()
+    if OPTIMIZE_SH2:
+        analyze_difference("SH2", loss_fun, opt_inputs["SH2"], truein_SH2)
+        print()
+    if OPTIMIZE_FH2:
+        analyze_difference("fH2", loss_fun, opt_inputs["fH2"], truein_fH2)
         print()
     if OPTIMIZE_NHP:
         analyze_difference("nHP", loss_fun, opt_inputs["nHP"], truein_nHP)
@@ -536,22 +558,30 @@ if __name__ == "__main__":
 
     print("### Outputs Analysis ###")
 
-    analyze_difference("fH", loss_fun, kh_results.fH, trueout_results.fH)
-    analyze_difference("nH", loss_fun, kh_results.nH, trueout_results.nH)
-    analyze_difference("GammaxH", loss_fun, kh_results.GammaxH, trueout_results.GammaxH)
-    analyze_difference("VxH", loss_fun, kh_results.VxH, trueout_results.VxH)
-    analyze_difference("pH", loss_fun, kh_results.pH, trueout_results.pH)
-    analyze_difference("TH", loss_fun, kh_results.TH, trueout_results.TH)
-    analyze_difference("qxH", loss_fun, kh_results.qxH, trueout_results.qxH)
-    analyze_difference("qxH_total", loss_fun, kh_results.qxH_total, trueout_results.qxH_total)
-    analyze_difference("NetHSource", loss_fun, kh_results.NetHSource, trueout_results.NetHSource)
-    analyze_difference("Sion", loss_fun, kh_results.Sion, trueout_results.Sion)
-    analyze_difference("QH", loss_fun, kh_results.QH, trueout_results.QH)
-    analyze_difference("RxH", loss_fun, kh_results.RxH, trueout_results.RxH)
-    analyze_difference("QH_total", loss_fun, kh_results.QH_total, trueout_results.QH_total)
-    analyze_difference("AlbedoH", loss_fun, kh_results.AlbedoH, trueout_results.AlbedoH)
-    analyze_difference("SideWallH", loss_fun, kh_results.SideWallH, trueout_results.SideWallH)
-
+    analyze_difference("fH2", loss_fun, kh_results.fH2, trueout_results.fH2)
+    analyze_difference("nHP", loss_fun, kh_results.nHP, trueout_results.nHP)
+    analyze_difference("THP", loss_fun, kh_results.THP, trueout_results.THP)
+    analyze_difference("nH2", loss_fun, kh_results.nH2, trueout_results.nH2)
+    analyze_difference("GammaxH2", loss_fun, kh_results.GammaxH2, trueout_results.GammaxH2)
+    analyze_difference("VxH2", loss_fun, kh_results.VxH2, trueout_results.VxH2)
+    analyze_difference("pH2", loss_fun, kh_results.pH2, trueout_results.pH2)
+    analyze_difference("TH2", loss_fun, kh_results.TH2, trueout_results.TH2)
+    analyze_difference("qxH2", loss_fun, kh_results.qxH2, trueout_results.qxH2)
+    analyze_difference("qxH2_total", loss_fun, kh_results.qxH2_total, trueout_results.qxH2_total)
+    analyze_difference("Sloss", loss_fun, kh_results.Sloss, trueout_results.Sloss)
+    analyze_difference("QH2", loss_fun, kh_results.QH2, trueout_results.QH2)
+    analyze_difference("RxH2", loss_fun, kh_results.RxH2, trueout_results.RxH2)
+    analyze_difference("QH2_total", loss_fun, kh_results.QH2_total, trueout_results.QH2_total)
+    analyze_difference("AlbedoH2", loss_fun, kh_results.AlbedoH2, trueout_results.AlbedoH2)
+    analyze_difference("WallH2", loss_fun, kh_results.WallH2, trueout_results.WallH2)
+    analyze_difference("fSH", loss_fun, kh_results.fSH, trueout_results.fSH)
+    analyze_difference("SH", loss_fun, kh_results.SH, trueout_results.SH)
+    analyze_difference("SP", loss_fun, kh_results.SP, trueout_results.SP)
+    analyze_difference("SHP", loss_fun, kh_results.SHP, trueout_results.SHP)
+    analyze_difference("NuE", loss_fun, kh_results.NuE, trueout_results.NuE)
+    analyze_difference("NuDis", loss_fun, kh_results.NuDis, trueout_results.NuDis)
+    analyze_difference("ESH", loss_fun, kh_results.ESH, trueout_results.ESH)
+    analyze_difference("Eaxis", loss_fun, kh_results.Eaxis, trueout_results.Eaxis)
 
     # --- Plot Generation --- 
 
@@ -561,18 +591,19 @@ if __name__ == "__main__":
     generate_loss_plot(image_dir, "Loss", loss_list, xlabel="Epoch", ylabel="Symmetrical Loss")
     generate_lr_plot(image_dir, "LR", lr_list, xlabel="Epoch", ylabel="Learning Rate")
     
-    if OPTIMIZE_FH2:
-        x = range(opt_inputs["fH2"][0,10,:].numel())
-        for i in range(len(opt_inputs["fH2"][0,:,0])):
-            generate_compare_plot(image_dir+"fH2/", "fH2-"+str(i), x, opt_inputs["fH2"][0,i,:], x, truein_fH2[0,i,:], init_x=x, init_y=initial_fH2[0,i,:])
-    if OPTIMIZE_FSH:
-        x = range(opt_inputs["fSH"][0,10,:].numel())
-        for i in range(len(opt_inputs["fSH"][0,:,0])):
-            generate_compare_plot(image_dir+"fSH/", "fSH-"+str(i), x, opt_inputs["fSH"][0,i,:], x, truein_fSH[0,i,:], init_x=x, init_y=initial_fSH[0,i,:])
+
     if OPTIMIZE_FH:
         x = range(opt_inputs["fH"][0,10,:].numel())
         for i in range(len(opt_inputs["fH"][0,:,0])):
             generate_compare_plot(image_dir+"fH/", "fH-"+str(i), x, opt_inputs["fH"][0,i,:], x, truein_fH[0,i,:], init_x=x, init_y=initial_fH[0,i,:])
+    if OPTIMIZE_SH2:
+        x = range(opt_inputs["SH2"][0,10,:].numel())
+        for i in range(len(opt_inputs["SH2"][0,:,0])):
+            generate_compare_plot(image_dir+"SH2/", "SH2-"+str(i), x, opt_inputs["SH2"][0,i,:], x, truein_SH2[0,i,:], init_x=x, init_y=initial_SH2[0,i,:])
+    if OPTIMIZE_FH2:
+        x = range(opt_inputs["fH2"][0,10,:].numel())
+        for i in range(len(opt_inputs["fH2"][0,:,0])):
+            generate_compare_plot(image_dir+"fH2/", "fH2-"+str(i), x, opt_inputs["fH2"][0,i,:], x, truein_fH2[0,i,:], init_x=x, init_y=initial_fH2[0,i,:])
     if OPTIMIZE_NHP:
         x = range(opt_inputs["nHP"].numel())
         generate_compare_plot(image_dir+"nHP/", "nHP", x, opt_inputs["nHP"], x, truein_nHP, init_x=x, init_y=initial_nHP)
@@ -581,19 +612,19 @@ if __name__ == "__main__":
         generate_compare_plot(image_dir+"THP/", "THP", x, opt_inputs["THP"], x, truein_THP, init_x=x, init_y=initial_THP)
 
     if OPTIMIZE_MESH:
-        x = mesh_output["x"]
+        x = range(mesh_output["x"].numel()) # Not representative of scale, for viewing
         generate_compare_plot(image_dir+"Ti/", "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
         generate_compare_plot(image_dir+"Te/", "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
         generate_compare_plot(image_dir+"ne/", "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
 
     # --- Gif Generation ---
     if GENERATE_GIF:
-        if OPTIMIZE_FH2:
-            fH2_gifgen.generate_gif()
-        if OPTIMIZE_FSH:
-            fSH_gifgen.generate_gif()
         if OPTIMIZE_FH:
             fH_gifgen.generate_gif()
+        if OPTIMIZE_SH2:
+            SH2_gifgen.generate_gif()
+        if OPTIMIZE_FH2:
+            fH2_gifgen.generate_gif()
         if OPTIMIZE_NHP:
             nHP_gifgen.generate_gif()
         if OPTIMIZE_THP:

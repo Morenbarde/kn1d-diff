@@ -379,7 +379,16 @@ class KineticH2():
         #     self.COLLISIONS.H2_H_EL = False
 
         # Scale input molecular distribution function to agree with desired flux
-        fH2[:,self.vx_pos,0] = self.fH2BC_input[:,self.vx_pos]
+        # fH2[:,self.vx_pos,0] = self.fH2BC_input[:,self.vx_pos]
+
+        # NOTE Straight through estimator
+        # 1. Write the data in-place with detach (seeds the loop correctly)
+        fH2[:, self.vx_pos, 0] = self.fH2BC_input[:, self.vx_pos].detach()
+
+        # 2. Re-attach gradient connection out-of-place via a mask
+        mask = torch.zeros_like(fH2)
+        mask[:, self.vx_pos, 0] = self.fH2BC_input[:, self.vx_pos] - self.fH2BC_input[:, self.vx_pos].detach()
+        fH2 = fH2 + mask
 
 
         # --- Compute Variables---
@@ -518,7 +527,6 @@ class KineticH2():
                 # --- Iterative Generations ---
                 # Compute next generation molecular distribution
                 OmegaM = collision_freqs.H2_H2*m_vals.H2_H2 + collision_freqs.H2_P*m_vals.H2_P + collision_freqs.H2_H*m_vals.H2_H
-                fH_gen[:] = 0
 
                 beta_omega_offsum = (Swall[:,:,1:] + Beta_CX[:,:,1:] + OmegaM[:,:,1:] + Swall[:,:,:-1] + Beta_CX[:,:,:-1] + OmegaM[:,:,:-1])
                 for k in range(nx-1):
@@ -691,7 +699,7 @@ class KineticH2():
         gammax_plus = self.vth*torch.sum(dvr_vol*(fH2[:,self.vx_pos,0] @ (vx[self.vx_pos]*dvx[self.vx_pos]))) 
         gammax_minus = self.vth*torch.sum(dvr_vol*(fH2[:,self.vx_neg,0] @ (vx[self.vx_neg]*dvx[self.vx_neg])))
         AlbedoH2 = 0.0
-        if np.abs(gammax_plus) > 0:
+        if torch.abs(gammax_plus) > 0:
             AlbedoH2 = -gammax_minus/gammax_plus
 
 
@@ -993,7 +1001,7 @@ class KineticH2():
             ii = nFC[reaction]
 
             Tfc = 0.25 * (Emax[:, ii] - Emin[:, ii]) / self.mesh.Tnorm  # shape (nx,)
-            Vfc = np.sqrt(Eave[:, ii] / self.mesh.Tnorm)                 # shape (nx,)
+            Vfc = torch.sqrt(Eave[:, ii] / self.mesh.Tnorm)                 # shape (nx,)
 
             # Broadcast to (nvr, nvx, nx)
             Tfc_3d = Tfc[None, None, :]
@@ -1009,11 +1017,11 @@ class KineticH2():
             #	   is not included and assumed to be small)
             T_denom = Tfc_3d + 0.5 * (_THP if reaction > 6 else _TH2)
             arg = -(magV - Vfc_3d + 1.5 * Tfc_3d / Vfc_3d)**2 / T_denom
-            SFCn[:, :, :, ii] = torch.exp(torch.clamp(arg, min=-80))
+            sfc_slice = torch.exp(torch.clamp(arg, min=-80))
 
             # Normalize across k
-            norms = torch.einsum('ijk,i,j->k', SFCn[:, :, :, ii], self.dvr_vol, self.dvx)
-            SFCn[:, :, :, ii] = SFCn[:, :, :, ii] / norms[None, None, :]
+            norms = torch.einsum('ijk,i,j->k', sfc_slice, self.dvr_vol, self.dvx)
+            SFCn[:, :, :, ii] = sfc_slice / norms[None, None, :]
         
 
         # if self.compute_errors:
@@ -1284,7 +1292,7 @@ class KineticH2():
             sigv[:,1] = sigv[:,1] * 3.7 / 2.0
 
         # Reaction R2:  e + H2 -> H(1s) + H(1s)
-        sigv[:,2] = sigmav_h1s_h1s_hh(self.mesh.Te)
+        sigv_r2 = sigmav_h1s_h1s_hh(self.mesh.Te)
         if self.sawada:
             # Construct Table 
             Te_table = torch.log(torch.tensor([5., 20., 100.], dtype=self.dtype, device=self.device))
@@ -1295,16 +1303,9 @@ class KineticH2():
             fctr_table[:,2] = torch.tensor([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22], dtype=self.dtype, device=self.device) / 2.1
             _Te = torch.clamp(self.mesh.Te, 5., 100.)
             _n  = torch.clamp(self.mesh.ne, 1e14, 1e22)
-            # Te_table = np.log([5,20,100])
-            # Ne_table = np.log([1e14,1e17,1e18,1e19,1e20,1e21,1e22])
-            # fctr_table = np.zeros((7, 3))
-            # fctr_table[:,0] = np.array([2.2, 2.2, 2.1, 1.9, 1.2,  1.1,  1.05]) / 5.3
-            # fctr_table[:,1] = np.array([5.1, 5.1, 4.3, 3.1, 1.5,  1.25, 1.25]) / 10.05
-            # fctr_table[:,2] = np.array([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22]) / 2.1
-            # _Te = np.clip(self.mesh.Te, 5, 100)
-            # _n = np.clip(self.mesh.ne, 1e14, 1e22)
             fctr = path_interp_2d_torch(fctr_table, Ne_table, Te_table, torch.log(_n), torch.log(_Te))
-            sigv[:,2] = (1.0 + fctr)*sigv[:,2]
+            sigv_r2 = (1.0 + fctr)*sigv_r2
+        sigv[:,2] = sigv_r2
         
         # Reaction R3:  e + H2 -> e + H(1s) + H*(2s)
         sigv[:,3] = sigmav_h1s_h2s_hh(self.mesh.Te)

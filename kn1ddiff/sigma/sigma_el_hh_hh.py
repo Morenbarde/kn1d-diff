@@ -34,7 +34,7 @@ def sigma_el_hh_hh(E: torch.tensor, vis = False):
     E = torch.clamp(E, 0.03e0, 1.01e4)
 
     if vis: #NOTE I am confused, why are these seperate statements, and why is this a warning?
-        print('WARNING in SIGMA_EL_HH_HH => using momentum transfer as viscosity cross-section')
+        # print('WARNING in SIGMA_EL_HH_HH => using momentum transfer as viscosity cross-section')
         # calculates viscosity cross section
         a = torch.tensor([-3.430345e1, -2.960406e-1, -6.382532e-2, -7.557519e-3, 2.606259e-4], dtype=E.dtype, device=E.device)
     else: 
