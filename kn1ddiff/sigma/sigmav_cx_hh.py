@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 
+from ..torch_utils import dclamp
+
 def sigmav_cx_hh(T: torch.Tensor, E: torch.Tensor):
     '''
     Computes maxwellian averaged <sigma V) for charge exchange of molecular
@@ -75,8 +77,10 @@ def sigmav_cx_hh(T: torch.Tensor, E: torch.Tensor):
     ], dtype=T.dtype, device=T.device)
     
     # Limits values to >= 0.1 and <= 2.01e4
-    E = torch.clamp(E, 0.1, 2.01e4)
-    T = torch.clamp(T, 0.1, 2.01e4)
+    # E = torch.clamp(E, 0.1, 2.01e4)
+    # T = torch.clamp(T, 0.1, 2.01e4)
+    E = dclamp(E, 0.1, 2.01e4)
+    T = dclamp(T, 0.1, 2.01e4)
 
     alogE = torch.log(E).flatten()
     alogT = torch.log(T).flatten()

@@ -23,7 +23,7 @@ def sigma_cx_hh(E: torch.Tensor):
     # E = np.asarray(E)
 
     # Ensure 0.1 < E < 2.01e4
-    E = torch.clamp(E, 0.1, 2.01e4)
+    E = dclamp(E, 0.1, 2.01e4)
     alpha = torch.tensor([  
                     -3.427958758517e+01, -7.121484125189e-02, 4.690466187943e-02,
                     -8.033946660540e-03, -2.265090924593e-03,-2.102414848737e-04,

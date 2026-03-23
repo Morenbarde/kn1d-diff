@@ -29,21 +29,21 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.2 # initial variables are multiplied by this factor as a starting point
-OFFSET_FACTOR = 0.5 # initial variables are offset by themselves times this factor as a starting point
+INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
+OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 500
+NUM_ITERS = 1000
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-2
-CYCLE_LR = True
+INITIAL_LR = 1e-3
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
-MIN_LR = 1e-5
+MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
@@ -197,7 +197,7 @@ if __name__ == "__main__":
             kh2_in[key] = torch.tensor(value, dtype=dtype, device=device)
     
     mesh = KineticMesh('h2', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], device=device, dtype=dtype)
-    
+
     kinetic_h2 = KineticH2(mesh, kh2_in["mu"], kh2_in["vxi"], kh2_in["fH2BC"], kh2_in["GammaxH2BC"], kh2_in["NuLoss"], kh2_in["SH2_initial"], 
                         compute_h_source=True, ni_correct=True, truncate=1.0e-3, max_gen=100, 
                         compute_errors=True, debrief=False, debug=False, 
@@ -259,8 +259,8 @@ if __name__ == "__main__":
     Te_param = parameterize(initial_Te)
     initial_ne = init_optimization_tensor(truein_ne, INIT_FACTOR, OFFSET_FACTOR)
     ne_param = parameterize(initial_ne)
-    # initial_Tnorm = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
-    # Tnorm_param = parameterize(initial_Tnorm)
+    initial_Tnorm = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
+    Tnorm_param = parameterize(initial_Tnorm)
 
     initial_vr = init_optimization_tensor(truein_vr, INIT_FACTOR, OFFSET_FACTOR)
     vr_param = parameterize(initial_vr)
@@ -364,12 +364,13 @@ if __name__ == "__main__":
             Ti_in = torch.exp(Ti_param)
             Te_in = torch.exp(Te_param)
             ne_in = torch.exp(ne_param)
-            # Tnorm_in = torch.exp(Tnorm_param)
+            Tnorm_in = torch.exp(Tnorm_param)
 
             mesh.Ti = Ti_in
             mesh.Te = Te_in
             mesh.ne = ne_in
-            mesh.Tnorm = torch.nanmean(Ti_in) #Tnorm calculation in mesh
+            # mesh.Tnorm = Tnorm_in
+            mesh.Tnorm = torch.nanmean(torch.cat((Ti_in, torch.tensor([0.003,0.01,0.03,0.1,0.3,1.0,3.0], dtype=dtype, device=device)))) #Tnorm calculation in mesh
 
             # Reinitialize kinetic_h with mesh
             kinetic_h2 = KineticH2(mesh, kh2_in["mu"], kh2_in["vxi"], kh2_in["fH2BC"], kh2_in["GammaxH2BC"], kh2_in["NuLoss"], kh2_in["SH2_initial"], 
@@ -379,7 +380,7 @@ if __name__ == "__main__":
 
 
         # --- Run Function ---
-        kh_results = kinetic_h2.run_procedure(fH_in, SH2_in, fH2_in, nHP_in, THP_in)
+        kh2_results = kinetic_h2.run_procedure(fH_in, SH2_in, fH2_in, nHP_in, THP_in)
 
         forward_done = time.time()
         forward_time = forward_done - epoch_start
@@ -388,33 +389,63 @@ if __name__ == "__main__":
         # --- Optimize ---
 
         # Compute Loss
-        loss1 = loss_fun(kh_results.fH2, trueout_results.fH2)
-        loss2 = loss_fun(kh_results.nHP, trueout_results.nHP)
-        loss3 = loss_fun(kh_results.THP, trueout_results.THP)
-        loss4 = loss_fun(kh_results.nH2, trueout_results.nH2)
-        loss5 = loss_fun(kh_results.GammaxH2, trueout_results.GammaxH2)
-        loss6 = loss_fun(kh_results.VxH2, trueout_results.VxH2)
-        loss7 = loss_fun(kh_results.pH2, trueout_results.pH2)
-        loss8 = loss_fun(kh_results.TH2, trueout_results.TH2)
-        loss9 = loss_fun(kh_results.qxH2, trueout_results.qxH2)
-        loss10 = loss_fun(kh_results.qxH2_total, trueout_results.qxH2_total)
-        loss11 = loss_fun(kh_results.Sloss, trueout_results.Sloss)
-        loss12 = loss_fun(kh_results.QH2, trueout_results.QH2)
-        loss13 = loss_fun(kh_results.RxH2, trueout_results.RxH2)
-        loss14 = loss_fun(kh_results.QH2_total, trueout_results.QH2_total)
-        loss15 = loss_fun(kh_results.AlbedoH2, trueout_results.AlbedoH2)
-        loss16 = loss_fun(kh_results.WallH2, trueout_results.WallH2)
-        loss17 = loss_fun(kh_results.fSH, trueout_results.fSH)
-        loss18 = loss_fun(kh_results.SH, trueout_results.SH)
-        loss19 = loss_fun(kh_results.SP, trueout_results.SP)
-        loss20 = loss_fun(kh_results.SHP, trueout_results.SHP)
-        loss21 = loss_fun(kh_results.NuE, trueout_results.NuE)
-        loss22 = loss_fun(kh_results.NuDis, trueout_results.NuDis)
-        loss23 = loss_fun(kh_results.ESH, trueout_results.ESH)
-        loss24 = loss_fun(kh_results.Eaxis, trueout_results.Eaxis)
+        loss1 = loss_fun(kh2_results.fH2, trueout_results.fH2)
+        loss2 = loss_fun(kh2_results.nHP, trueout_results.nHP)
+        loss3 = loss_fun(kh2_results.THP, trueout_results.THP)
+        loss4 = loss_fun(kh2_results.nH2, trueout_results.nH2)
+        loss5 = loss_fun(kh2_results.GammaxH2, trueout_results.GammaxH2)
+        loss6 = loss_fun(kh2_results.VxH2, trueout_results.VxH2)
+        loss7 = loss_fun(kh2_results.pH2, trueout_results.pH2)
+        loss8 = loss_fun(kh2_results.TH2, trueout_results.TH2)
+        loss9 = loss_fun(kh2_results.qxH2, trueout_results.qxH2)
+        loss10 = loss_fun(kh2_results.qxH2_total, trueout_results.qxH2_total)
+        loss11 = loss_fun(kh2_results.Sloss, trueout_results.Sloss)
+        loss12 = loss_fun(kh2_results.QH2, trueout_results.QH2)
+        loss13 = loss_fun(kh2_results.RxH2, trueout_results.RxH2)
+        loss14 = loss_fun(kh2_results.QH2_total, trueout_results.QH2_total)
+        loss15 = loss_fun(kh2_results.AlbedoH2, trueout_results.AlbedoH2)
+        loss16 = loss_fun(kh2_results.WallH2, trueout_results.WallH2)
+        loss17 = loss_fun(kh2_results.fSH, trueout_results.fSH)
+        loss18 = loss_fun(kh2_results.SH, trueout_results.SH)
+        loss19 = loss_fun(kh2_results.SP, trueout_results.SP)
+        loss20 = loss_fun(kh2_results.SHP, trueout_results.SHP)
+        loss21 = loss_fun(kh2_results.NuE, trueout_results.NuE)
+        loss22 = loss_fun(kh2_results.NuDis, trueout_results.NuDis)
+        loss23 = loss_fun(kh2_results.ESH, trueout_results.ESH)
+        loss24 = loss_fun(kh2_results.Eaxis, trueout_results.Eaxis)
+
+        # print(kh2_results.fSH)
+        # print(trueout_fSH)
         
         loss = (loss1+loss2+loss3+loss4+loss5+loss6+loss7+loss8+loss9+loss10+loss11+loss12+loss13
                 +loss14+loss15+loss16+loss17+loss18+loss19+loss20+loss21+loss22+loss23+loss24)
+
+        # print("Loss1", loss1.item())
+        # print("Loss2", loss2.item())
+        # print("Loss3", loss3.item())
+        # print("Loss4", loss4.item())
+        # print("Loss5", loss5.item())
+        # print("Loss6", loss6.item())
+        # print("Loss7", loss7.item())
+        # print("Loss8", loss8.item())
+        # print("Loss9", loss9.item())
+        # print("Loss10", loss10.item())
+        # print("Loss11", loss11.item())
+        # print("Loss12", loss12.item())
+        # print("Loss13", loss13.item())
+        # print("Loss14", loss14.item())
+        # print("Loss15", loss15.item())
+        # print("Loss16", loss16.item())
+        # print("Loss17", loss17.item())
+        # print("Loss18", loss18.item())
+        # print("Loss19", loss19.item())
+        # print("Loss20", loss20.item())
+        # print("Loss21", loss21.item())
+        # print("Loss22", loss22.item())
+        # print("Loss23", loss23.item())
+        # print("Loss24", loss24.item())
+        # print("Loss Total", loss.item())
+        # input()
 
         # Backprop
         optimizer.zero_grad()
@@ -451,30 +482,30 @@ if __name__ == "__main__":
                             }
             
             best_pred = KH2Results(
-                                kh_results.fH2,
-                                kh_results.nHP,
-                                kh_results.THP,
-                                kh_results.nH2,
-                                kh_results.GammaxH2,
-                                kh_results.VxH2,
-                                kh_results.pH2,
-                                kh_results.TH2,
-                                kh_results.qxH2,
-                                kh_results.qxH2_total,
-                                kh_results.Sloss,
-                                kh_results.QH2,
-                                kh_results.RxH2,
-                                kh_results.QH2_total,
-                                kh_results.AlbedoH2,
-                                kh_results.WallH2,
-                                kh_results.fSH,
-                                kh_results.SH,
-                                kh_results.SP,
-                                kh_results.SHP,
-                                kh_results.NuE,
-                                kh_results.NuDis,
-                                kh_results.ESH,
-                                kh_results.Eaxis,
+                                kh2_results.fH2,
+                                kh2_results.nHP,
+                                kh2_results.THP,
+                                kh2_results.nH2,
+                                kh2_results.GammaxH2,
+                                kh2_results.VxH2,
+                                kh2_results.pH2,
+                                kh2_results.TH2,
+                                kh2_results.qxH2,
+                                kh2_results.qxH2_total,
+                                kh2_results.Sloss,
+                                kh2_results.QH2,
+                                kh2_results.RxH2,
+                                kh2_results.QH2_total,
+                                kh2_results.AlbedoH2,
+                                kh2_results.WallH2,
+                                kh2_results.fSH,
+                                kh2_results.SH,
+                                kh2_results.SP,
+                                kh2_results.SHP,
+                                kh2_results.NuE,
+                                kh2_results.NuDis,
+                                kh2_results.ESH,
+                                kh2_results.Eaxis,
                                 )
             best_epoch = epoch
 
@@ -558,30 +589,30 @@ if __name__ == "__main__":
 
     print("### Outputs Analysis ###")
 
-    analyze_difference("fH2", loss_fun, kh_results.fH2, trueout_results.fH2)
-    analyze_difference("nHP", loss_fun, kh_results.nHP, trueout_results.nHP)
-    analyze_difference("THP", loss_fun, kh_results.THP, trueout_results.THP)
-    analyze_difference("nH2", loss_fun, kh_results.nH2, trueout_results.nH2)
-    analyze_difference("GammaxH2", loss_fun, kh_results.GammaxH2, trueout_results.GammaxH2)
-    analyze_difference("VxH2", loss_fun, kh_results.VxH2, trueout_results.VxH2)
-    analyze_difference("pH2", loss_fun, kh_results.pH2, trueout_results.pH2)
-    analyze_difference("TH2", loss_fun, kh_results.TH2, trueout_results.TH2)
-    analyze_difference("qxH2", loss_fun, kh_results.qxH2, trueout_results.qxH2)
-    analyze_difference("qxH2_total", loss_fun, kh_results.qxH2_total, trueout_results.qxH2_total)
-    analyze_difference("Sloss", loss_fun, kh_results.Sloss, trueout_results.Sloss)
-    analyze_difference("QH2", loss_fun, kh_results.QH2, trueout_results.QH2)
-    analyze_difference("RxH2", loss_fun, kh_results.RxH2, trueout_results.RxH2)
-    analyze_difference("QH2_total", loss_fun, kh_results.QH2_total, trueout_results.QH2_total)
-    analyze_difference("AlbedoH2", loss_fun, kh_results.AlbedoH2, trueout_results.AlbedoH2)
-    analyze_difference("WallH2", loss_fun, kh_results.WallH2, trueout_results.WallH2)
-    analyze_difference("fSH", loss_fun, kh_results.fSH, trueout_results.fSH)
-    analyze_difference("SH", loss_fun, kh_results.SH, trueout_results.SH)
-    analyze_difference("SP", loss_fun, kh_results.SP, trueout_results.SP)
-    analyze_difference("SHP", loss_fun, kh_results.SHP, trueout_results.SHP)
-    analyze_difference("NuE", loss_fun, kh_results.NuE, trueout_results.NuE)
-    analyze_difference("NuDis", loss_fun, kh_results.NuDis, trueout_results.NuDis)
-    analyze_difference("ESH", loss_fun, kh_results.ESH, trueout_results.ESH)
-    analyze_difference("Eaxis", loss_fun, kh_results.Eaxis, trueout_results.Eaxis)
+    analyze_difference("fH2", loss_fun, kh2_results.fH2, trueout_results.fH2)
+    analyze_difference("nHP", loss_fun, kh2_results.nHP, trueout_results.nHP)
+    analyze_difference("THP", loss_fun, kh2_results.THP, trueout_results.THP)
+    analyze_difference("nH2", loss_fun, kh2_results.nH2, trueout_results.nH2)
+    analyze_difference("GammaxH2", loss_fun, kh2_results.GammaxH2, trueout_results.GammaxH2)
+    analyze_difference("VxH2", loss_fun, kh2_results.VxH2, trueout_results.VxH2)
+    analyze_difference("pH2", loss_fun, kh2_results.pH2, trueout_results.pH2)
+    analyze_difference("TH2", loss_fun, kh2_results.TH2, trueout_results.TH2)
+    analyze_difference("qxH2", loss_fun, kh2_results.qxH2, trueout_results.qxH2)
+    analyze_difference("qxH2_total", loss_fun, kh2_results.qxH2_total, trueout_results.qxH2_total)
+    analyze_difference("Sloss", loss_fun, kh2_results.Sloss, trueout_results.Sloss)
+    analyze_difference("QH2", loss_fun, kh2_results.QH2, trueout_results.QH2)
+    analyze_difference("RxH2", loss_fun, kh2_results.RxH2, trueout_results.RxH2)
+    analyze_difference("QH2_total", loss_fun, kh2_results.QH2_total, trueout_results.QH2_total)
+    analyze_difference("AlbedoH2", loss_fun, kh2_results.AlbedoH2, trueout_results.AlbedoH2)
+    analyze_difference("WallH2", loss_fun, kh2_results.WallH2, trueout_results.WallH2)
+    analyze_difference("fSH", loss_fun, kh2_results.fSH, trueout_results.fSH)
+    analyze_difference("SH", loss_fun, kh2_results.SH, trueout_results.SH)
+    analyze_difference("SP", loss_fun, kh2_results.SP, trueout_results.SP)
+    analyze_difference("SHP", loss_fun, kh2_results.SHP, trueout_results.SHP)
+    analyze_difference("NuE", loss_fun, kh2_results.NuE, trueout_results.NuE)
+    analyze_difference("NuDis", loss_fun, kh2_results.NuDis, trueout_results.NuDis)
+    analyze_difference("ESH", loss_fun, kh2_results.ESH, trueout_results.ESH)
+    analyze_difference("Eaxis", loss_fun, kh2_results.Eaxis, trueout_results.Eaxis)
 
     # --- Plot Generation --- 
 

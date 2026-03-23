@@ -925,7 +925,7 @@ class KineticH():
         # Atomic hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.ErelH_P = (0.5*CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2)) / CONST.Q
         # sigmav_cx does not handle neutral energies below 0.1 eV or above above 20 keV
-        self.Internal.ErelH_P = torch.clamp(self.Internal.ErelH_P, 0.1, 2.0e4)
+        self.Internal.ErelH_P = dclamp(self.Internal.ErelH_P, 0.1, 2.0e4)
 
         return
 

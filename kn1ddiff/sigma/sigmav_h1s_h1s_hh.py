@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ..utils import poly
-from ..torch_utils import poly_torch
+from ..torch_utils import poly_torch, dclamp
 
 def sigmav_h1s_h1s_hh(Te: torch.Tensor):
     '''
@@ -38,7 +38,8 @@ def sigmav_h1s_h1s_hh(Te: torch.Tensor):
                 dtype=Te.dtype, device=Te.device)
     
     # Ensure 0.1 < Te < 2.01e4
-    Te = torch.clamp(Te, 0.1, 2.01e4)
+    # Te = torch.clamp(Te, 0.1, 2.01e4)
+    Te = dclamp(Te, 0.1, 2.01e4)
 
     result = torch.exp(poly_torch(torch.log(Te), b))*1e-6
     return result 

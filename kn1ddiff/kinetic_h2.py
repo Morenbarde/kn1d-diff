@@ -745,7 +745,7 @@ class KineticH2():
             self._debrief_msg('Computing Omega_H2_H', 1)
 
             DeltaVx = (VxH2 - self.H_Moments.VxH) / self.vth
-            DeltaVx = DeltaVx.sign() * torch.clamp(DeltaVx.abs(), min=self.DeltaVx_tol)
+            DeltaVx = DeltaVx.sign() * dclamp(DeltaVx.abs(), min=self.DeltaVx_tol)
             Omega_H2_H = torch.einsum('i,ijk,ijk,j->k', dvr_vol, self.Internal.Alpha_H2_H, fH2, dvx) / (nH2*DeltaVx + epsilon)
             Omega_H2_H = dclamp(Omega_H2_H, min=0)
 
@@ -1017,7 +1017,7 @@ class KineticH2():
             #	   is not included and assumed to be small)
             T_denom = Tfc_3d + 0.5 * (_THP if reaction > 6 else _TH2)
             arg = -(magV - Vfc_3d + 1.5 * Tfc_3d / Vfc_3d)**2 / T_denom
-            sfc_slice = torch.exp(torch.clamp(arg, min=-80))
+            sfc_slice = torch.exp(dclamp(arg, min=-80))
 
             # Normalize across k
             norms = torch.einsum('ijk,i,j->k', sfc_slice, self.dvr_vol, self.dvx)
@@ -1128,7 +1128,7 @@ class KineticH2():
         kk = torch.argwhere((Ee > 26.0) & (Ee <= 41.6))
         if kk.numel() > 0:
             Eave[kk,ii] = 0.5*(Ee[kk] - 26)
-            Eave[kk,ii] = torch.clamp(Eave[kk, ii], min=0.25)
+            Eave[kk,ii] = dclamp(Eave[kk, ii], min=0.25)
         kk = torch.argwhere(Ee > 41.6)
         if kk.numel() > 0:
             Eave[kk,ii] = 7.8
@@ -1178,9 +1178,9 @@ class KineticH2():
 
         truncate_point = np.minimum(Ee.numel(), En.numel())
         EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/torch.sum(R10rel)
-        EHn = torch.clamp(EHn, min=0)
+        EHn = dclamp(EHn, min=0)
 
-        Eave[:,ii] = torch.clamp(torch.sum(EHn), min=0.25)
+        Eave[:,ii] = dclamp(torch.sum(EHn), min=0.25)
         Emax[:,ii] = 1.5*Eave[:,ii] # Note the max/min values here are a guess
         Emin[:,ii] = 0.5*Eave[:,ii] # Note the max/min values here are a guess
 
@@ -1251,7 +1251,7 @@ class KineticH2():
         # Molecular hydrogen ion energy in local rest frame of plasma at each mesh point
         self.Internal.EH2_P = CONST.H_MASS*self.Internal.vr2vx_vxi2*(self.vth**2) / CONST.Q
         # sigmav_cx does not handle neutral energies below 0.1 eV or above 20 keV
-        self.Internal.EH2_P = torch.clamp(self.Internal.EH2_P, 0.1, 2.0e4)
+        self.Internal.EH2_P = dclamp(self.Internal.EH2_P, 0.1, 2.0e4)
 
         # Compute Maxwellian H2 distribution at the wall temperature (fw_hat)
         if (torch.sum(SH2_initial) > 0) | (torch.sum(self.mesh.PipeDia) > 0):
@@ -1301,8 +1301,8 @@ class KineticH2():
             fctr_table[:,0] = torch.tensor([2.2, 2.2, 2.1, 1.9, 1.2,  1.1,  1.05], dtype=self.dtype, device=self.device) / 5.3
             fctr_table[:,1] = torch.tensor([5.1, 5.1, 4.3, 3.1, 1.5,  1.25, 1.25], dtype=self.dtype, device=self.device) / 10.05
             fctr_table[:,2] = torch.tensor([1.3, 1.3, 1.1, 0.8, 0.38, 0.24, 0.22], dtype=self.dtype, device=self.device) / 2.1
-            _Te = torch.clamp(self.mesh.Te, 5., 100.)
-            _n  = torch.clamp(self.mesh.ne, 1e14, 1e22)
+            _Te = dclamp(self.mesh.Te, 5., 100.)
+            _n  = dclamp(self.mesh.ne, 1e14, 1e22)
             fctr = path_interp_2d_torch(fctr_table, Ne_table, Te_table, torch.log(_n), torch.log(_Te))
             sigv_r2 = (1.0 + fctr)*sigv_r2
         sigv[:,2] = sigv_r2
@@ -1614,7 +1614,7 @@ class KineticH2():
         ni = self.mesh.ne
         if self.ni_correct:
             # ni = np.maximum((self.mesh.ne-nHP), 0)
-            ni = torch.clamp((self.mesh.ne-nHP), min=0)
+            ni = dclamp((self.mesh.ne-nHP), min=0)
 
         Work = torch_reshape_fortran((self.Internal.fi_hat*ni[None,None,:]), (self.nvr*self.nvx, self.nx))
         self.Internal.Alpha_H2_P = torch_reshape_fortran((self.Internal.SIG_H2_P @ Work), (self.nvr,self.nvx,self.nx))

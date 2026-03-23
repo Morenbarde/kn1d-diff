@@ -3,7 +3,7 @@ import torch
 
 from .make_dvr_dvx import VSpace_Differentials
 from .common import constants as CONST
-from .torch_utils import numpy_to_torch
+from .torch_utils import numpy_to_torch, dclamp
 
 def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energy, nb = 1, assume_pos = True):
     '''
@@ -280,7 +280,7 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
             continue
 
         arg = -((vr[:, None]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
-        arg = torch.clamp(arg, min=-80.0, max=0.0)
+        arg = dclamp(arg, min=-80.0, max=0.0)
         f = torch.exp(arg)
 
         f = f / torch.nansum(dvr_vol*(f @ dvx))
