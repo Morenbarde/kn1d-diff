@@ -7,6 +7,7 @@ import os
 from numpy.typing import NDArray
 import numpy as np
 import torch
+from .torch_utils import numpy_to_torch
 from scipy import interpolate
 from scipy.io import readsav
 import netCDF4 as nc
@@ -120,12 +121,12 @@ def bs2dr(x, y, kx_ord, ky_ord, xknot, yknot, bscoef):
     IDL bs2dr translation equivalent
     '''
     result = interpolate._dfitpack.bispeu(
-                yknot, xknot, 
-                bscoef,
+                np.asarray(yknot), np.asarray(xknot), 
+                np.asarray(bscoef),
                 kx_ord-1, ky_ord-1,
-                y, x
+                np.asarray(y), np.asarray(x)
             )[0]
-    return result
+    return numpy_to_torch(result, dtype=x.dtype, device=x.device)
 
 
 # --- Table Searching ---
@@ -183,21 +184,23 @@ def reverse(a, subscript=1):
         initially assume at least 1 dimension
     '''
 
-    ndims = 1
-    b = a
+    return torch.flip(a, dims=[subscript-1])
 
-    #if the 1st variable is also a list then a dimension is added, recurring until no longer true
-    while type(b[0]) == list:
-        ndims += 1
-        if len(b) == 0:
-            break
-        b = b[0]
-    if subscript > ndims:
-        raise Exception('Subscript_index must be less than or equal to number of dimensions.')
-    if subscript == 1: #unique case where it is reversing the 1st dim
-        a = a[::-1]
-        return a
-    return rev_rec(a, subscript, 1)
+    # ndims = 1
+    # b = a
+
+    # #if the 1st variable is also a list then a dimension is added, recurring until no longer true
+    # while type(b[0]) == list:
+    #     ndims += 1
+    #     if len(b) == 0:
+    #         break
+    #     b = b[0]
+    # if subscript > ndims:
+    #     raise Exception('Subscript_index must be less than or equal to number of dimensions.')
+    # if subscript == 1: #unique case where it is reversing the 1st dim
+    #     a = a[::-1]
+    #     return a
+    # return rev_rec(a, subscript, 1)
     
 def rev_rec(a, subscript, dim_tracker):
     ''' Recursive function that iterates over everything in a, and reverses everything in the specified dim '''

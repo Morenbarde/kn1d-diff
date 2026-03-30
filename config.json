@@ -1,5 +1,6 @@
 {
     "iteration_count" : 2,
+    "compensation_iterations" : 10,
 
     "kinetic_h": {
         "mesh_size" : 10,

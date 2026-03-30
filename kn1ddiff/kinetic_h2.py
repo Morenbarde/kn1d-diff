@@ -284,7 +284,6 @@ class KineticH2():
 
         return
 
-
     def run_procedure(self, fH: NDArray = None, SH2: NDArray = None, fH2: NDArray = None, nHP: NDArray = None, THP: NDArray = None) -> KH2Results:
         '''
         Solves a 1-D spatial, 2-D velocity kinetic neutral transport 
@@ -1174,7 +1173,7 @@ class KineticH2():
             torch.tensor([0.1, 0.45, 0.22, 0.12, 0.069], dtype=self.dtype, device=self.device),
             10 / (k**3)
         ])
-        En = 13.58/((2 + torch.arange(9))**2) # Energy of Levels
+        En = 13.58/((2 + torch.arange(9, dtype=self.dtype, device=self.device))**2) # Energy of Levels
 
         truncate_point = np.minimum(Ee.numel(), En.numel())
         EHn = 0.5*(Ee[:truncate_point] - En[:truncate_point])*R10rel/torch.sum(R10rel)

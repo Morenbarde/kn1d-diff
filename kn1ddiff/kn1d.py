@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from scipy import interpolate
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ import os
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d, get_config
+from .torch_utils import torch_interp1d
 from .interp_fvrvxx import interp_fvrvxx
 from .johnson_hinnov import Johnson_Hinnov
 from .kinetic_mesh import KineticMesh
@@ -153,7 +155,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- Generate Meshes ---
 
     # Determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
-    Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
+    # Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
+    Eneut = torch.tensor([0.003,0.01,0.03,0.1,0.3,1.0,3.0], dtype=x.dtype, device=x.device)
     fctr = 0.3
     if GaugeH2 > 15.0:
         fctr = fctr*15 / GaugeH2
@@ -166,7 +169,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         fctr = fctr * 30 / GaugeH2
 
     # Generates Johnson_Hinnov class, Used in place of IDL version's JH_Coef Common block
-    jh = Johnson_Hinnov()
+    jh = Johnson_Hinnov(dtype=x.dtype, device=x.device)
 
     kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh=jh, fctr=fctr)
 
@@ -174,33 +177,36 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- Initialize variables ---
     
     # Initialize fH and fH2
+
+    nxH, nvrH, nvxH = kh_mesh.x.numel(), kh_mesh.vr.numel(), kh_mesh.vx.numel()
+    nxH2, nvrH2, nvxH2 = kh2_mesh.x.numel(), kh2_mesh.vr.numel(), kh2_mesh.vx.numel()
     
-    fH = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size,kh_mesh.x.size))
-    fH2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size,kh2_mesh.x.size))
-    nH2 = np.zeros(kh2_mesh.x.size)
-    nHP = np.zeros(kh2_mesh.x.size)
-    THP = np.zeros(kh2_mesh.x.size)
+    fH = torch.zeros((nvrH,nvxH,nxH), dtype=x.dtype, device=x.device)
+    fH2 = torch.zeros((nvrH2,nvxH2,nxH2), dtype=x.dtype, device=x.device)
+    nH2 = torch.zeros(nxH2, dtype=x.dtype, device=x.device)
+    nHP = torch.zeros(nxH2, dtype=x.dtype, device=x.device)
+    THP = torch.zeros(nxH2, dtype=x.dtype, device=x.device)
         
     # Directed random velocity of diatomic molecule
-    v0_bar = np.sqrt((8.0*CONST.TWALL*CONST.Q) / (np.pi*2*mu*CONST.H_MASS))
+    v0_bar = torch.sqrt((8.0*CONST.TWALL*CONST.Q) / (torch.pi*2*mu*CONST.H_MASS))
     # Set up molecular flux BC from inputted neutral pressure
-    ipM = np.where(kh2_mesh.vx > 0)
+    ipM = torch.where(kh2_mesh.vx > 0)[0]
 
     # Convert pressure (mtorr) to molecular density and flux
-    fh2BC = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size), float)
+    fh2BC = torch.zeros((nvrH2,nvxH2), dtype=x.dtype, device=x.device)
     DensM = 3.537e19*GaugeH2
     GammaxH2BC = 0.25*DensM*v0_bar
-    Tmaxwell = np.array([CONST.TWALL])
-    vx_shift = np.array([0.0])
+    Tmaxwell = torch.tensor([CONST.TWALL], dtype=x.dtype, device=x.device)
+    vx_shift = torch.tensor([0.0], dtype=x.dtype, device=x.device)
     Maxwell = create_shifted_maxwellian(kh2_mesh.vr, kh2_mesh.vx, Tmaxwell, vx_shift, mu, 2, kh2_mesh.Tnorm)
     fh2BC[:,ipM] = Maxwell[:,ipM,0]
 
     # Compute NuLoss (Cs/LC)
-    Cs_LC = np.zeros(LC.size)
-    for ii in range(LC.size):
+    Cs_LC = torch.zeros(LC.numel(), dtype=x.dtype, device=x.device)
+    for ii in range(LC.numel()):
         if LC[ii] > 0:
             Cs_LC[ii] = np.sqrt(CONST.Q*(Ti[ii] + Te[ii]) / (mu*CONST.H_MASS)) / LC[ii]
-    NuLoss = interp_1d(x, Cs_LC, kh2_mesh.x)
+    NuLoss = torch_interp1d(kh2_mesh.x, x, Cs_LC)
     
 
     #  Compute first guess SpH2
@@ -217,9 +223,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     #	Integral{SpH2}dx =  (2/3) GammaxH2BC = beta Integral{n Cs/LC}dx
     #______________________________________________________________________________________________________________
 
-    SpH2_hat = interp_1d(x, n*Cs_LC, kh2_mesh.x, fill_value="extrapolate")
+    SpH2_hat = torch_interp1d(kh2_mesh.x, x, n*Cs_LC)
 
-    SpH2_hat /= np.trapezoid(SpH2_hat, kh2_mesh.x)
+    SpH2_hat /= torch.trapezoid(SpH2_hat, kh2_mesh.x)
     beta = (2/3)*GammaxH2BC
     SpH2 = beta*SpH2_hat
     SH2 = SpH2
@@ -227,52 +233,51 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     #   Interpolate for vxiM and vxiA
 
-    interpfunc = interpolate.interp1d(x, vxi, fill_value="extrapolate")
-    vxiM = interpfunc(kh2_mesh.x)
-    vxiA = interpfunc(kh_mesh.x)
+    vxiM = torch_interp1d(kh2_mesh.x, x, vxi)
+    vxiA = torch_interp1d(kh_mesh.x, x, vxi)
 
 
     # Compute mesh differentials
 
-    vthM = np.sqrt(2*CONST.Q*kh2_mesh.Tnorm/(mu*CONST.H_MASS))
-    kh2_differentials = VSpace_Differentials(kh2_mesh.vr, kh2_mesh.vx)
+    # vthM = np.sqrt(2*CONST.Q*kh2_mesh.Tnorm/(mu*CONST.H_MASS))
+    # kh2_differentials = VSpace_Differentials(kh2_mesh.vr, kh2_mesh.vx)
 
     #NOTE Used in gammalim calculation, will be needed later
-    vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
-    kh_differentials = VSpace_Differentials(kh_mesh.vr, kh_mesh.vx)
+    # vthA = np.sqrt(2*CONST.Q*kh_mesh.Tnorm/(mu*CONST.H_MASS))
+    # kh_differentials = VSpace_Differentials(kh_mesh.vr, kh_mesh.vx)
 
     #  Test for v0_bar consistency in the numerics by computing it from a half maxwellian at the wall temperature
 
-    nbarHMax = np.sum(kh2_differentials.dvr_vol*(fh2BC @ kh2_differentials.dvx))
-    vbarM = 2*vthM*np.sum(kh2_differentials.dvr_vol*((fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx))))/nbarHMax
-    vbarM_error = abs(vbarM - v0_bar)/max(vbarM, v0_bar)
+    # nbarHMax = torch.sum(kh2_differentials.dvr_vol*(fh2BC @ kh2_differentials.dvx))
+    # vbarM = 2*vthM*torch.sum(kh2_differentials.dvr_vol*((fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx))))/nbarHMax
+    # vbarM_error = torch.abs(vbarM - v0_bar)/torch.max(vbarM, v0_bar)
 
-    vr2vx2_ran2 = np.zeros((kh2_mesh.vr.size,kh2_mesh.vx.size))
+    # vr2vx2_ran2 = torch.zeros((nvrH2,nvxH2), dtype=x.dtype, device=x.device)
 
-    mwell = Maxwell[:,:,0]
+    # mwell = Maxwell[:,:,0]
 
-    nbarMax = np.sum(kh2_differentials.dvr_vol*(mwell @ kh2_differentials.dvx))
-    UxMax = vthM*np.sum(kh2_differentials.dvr_vol*(mwell @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarMax
+    # nbarMax = torch.sum(kh2_differentials.dvr_vol*(mwell @ kh2_differentials.dvx))
+    # UxMax = vthM*torch.sum(kh2_differentials.dvr_vol*(mwell @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarMax
 
-    for i in range(kh2_mesh.vr.size):
-        vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
-    TMax = 2*mu*CONST.H_MASS*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*mwell) @ kh2_differentials.dvx))/(3*CONST.Q*nbarMax)
+    # for i in range(nvrH2):
+    #     vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxMax/vthM)**2
+    # TMax = 2*mu*CONST.H_MASS*(vthM**2)*torch.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*mwell) @ kh2_differentials.dvx))/(3*CONST.Q*nbarMax)
 
-    UxHMax = vthM*np.sum(kh2_differentials.dvr_vol*(fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarHMax
-    for i in range(kh2_mesh.vr.size):
-        vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
-    THMax = (2*mu*CONST.H_MASS)*(vthM**2)*np.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*fh2BC) @ kh2_differentials.dvx))/(3*CONST.Q*nbarHMax)
+    # UxHMax = vthM*torch.sum(kh2_differentials.dvr_vol*(fh2BC @ (kh2_mesh.vx*kh2_differentials.dvx)))/nbarHMax
+    # for i in range(nvrH2):
+    #     vr2vx2_ran2[i,:] = kh2_mesh.vr[i]**2 + (kh2_mesh.vx - UxHMax/vthM)**2
+    # THMax = (2*mu*CONST.H_MASS)*(vthM**2)*torch.sum(kh2_differentials.dvr_vol*((vr2vx2_ran2*fh2BC) @ kh2_differentials.dvx))/(3*CONST.Q*nbarHMax)
 
-    if compute_errors and debrief:
-        print(prompt+'VbarM_error: '+sval(vbarM_error))
-        print(prompt+'TWall Maxwellian: '+sval(TMax))
-        print(prompt+'TWall Half Maxwellian: '+sval(THMax))
+    # if compute_errors and debrief:
+    #     print(prompt+'VbarM_error: '+sval(vbarM_error))
+    #     print(prompt+'TWall Maxwellian: '+sval(TMax))
+    #     print(prompt+'TWall Half Maxwellian: '+sval(THMax))
 
 
     # --- Setup Procedure Classes ---
 
     GammaxHBC = 0
-    fHBC = np.zeros((kh_mesh.vr.size,kh_mesh.vx.size))
+    fHBC = torch.zeros((nvrH,nvxH), dtype=x.dtype, device=x.device)
     kinetic_h = KineticH(kh_mesh, mu, vxiA, fHBC, GammaxHBC, jh=jh,
                          ni_correct=True, truncate=truncate, max_gen=max_gen, 
                          compute_errors=compute_errors, debrief=Hdebrief, debug=Hdebug)
@@ -288,8 +293,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
 
     iter = 0
-    EH_hist = np.array([0.0])
-    SI_hist = np.array([0.0])
+    # EH_hist = torch.tensor([0.0], dtype=x.dtype, device=x.device)
+    # SI_hist = torch.tensor([0.0], dtype=x.dtype, device=x.device)
     # while True:
     for _ in range(settings["iteration_count"]):
         # Iterates through solving fh and fh2 until they satisfy boltzmans equation
@@ -299,11 +304,11 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
             print(prompt+'fH/fH2 Iteration: '+sval(iter))
         nH2_saved = nH2
 
-        # interpolate fH data onto H2 mesh: fH -> fHM
-        do_warn = 5e-3
-        fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug)
-
-
+        with torch.no_grad():
+            # interpolate fH data onto H2 mesh: fH -> fHM
+            do_warn = 5e-3
+            fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug)
+        
         # --- Run kinetic_h2 ---
 
         kh2_results = kinetic_h2.run_procedure(fHM, SH2, fH2, nHP, THP)
@@ -314,13 +319,16 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         nH2 = kh2_results.nH2
 
 
-        # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
-        do_warn = 5.0E-3
-        fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) 
-        fSHA = interp_fvrvxx(kh2_results.fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
+        with torch.no_grad():
+            # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
+            do_warn = 5.0E-3
+            fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug)
+            fSHA = interp_fvrvxx(kh2_results.fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
 
-        nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
-        THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
+        # nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
+        # THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
+        nHPA = torch_interp1d(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
+        THPA = torch_interp1d(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)
 
 
         # --- Run kinetic_h ---
@@ -331,15 +339,16 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
 
         # Interpolate SideWallH data onto H2 mesh: SideWallH -> SideWallHM
-        SideWallHM = np.interp(kh2_mesh.x, kh_mesh.x, kh_results.SideWallH, left=0, right=0)
+        # SideWallHM = np.interp(kh2_mesh.x, kh_mesh.x, kh_results.SideWallH, left=0, right=0)
+        SideWallHM = torch_interp1d(kh2_mesh.x, kh_mesh.x, kh_results.SideWallH, left=0, right=0)
 
         # Adjust SpH2 to achieve net zero hydrogen atom/molecule flux from wall
         # (See notes "Procedure to adjust the normalization of the molecular source at the 
         # limiters (SpH2) to attain a net zero atom/molecule flux from wall")
 
         # Compute SI, GammaH2Wall_minus, and GammaHWall_minus
-        SI = np.trapezoid(SpH2, kh2_mesh.x)
-        SwallI = np.trapezoid(0.5*SideWallHM, kh2_mesh.x)
+        SI = torch.trapezoid(SpH2, kh2_mesh.x)
+        SwallI = torch.trapezoid(0.5*SideWallHM, kh2_mesh.x)
         GammaH2Wall_minus = kh2_results.AlbedoH2*GammaxH2BC
         GammaHWall_minus = -kh_results.GammaxH[0]
 
@@ -362,22 +371,22 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
         # Rescale SpH2 to have new integral value, SI
         SpH2 = SI*SpH2_hat
-        EH_hist = np.append(EH_hist, EH)
-        SI_hist = np.append(SI_hist, SI)
+        # EH_hist = torch.cat((EH_hist, EH))
+        # SI_hist = torch.cat((SI_hist, SI))
 
         # Set total H2 source
         SH2 = SpH2 + 0.5*SideWallHM
 
-        if compute_errors:
-            _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, kinetic_h2.Output.RxH_H2, left=0, right=0)
-            DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
-            nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
-            if debrief:
-                print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
+        # if compute_errors:
+        #     _RxH_H2 = np.interp(kh_mesh.x, kh2_mesh.x, kinetic_h2.Output.RxH_H2, left=0, right=0)
+        #     DRx = _RxH_H2 + kinetic_h.Output.RxH2_H
+        #     nDRx = np.max(np.abs(DRx)) / np.max(np.abs(np.array([_RxH_H2, kinetic_h.Output.RxH2_H])))
+        #     if debrief:
+        #         print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
                 
         
-        Delta_nH2 = np.abs(kh2_results.nH2 - nH2_saved)
-        nDelta_nH2 = np.max(Delta_nH2/np.max(kh2_results.nH2))
+        Delta_nH2 = torch.abs(kh2_results.nH2 - nH2_saved)
+        nDelta_nH2 = torch.max(Delta_nH2/torch.max(kh2_results.nH2))
         if debrief: 
             print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
 
@@ -388,9 +397,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # --- End Iteration ---
 
     #NOTE Add gammaHLim
-    gamma_h2 = np.interp(kh_mesh.x, kh2_mesh.x, kh2_results.GammaxH2)
+    gamma_h2 = torch_interp1d(kh_mesh.x, kh2_mesh.x, kh2_results.GammaxH2)
     gam = 2*gamma_h2 + kh_results.GammaxH
-    GammaHLim = interp_1d(kh_mesh.x, gam, xlimiter)
+    GammaHLim = torch_interp1d(xlimiter, kh_mesh.x, gam)
 
 
     
@@ -398,15 +407,15 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     Lyman = jh.lyman_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
     Balmer = jh.balmer_alpha(kh_mesh.ne, kh_mesh.Te, kh_results.nH, no_null=1)
-    # Lyman = lyman_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
-    # Balmer = balmer_alpha(kh_mesh.ne, kh_mesh.Te, nH, jh_coefficients, no_null = 1) #NOTE Not Working Yet
+    # Lyman = [0]*kh_mesh.x.numel()
+    # Balmer = [0]*kh_mesh.x.numel()
 
 
     # --- Store Results ---
 
     # Store Outputs
     output_dir = 'Results/'
-    output_file = 'output'
+    output_file = 'torch_output'
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     output_path = output_dir+output_file

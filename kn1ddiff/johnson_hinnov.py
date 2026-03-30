@@ -1,9 +1,12 @@
 import os
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from scipy import interpolate
 
 from .utils import get_local_directory, bs2dr
+
+from .torch_utils import torch_to_numpy, numpy_to_torch, bs2dr_diff
 
 class Johnson_Hinnov():
     '''
@@ -38,7 +41,7 @@ class Johnson_Hinnov():
         Coefficients from J. Terry's idl code JH_RATES.PRO
     '''
 
-    def __init__(self, create: bool=False):
+    def __init__(self, dtype=torch.float64, device="cpu", create: bool=False):
         '''
         Initializes the Johnson-Hinov Coefficients
 
@@ -56,14 +59,17 @@ class Johnson_Hinnov():
         
         jh_data = np.load(path+"/jh_bscoef.npz")
 
-        self.dknot = jh_data['dknot']
-        self.tknot = jh_data['tknot']
-        self.order = jh_data['order']
-        self.logr_bscoef = jh_data['logr_bscoef']
-        self.logs_bscoef = jh_data['logs_bscoef']
-        self.logalpha_bscoef = jh_data['logalpha_bscoef']
-        self.a_lyman = jh_data['a_lyman']
-        self.a_balmer = jh_data['a_balmer']
+        def to_tensor(arr, dtype=torch.float64, device="cpu"):
+            return torch.tensor(np.asarray(arr, dtype=np.float64), dtype=dtype, device=device)
+
+        self.dknot = to_tensor(jh_data['dknot'], dtype=dtype, device=device)
+        self.tknot = to_tensor(jh_data['tknot'], dtype=dtype, device=device)
+        self.order = int(jh_data['order'])
+        self.logr_bscoef = to_tensor(jh_data['logr_bscoef'], dtype=dtype, device=device)
+        self.logs_bscoef = to_tensor(jh_data['logs_bscoef'], dtype=dtype, device=device)
+        self.logalpha_bscoef = to_tensor(jh_data['logalpha_bscoef'], dtype=dtype, device=device)
+        self.a_lyman = to_tensor(jh_data['a_lyman'], dtype=dtype, device=device)
+        self.a_balmer = to_tensor(jh_data['a_balmer'], dtype=dtype, device=device)
 
 
     def jhr_coef(self, Density: NDArray, Te: NDArray, Ion: int, p: int, no_null: bool=False) -> NDArray:
@@ -87,32 +93,32 @@ class Johnson_Hinnov():
                 data range values.
         '''
         
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of elements of Density and Te are different!')
-        if not np.isscalar(Ion):
-            raise Exception('"Ion" must be a scalar')
-        if Ion < 0 or Ion > 1:
-            raise Exception('"Ion" must 0 or 1')
-        if not np.isscalar(p):
-            raise Exception('"p" must be a scalar')
-        if not (1 < p < 7):
-            raise Exception('"p" must in range 1 < p < 7')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of elements of Density and Te are different!')
+        # if not np.isscalar(Ion):
+        #     raise Exception('"Ion" must be a scalar')
+        # if Ion < 0 or Ion > 1:
+        #     raise Exception('"Ion" must 0 or 1')
+        # if not np.isscalar(p):
+        #     raise Exception('"p" must be a scalar')
+        # if not (1 < p < 7):
+        #     raise Exception('"p" must in range 1 < p < 7')
         
-        result = np.full_like(Density, 1.0e32)
-        LDensity = np.log(Density)
-        LTe = np.log(Te)
+        result = torch.full_like(Density, 1.0e32)
+        LDensity = torch.log(Density)
+        LTe = torch.log(Te)
 
         if no_null:
-            LDensity = np.clip(LDensity, np.min(self.dknot), np.max(self.dknot))
-            LTe = np.clip(LTe, np.min(self.tknot), np.max(self.tknot))
-            ok = np.arange(LDensity.size)
+            LDensity = torch.clamp(LDensity, torch.min(self.dknot), torch.max(self.dknot))
+            LTe = torch.clamp(LTe, torch.min(self.tknot), torch.max(self.tknot))
+            ok = torch.arange(LDensity.numel(), dtype=torch.long, device=Te.device)
         else: # NOTE Not Tested, Might not be needed?
             for i in range(0, len(Density)):
                 if min(self.dknot) <= LDensity[i] <= max(self.dknot) and min(self.tknot) <= LTe[i] <= max(self.tknot):
                     ok = np.append(ok, i)
 
-        if ok.size > 0:
-            result[ok] = np.exp(bs2dr(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logr_bscoef.T[:,Ion,p-2]))
+        if ok.numel() > 0:
+            result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logr_bscoef.T[:,Ion,p-2]))
 
         return result 
     
@@ -133,24 +139,24 @@ class Johnson_Hinnov():
                 data range values.
         '''
 
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of elements of Density and Te are different!')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of elements of Density and Te are different!')
         
-        result = np.full_like(Density, 1.0e32)
-        LDensity = np.log(Density)
-        LTe = np.log(Te)
+        result = torch.full_like(Density, 1.0e32)
+        LDensity = torch.log(Density)
+        LTe = torch.log(Te)
 
         if no_null:
-            LDensity = np.clip(LDensity, np.min(self.dknot), np.max(self.dknot))
-            LTe = np.clip(LTe, np.min(self.tknot), np.max(self.tknot))
-            ok = np.arange(LDensity.size)
+            LDensity = torch.clamp(LDensity, torch.min(self.dknot), torch.max(self.dknot))
+            LTe = torch.clamp(LTe, torch.min(self.tknot), torch.max(self.tknot))
+            ok = torch.arange(LDensity.numel(), dtype=torch.long, device=Te.device)
         else: # NOTE Not Tested, Might not be needed?
             for i in range(0, len(Density)):
                 if min(self.dknot) <= LDensity[i] <= max(self.dknot) and min(self.tknot) <= LTe[i] <= max(self.tknot):
                     ok = np.append(ok, i)
 
         if ok.size > 0: 
-            result[ok] = np.exp(bs2dr(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logs_bscoef))
+            result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logs_bscoef))
 
         return result
     
@@ -171,24 +177,24 @@ class Johnson_Hinnov():
                 data range values.
         '''
 
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of elements of Density and Te are different!')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of elements of Density and Te are different!')
         
-        result = np.full_like(Density, 1.0e32)
-        LDensity = np.log(Density)
-        LTe = np.log(Te)
+        result = torch.full_like(Density, 1.0e32)
+        LDensity = torch.log(Density)
+        LTe = torch.log(Te)
 
         if no_null:
-            LDensity = np.clip(LDensity, np.min(self.dknot), np.max(self.dknot))
-            LTe = np.clip(LTe, np.min(self.tknot), np.max(self.tknot))
-            ok = np.arange(LDensity.size)
+            LDensity = torch.clamp(LDensity, torch.min(self.dknot), torch.max(self.dknot))
+            LTe = torch.clamp(LTe, torch.min(self.tknot), torch.max(self.tknot))
+            ok = torch.arange(LDensity.numel(), dtype=torch.long, device=Te.device)
         else: # NOTE Not Tested, Might not be needed?
             for i in range(0, len(Density)):
                 if min(self.dknot) <= LDensity[i] <= max(self.dknot) and min(self.tknot) <= LTe[i] <= max(self.tknot):
                     ok = np.append(ok, i)
 
         if ok.size > 0: 
-            result[ok] = np.exp(bs2dr(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logalpha_bscoef))
+            result[ok] = np.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logalpha_bscoef))
 
         return result
     
@@ -207,15 +213,15 @@ class Johnson_Hinnov():
             p : int, hydrogen energy level, p=1 is ground state
         '''
 
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of Elements of Density and Te are different!')
-        if not np.isscalar(p):
-            raise Exception('"p" must be a scalar')
-        if p < 0:
-            raise Exception('“p” must greater than 0')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of Elements of Density and Te are different!')
+        # if not np.isscalar(p):
+        #     raise Exception('"p" must be a scalar')
+        # if p < 0:
+        #     raise Exception('“p” must greater than 0')
         
-        result = np.full_like(Density, 1.0e32)
-        ok = np.where((0.0 < Density) & (Density < 1.0e32) & (0.0 < Te) & (Te < 1.0e32))[0]
+        result = torch.full_like(Density, 1.0e32)
+        ok = torch.where((0.0 < Density) & (Density < 1.0e32) & (0.0 < Te) & (Te < 1.0e32))[0]
 
         result[ok] = 3.310E-28*((Density[ok]*p)**2)*np.exp(13.6057 / ((p**2)*Te[ok])) / (Te[ok]**1.5)
         return result
@@ -250,19 +256,19 @@ class Johnson_Hinnov():
         
         # From Johnson-Hinnov, eq (11):
         # n(2) =  ( r0(2) + r1(2) * n(1) / NHsaha(1) ) * NHsaha(2)
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of elements of Density and Te are different!')
-        if np.size(Density) != np.size(N0):
-            raise Exception(' Number of elements of Density and N0 are different! ')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of elements of Density and Te are different!')
+        # if np.size(Density) != np.size(N0):
+        #     raise Exception(' Number of elements of Density and N0 are different! ')
         
-        result = np.full(Density.shape,1.0e32)
-        photons = np.full(Density.shape,1.0e32)
+        result = torch.full(Density.shape, 1.0e32, dtype=Te.dtype, device=Te.device)
+        photons = torch.full(Density.shape,1.0e32, dtype=Te.dtype, device=Te.device)
         r02 = self.jhr_coef(Density, Te, 0, 2, no_null=no_null)
         r12 = self.jhr_coef(Density, Te, 1, 2, no_null=no_null)
         NHSaha1 = self.nh_saha(Density, Te, 1)
         NHSaha2 = self.nh_saha(Density, Te, 2)
 
-        ok = np.where((0 < N0) & (N0 < 1e32) & (r02 < 1.0e32) & (r12 < 1.0e32) & (NHSaha1 < 1.0e32) & (NHSaha2 < 1.0e32))[0]
+        ok = torch.where((0 < N0) & (N0 < 1e32) & (r02 < 1.0e32) & (r12 < 1.0e32) & (NHSaha1 < 1.0e32) & (NHSaha2 < 1.0e32))[0]
 
         photons[ok] = self.a_lyman[0]*(r02[ok] + (r12[ok]*N0[ok] / NHSaha1[ok]))*NHSaha2[ok]
         result[ok] = 13.6057*0.75*photons[ok]*1.6e-19
@@ -299,19 +305,19 @@ class Johnson_Hinnov():
         # From Johnson-Hinnov, eq (11):
         # n(3) = ( r(0) + r1(3) * n(1) / NHsaha(1) ) * NHsaha(3)
 
-        if np.size(Density) != np.size(Te):
-            raise Exception('Number of elements of Density and Te are different!')
-        if np.size(Density) != np.size(N0):
-            raise Exception(' Number of elements of Density and N0 are different! ')
+        # if np.size(Density) != np.size(Te):
+        #     raise Exception('Number of elements of Density and Te are different!')
+        # if np.size(Density) != np.size(N0):
+        #     raise Exception(' Number of elements of Density and N0 are different! ')
         
-        result = np.full(Density.shape,1.0e32)
-        photons = np.full(Density.shape,1.0e32)
+        result = torch.full(Density.shape, 1.0e32, dtype=Te.dtype, device=Te.device)
+        photons = torch.full(Density.shape, 1.0e32, dtype=Te.dtype, device=Te.device)
         r03 = self.jhr_coef(Density, Te, 0, 3, no_null = no_null)
         r13 = self.jhr_coef(Density, Te, 1, 3, no_null = no_null)
         NHSaha1 = self.nh_saha(Density, Te, 1)
         NHSaha3 = self.nh_saha(Density, Te, 3)
 
-        ok = np.where((0 < N0) & (N0 < 1e32) & (r03 < 1.0e32) & (r13 < 1.0e32) & (NHSaha1 < 1.0e32) & (NHSaha3 < 1.0e32))[0]
+        ok = torch.where((0 < N0) & (N0 < 1e32) & (r03 < 1.0e32) & (r13 < 1.0e32) & (NHSaha1 < 1.0e32) & (NHSaha3 < 1.0e32))[0]
         
         photons[ok] = self.a_balmer[0]*(r03[ok] + (r13[ok]*N0[ok] / NHSaha1[ok]))*NHSaha3[ok]
         result[ok] = 13.6057*(0.25 - 1.0/9.0)*photons[ok]*1.6e-19

@@ -84,17 +84,16 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
     # Used for interp_fvrvxx
     # Run additional correction if the distribution is not assumed to be positive
     allow_neg = False
-    '''
+
     # NOTE Not Autodifferentaible yet, revisit later
     if not assume_pos:
-        cutoff = 1.0e-6*np.max(weighted_dist)
-        ii = np.where((abs(weighted_dist) < cutoff) & (abs(weighted_dist) > 0))
-        if ii[0].size > 0:
+        cutoff = 1.0e-6*torch.max(weighted_dist)
+        ii = torch.where((abs(weighted_dist) < cutoff) & (abs(weighted_dist) > 0))
+        if ii[0].numel() > 0:
             weighted_dist[ii] = 0.0
 
         if max(weighted_dist[2,:]) <= 0:
             allow_neg = True
-    '''
 
     # vx_dist = weighted_dist*numpy_to_torch(vdiff.vx_dvx, device, dtype)
     # vr_dist = weighted_dist*numpy_to_torch(vdiff.vr_dvr, device, dtype)
@@ -190,13 +189,11 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
 
     # Additional stuff for interp_fvrvxx
     s = 1
-    '''
     # NOTE Not Autodifferentaible yet, revisit later
     if (not assume_pos) and (not allow_neg):
-        ii = np.nonzero(weighted_dist)
-        if np.size(ii) > 0:
-            s = min(1/np.max(-correction[ii]/weighted_dist[ii]),1)
-    '''
+        ii = torch.nonzero(weighted_dist, as_tuple=True)
+        if ii[0].numel() > 0:
+            s = min(1/torch.max(-correction[ii]/weighted_dist[ii]), 1)
 
     f_slice = nb*(weighted_dist + s*correction) / volume
 

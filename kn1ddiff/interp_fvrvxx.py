@@ -1,9 +1,12 @@
 import numpy as np
 from warnings import warn
 
+import torch
+from .torch_utils import *
+
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import compensate_distribution
-from .utils import sval, locate, Bound, interp_1d
+from .utils import sval, locate, Bound, interp_1d, get_config
 from .kinetic_mesh import KineticMesh
 
 def _get_interpolation_bounds(a, b, a_name="a", b_name="b"):
@@ -63,7 +66,7 @@ def _test_bounds(fb, test_bound : Bound, var_len, test_axis, iter_bound1 : Bound
         Warning if 0 found at boundary edge
     '''
 
-    big = np.max(fb)
+    big = torch.max(fb)
     start_error = 0
     end_error = 0
     if (test_bound.start > 0) or (test_bound.end < var_len-1):
@@ -81,9 +84,9 @@ def _test_bounds(fb, test_bound : Bound, var_len, test_axis, iter_bound1 : Bound
         else:
             raise Exception("Invalid test axis")
         
-        if (start_error == 0) and (test_bound.start > 0) and np.any(min_slice > do_warn*big):
+        if (start_error == 0) and (test_bound.start > 0) and torch.any(min_slice > do_warn*big):
             warn(f"Non-zero value of fb detected at min({var_name}) boundary")
-        if (end_error == 0) and (test_bound.end < var_len-1) and np.any(max_slice > do_warn*big):
+        if (end_error == 0) and (test_bound.end < var_len-1) and torch.any(max_slice > do_warn*big):
             warn(f"Non-zero value of fb detected at max({var_name}) boundary")
 
 
@@ -120,22 +123,25 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
 
     prompt = 'INTERP_FVRVXX => '
 
-    v_scale = np.sqrt(mesh_b.Tnorm / mesh_a.Tnorm) # velocity ratio (scales velocities from mesh_a to mesh_b)
+    nvr_b, nvx_b, nx_b = mesh_b.vr.numel(), mesh_b.vx.numel(), mesh_b.x.numel()
+    nvr_a, nvx_a, nx_a = mesh_a.vr.numel(), mesh_a.vx.numel(), mesh_a.x.numel()
+
+    v_scale = torch.sqrt(mesh_b.Tnorm / mesh_a.Tnorm) # velocity ratio (scales velocities from mesh_a to mesh_b)
     
     # Check shape agreement for fa
-    if fa.shape != (mesh_a.vr.size, mesh_a.vx.size, mesh_a.x.size):
-        raise Exception('fa (' + str(fa.shape) + ') does not have shape (vra, vxa, xa)' + str((mesh_a.vr.size, mesh_a.vx.size, mesh_a.x.size)))
+    if fa.shape != (nvr_a, nvx_a, nx_a):
+        raise Exception('fa (' + str(fa.shape) + ') does not have shape (vra, vxa, xa)' + str((nvr_a, nvx_a, nx_a)))
 
 
     # --- Get interpolation Bounds ---
 
-    get_range = lambda a, b : np.where((min(a) <= b) & (b <= max(a)))[0]
+    get_range = lambda a, b : torch.where((min(a) <= b) & (b <= max(a)))[0]
 
     vr_bound = _get_interpolation_bounds(mesh_a.vr, v_scale*mesh_b.vr, "Vra", "Vrb")
     vx_bound = _get_interpolation_bounds(mesh_a.vx, v_scale*mesh_b.vx, "Vxa", "Vxb")
     x_bound = _get_interpolation_bounds(mesh_a.x, mesh_b.x, "Xa", "Xb")
 
-    fb = np.zeros((mesh_b.vr.size, mesh_b.vx.size, mesh_b.x.size))
+    fb = torch.zeros((nvr_b, nvx_b, nx_b), dtype=fa.dtype, device=fa.device)
 
 
     # --- Generate differentials ---
@@ -154,23 +160,24 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
     # NOTE This is slightly more confusing than the original method, but should be more efficient
     # Set area contributions to Weight array
     # Get arrays of element-wise min/max values for vr and vx, comparing mesh_a and mesh_b
-    vr_min = np.maximum(v_scale*vdiff_b.vr_left_bound[:, np.newaxis, np.newaxis, np.newaxis],
-                                vdiff_a.vr_left_bound[np.newaxis, np.newaxis, :, np.newaxis])
-    vr_max = np.minimum(v_scale*vdiff_b.vr_right_bound[:, np.newaxis, np.newaxis, np.newaxis],
-                                vdiff_a.vr_right_bound[np.newaxis, np.newaxis, :, np.newaxis])
+    vr_min = torch.maximum(v_scale*vdiff_b.vr_left_bound[:, None, None, None],
+                                vdiff_a.vr_left_bound[None, None, :, None])
+    vr_max = torch.minimum(v_scale*vdiff_b.vr_right_bound[:, None, None, None],
+                                vdiff_a.vr_right_bound[None, None, :, None])
     
-    vx_min = np.maximum(v_scale*vdiff_b.vx_left_bound[np.newaxis, :, np.newaxis, np.newaxis],
-                                vdiff_a.vx_left_bound[np.newaxis, np.newaxis, np.newaxis, :])
-    vx_max = np.minimum(v_scale*vdiff_b.vx_right_bound[np.newaxis, :, np.newaxis, np.newaxis],
-                                vdiff_a.vx_right_bound[np.newaxis, np.newaxis, np.newaxis, :])
+    vx_min = torch.maximum(v_scale*vdiff_b.vx_left_bound[None, :, None, None],
+                                vdiff_a.vx_left_bound[None, None, None, :])
+    vx_max = torch.minimum(v_scale*vdiff_b.vx_right_bound[None, :, None, None],
+                                vdiff_a.vx_right_bound[None, None, None, :])
 
     # Calculate weights
     condition = (vr_max > vr_min) & (vx_max > vx_min)
-    weight_value = 2*np.pi*(vr_max**2 - vr_min**2)*(vx_max - vx_min) / (vdiff_b.dvr_vol[:, np.newaxis, np.newaxis, np.newaxis]*vdiff_b.dvx[np.newaxis, :, np.newaxis, np.newaxis])
-    weight = np.where(condition, weight_value, 0)
+    weight_value = 2*torch.pi*(vr_max**2 - vr_min**2)*(vx_max - vx_min) / (vdiff_b.dvr_vol[:, None, None, None]*vdiff_b.dvx[None, :, None, None])
+    weight = torch.where(condition, weight_value, 0)
 
     # Convert to 2D
-    weight = np.reshape(weight, (mesh_b.vr.size*mesh_b.vx.size, mesh_a.vr.size*mesh_a.vx.size), order = 'F')
+    # weight = np.reshape(weight, (nvr_b*nvx_b, nvr_a*nvx_a), order = 'F')
+    weight = torch_reshape_fortran(weight, (nvr_b*nvx_b, nvr_a*nvx_a))
 
 
     # --- Correct fb so that it has the same Wx and E moments as fa ---
@@ -180,49 +187,55 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
         # --- Compute Desired Moments ---
 
         # Determine fb distribution on mesh_a.x grid from weight array
-        fa_reshaped = np.reshape(fa, (mesh_a.vr.size*mesh_a.vx.size, mesh_a.x.size), order = 'F')
-        fb_on_xa = np.matmul(weight, fa_reshaped)
+        # fa_reshaped = np.reshape(fa, (nvr_a*nvx_a, nx_a), order = 'F')
+        fa_reshaped = torch_reshape_fortran(fa, (nvr_a*nvx_a, nx_a))
+        fb_on_xa = weight @ fa_reshaped
 
         #   Compute desired vx_moment and energy_moments of fb, but on the xa grid
-        vx_moment_on_xa = np.zeros(mesh_a.x.size)
-        energy_moment_on_xa = np.zeros(mesh_a.x.size)
+        vx_moment_on_xa = torch.zeros_like(mesh_a.x)
+        energy_moment_on_xa = torch.zeros_like(mesh_a.x)
 
-        for k in range(mesh_a.x.size):
-            density_a = np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], vdiff_a.dvx)))
-            if density_a > 0:
-                vx_moment_on_xa[k] = np.sqrt(mesh_a.Tnorm)*np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], (mesh_a.vx*vdiff_a.dvx)))) / density_a
-                energy_moment_on_xa[k] = mesh_a.Tnorm*np.sum(vdiff_a.dvr_vol*(np.matmul((vdiff_a.vmag_squared*fa[:,:,k]), vdiff_a.dvx))) / density_a
+        epsilon = 1e-8
+
+        for k in range(nx_a):
+            density_a = torch.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ vdiff_a.dvx))
+            # if density_a > 0:
+            vx_moment_on_xa[k] = torch.sqrt(mesh_a.Tnorm)*torch.sum(vdiff_a.dvr_vol*(fa[:,:,k] @ (mesh_a.vx*vdiff_a.dvx))) / (density_a+epsilon)
+            energy_moment_on_xa[k] = mesh_a.Tnorm*torch.sum(vdiff_a.dvr_vol*(torch.matmul((vdiff_a.vmag_squared*fa[:,:,k]), vdiff_a.dvx))) / (density_a+epsilon)
 
         # Compute desired moments on xb grid
-        target_vx = np.zeros(mesh_b.x.size)
-        target_energy = np.zeros(mesh_b.x.size)
+        target_vx = torch.zeros_like(mesh_b.x)
+        target_energy = torch.zeros_like(mesh_b.x)
 
         for k in range(x_bound.start, x_bound.end+1):
-            position = np.maximum(locate(mesh_a.x, mesh_b.x[k]), 0)
-            kr = np.minimum(position+1, mesh_a.x.size-1)
-            kl = np.minimum(position, kr-1)
+            position = torch.maximum(torch_locate(mesh_a.x, mesh_b.x[k]), torch.tensor(0, dtype=torch.long, device=fa.device))
+            kr = torch.minimum(position+1, torch.tensor(nx_a-1, dtype=torch.long, device=fa.device))
+            kl = torch.minimum(position, kr-1)
 
             interp_fraction = (mesh_b.x[k] - mesh_a.x[kl]) / (mesh_a.x[kr] - mesh_a.x[kl])
-            fb[:,:,k] = np.reshape((fb_on_xa[:,kl] + interp_fraction*(fb_on_xa[:,kr] - fb_on_xa[:,kl])), fb[:,:,k].shape, order='F')
+            # fb[:,:,k] = np.reshape((fb_on_xa[:,kl] + interp_fraction*(fb_on_xa[:,kr] - fb_on_xa[:,kl])), fb[:,:,k].shape, order='F')
+            fb[:,:,k] = torch_reshape_fortran((fb_on_xa[:,kl] + interp_fraction*(fb_on_xa[:,kr] - fb_on_xa[:,kl])), fb[:,:,k].shape)
             target_vx[k] = vx_moment_on_xa[kl] + interp_fraction*(vx_moment_on_xa[kr] - vx_moment_on_xa[kl])
             target_energy[k] = energy_moment_on_xa[kl] + interp_fraction*(energy_moment_on_xa[kr] - energy_moment_on_xa[kl])
 
+
         #   Process each spatial location
-        for k in range(mesh_b.x.size):
-            if target_energy[k] is None:
-                continue
+        for k in range(nx_b):
+            # if target_energy[k] is None:
+            #     continue
 
             #   Compute nb, Wxb, and Eb - these are the current moments of fb
 
-            nb = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx)))
-            if nb <= 0:
-                continue
+            nb = torch.sum(vdiff_b.dvr_vol*(torch.matmul(fb[:,:,k], vdiff_b.dvx)))
+            # if nb <= 0:
+            #     continue
+
 
             while True:
                 
                 # --- Adjust fb for desired weights ---
 
-                fb[:,:,k], s = compensate_distribution(fb[:,:,k], vdiff_b, mesh_b.vr, mesh_b.vx, np.sqrt(mesh_b.Tnorm), target_vx[k], target_energy[k], nb=nb, assume_pos=False)
+                fb[:,:,k], s = compensate_distribution(fb[:,:,k], vdiff_b, mesh_b.vr, mesh_b.vx, np.sqrt(mesh_b.Tnorm), target_vx[k], target_energy[k], nb=(nb+epsilon), assume_pos=False)
                 if s >= 1:
                     break
 
@@ -231,34 +244,33 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
 
     if do_warn != None:
         # vr_bound
-        _test_bounds(fb, vr_bound, mesh_b.vr.size, 0, vx_bound, x_bound, do_warn, var_name="Vra")
+        _test_bounds(fb, vr_bound, nvr_b, 0, vx_bound, x_bound, do_warn, var_name="Vra")
         # vx_bound
-        _test_bounds(fb, vx_bound, mesh_b.vx.size, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
+        _test_bounds(fb, vx_bound, nvx_b, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
         # x_bound
-        _test_bounds(fb, x_bound, mesh_b.x.size, 2, vr_bound, vx_bound, do_warn, var_name="Xa")
+        _test_bounds(fb, x_bound, nx_b, 2, vr_bound, vx_bound, do_warn, var_name="Xa")
 
 
     # --- Rescale ---
 
-    tot_a = np.zeros(mesh_a.x.size)
-    for k in range(mesh_a.x.size):
-        tot_a[k] = np.sum(vdiff_a.dvr_vol*(np.matmul(fa[:,:,k], vdiff_a.dvx)))
+    tot_a = torch.zeros_like(mesh_a.x)
+    for k in range(nx_a):
+        tot_a[k] = torch.sum(vdiff_a.dvr_vol*(torch.matmul(fa[:,:,k], vdiff_a.dvx)))
         
-    tot_b = np.zeros(mesh_b.x.size)
-    tot_b[x_bound.slice(0,1)] = interp_1d(mesh_a.x, tot_a, mesh_b.x[x_bound.slice(0,1)], fill_value="extrapolate")
+    tot_b = torch.zeros_like(mesh_b.x)
+    # tot_b[x_bound.slice(0,1)] = interp_1d(mesh_a.x, tot_a, mesh_b.x[x_bound.slice(0,1)], fill_value="extrapolate")
+    tot_b[x_bound.slice(0,1)] = torch_interp1d(mesh_b.x[x_bound.slice(0,1)], mesh_a.x, tot_a)
 
-    ii = np.where(fb > 0)
-    if ii[0].size > 0:
-        min_tot = np.min(np.array(fb[ii]))
+    ii = torch.where(fb > 0)
+    if ii[0].numel() > 0:
+        min_tot = torch.min(fb[ii].detach().clone())
         for k in x_bound.range():
-            tot = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx)))
+            tot = torch.sum(vdiff_b.dvr_vol*(torch.matmul(fb[:,:,k], vdiff_b.dvx)))
             if tot > min_tot:
                 if debug:
                     print(prompt + 'Density renormalization factor =' + sval(tot_b[k] / tot))
                 fb[:,:,k] = fb[:,:,k]*tot_b[k]/tot
 
 
-    # NOTE Plotting/Debugging was here in the original code
-    # May be added later, but has been left out for now
-
     return fb
+

@@ -1,4 +1,5 @@
 import numpy as np 
+import torch
 from numpy.typing import NDArray
 
 from .utils import get_config, interp_1d, reverse, sav_to_json, make_json_compatible
@@ -112,9 +113,9 @@ class KineticMesh:
         xfine = xmin + (xmax - xmin)*np.arange(1001)/1000
 
         Tifine = interp_1d(x, Ti, xfine, fill_value="extrapolate")
-        Tefine = interp_1d(x, Te, xfine)
-        nfine = interp_1d(x, n, xfine)
-        PipeDiafine = interp_1d(x, PipeDia, xfine)
+        Tefine = interp_1d(x, Te, xfine, fill_value="extrapolate")
+        nfine = interp_1d(x, n, xfine, fill_value="extrapolate")
+        PipeDiafine = interp_1d(x, PipeDia, xfine, fill_value="extrapolate")
 
 
         # Set up a vx, vr mesh based on raw data to get typical vx, vr values 
@@ -174,9 +175,9 @@ class KineticMesh:
 
 
         TiH = np.interp(xH, xfine, Tifine)
-        TeH = interp_1d(xfine, Tefine, xH)
-        neH = interp_1d(xfine, nfine, xH)
-        PipeDiaH = interp_1d(xfine, PipeDiafine, xH)
+        TeH = interp_1d(xfine, Tefine, xH, fill_value="extrapolate")
+        neH = interp_1d(xfine, nfine, xH, fill_value="extrapolate")
+        PipeDiaH = interp_1d(xfine, PipeDiafine, xH, fill_value="extrapolate")
 
         vx, vr, Tnorm = self.create_vr_vx_mesh(nv, TiH, E0=E0)
 

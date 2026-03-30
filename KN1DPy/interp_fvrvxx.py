@@ -3,7 +3,7 @@ from warnings import warn
 
 from .make_dvr_dvx import VSpace_Differentials
 from .create_shifted_maxwellian import compensate_distribution
-from .utils import sval, locate, Bound, interp_1d
+from .utils import sval, locate, Bound, interp_1d, get_config
 from .kinetic_mesh import KineticMesh
 
 def _get_interpolation_bounds(a, b, a_name="a", b_name="b"):
@@ -208,23 +208,27 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
             target_energy[k] = energy_moment_on_xa[kl] + interp_fraction*(energy_moment_on_xa[kr] - energy_moment_on_xa[kl])
 
         #   Process each spatial location
+
+        compensate_iterations = get_config()["compensation_iterations"]
         for k in range(mesh_b.x.size):
             if target_energy[k] is None:
                 continue
 
             #   Compute nb, Wxb, and Eb - these are the current moments of fb
 
-            nb = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx)))
-            if nb <= 0:
-                continue
+            nb = np.sum(vdiff_b.dvr_vol*(np.matmul(fb[:,:,k], vdiff_b.dvx))) + 1e-8
+            # if nb <= 0:
+            #     continue
 
             while True:
                 
                 # --- Adjust fb for desired weights ---
 
                 fb[:,:,k], s = compensate_distribution(fb[:,:,k], vdiff_b, mesh_b.vr, mesh_b.vx, np.sqrt(mesh_b.Tnorm), target_vx[k], target_energy[k], nb=nb, assume_pos=False)
+                # print(s)
                 if s >= 1:
                     break
+        # print("finished")
 
 
     # --- Test Boundaries ---

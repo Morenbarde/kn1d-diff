@@ -123,6 +123,54 @@ def bilinear_interp_rectgrid(logsigmav, indne, indte):
     return torch.exp(sampled)
 
 
+# def torch_interp1d(x, funx, funy, fill_value=None):
+#     """
+#     Simplified equivalent to scipy.interpolate.interp1d(funx, funy)(x)
+#     Handles fill_value="extrapolate" or default (NaN at boundaries)
+#     """
+#     xp = funx if isinstance(funx, torch.Tensor) else torch.tensor(funx)
+#     fp = funy if isinstance(funy, torch.Tensor) else torch.tensor(funy)
+#     xi = x if isinstance(x, torch.Tensor) else torch.tensor(x)
+
+#     slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])
+#     idx = torch.searchsorted(xp.contiguous(), xi.contiguous()) - 1
+
+#     if fill_value == "extrapolate":
+#         # Clamp to edge segments — extrapolation uses slope of first/last segment
+#         idx = torch.clamp(idx, 0, len(slopes) - 1)
+#     else:
+#         # Default scipy behavior: NaN outside bounds
+#         out_of_bounds = (idx < 0) | (idx >= len(slopes))
+#         idx = torch.clamp(idx, 0, len(slopes) - 1)
+
+#     result = fp[idx] + slopes[idx] * (xi - xp[idx])
+
+#     if fill_value != "extrapolate":
+#         result[out_of_bounds] = float('nan')
+
+#     return result
+
+def torch_interp1d(x : torch.Tensor, funx : torch.Tensor, funy : torch.Tensor, left=None, right=None):
+    """
+    Simplified equivalent to scipy.interpolate.interp1d(funx, funy, fill_value="extrapolate")(x)
+    Optionally clamp left/right boundaries with fill values (like np.interp).
+    """
+
+    slopes = (funy[1:] - funy[:-1]) / (funx[1:] - funx[:-1])
+    idx = torch.searchsorted(funx.contiguous(), x.contiguous()) - 1
+
+    idx = torch.clamp(idx, 0, len(slopes) - 1)
+
+    result = funy[idx] + slopes[idx] * (x - funx[idx])
+
+    if left is not None:
+        result = torch.where(x < funx[0], torch.full_like(result, left), result)
+    if right is not None:
+        result = torch.where(x > funx[-1], torch.full_like(result, right), result)
+
+    return result
+
+
 # def path_interp_2d_torch(p, px, py, x, y):
 #     """
 #     Gradient-safe bilinear interpolation on a regular 2D grid.
@@ -194,3 +242,91 @@ def path_interp_2d_torch(p, px, py, x, y):
             p10 *      tx  * (1 - ty) +
             p01 * (1 - tx) *      ty  +
             p11 *      tx  *      ty)
+
+
+
+# --- BS2DR ---
+
+def de_boor_basis(x: torch.Tensor, knots: torch.Tensor, order: int) -> torch.Tensor:
+    n = x.shape[0]
+    m = knots.shape[0]
+
+    # Order-0 basis
+    B = ((x[:, None] >= knots[None, :-1]) & (x[:, None] < knots[None, 1:])).to(x.dtype)
+
+    # Clamp last point into final interval
+    at_end = (x == knots[-1])
+    if at_end.any():
+        B[at_end] = 0.0
+        B[at_end, -1] = 1.0
+
+    # De Boor recursion
+    for k in range(1, order + 1):
+        n_basis = m - k - 1  # number of basis functions at this level
+
+        denom_left  = knots[k:m-1]   - knots[:m-k-1]   # (n_basis,)
+        denom_right = knots[k+1:m]   - knots[1:m-k]    # (n_basis,)
+
+        safe_left  = torch.where(denom_left  != 0, denom_left,  torch.ones_like(denom_left))
+        safe_right = torch.where(denom_right != 0, denom_right, torch.ones_like(denom_right))
+
+        alpha = torch.where(
+            denom_left[None, :] != 0,
+            (x[:, None] - knots[None, :m-k-1]) / safe_left[None, :],
+            torch.zeros(n, n_basis, dtype=x.dtype, device=x.device)
+        )
+        beta = torch.where(
+            denom_right[None, :] != 0,
+            (knots[None, k+1:m] - x[:, None]) / safe_right[None, :],
+            torch.zeros(n, n_basis, dtype=x.dtype, device=x.device)
+        )
+
+        B = alpha * B[:, :n_basis] + beta * B[:, 1:n_basis+1]
+
+    return B  # (n, m - order - 1)
+
+
+def bs2dr_diff(x: torch.Tensor, y: torch.Tensor, 
+          kx_ord: int, ky_ord: int,
+          xknot: torch.Tensor, yknot: torch.Tensor, 
+          bscoef: torch.Tensor) -> torch.Tensor:
+    '''
+    Differentiable bivariate B-spline evaluation, equivalent to IDL bs2dr / scipy bispeu.
+    Gradients flow through x and y. xknot, yknot, bscoef are treated as fixed constants.
+
+    Parameters
+    ----------
+        x, y    : (n,) query coordinates, must have requires_grad if gradient needed
+        kx_ord  : spline order in x (IDL convention: degree + 1, so cubic = 4)
+        ky_ord  : spline order in y
+        xknot   : (mx,) knot vector in x
+        yknot   : (my,) knot vector in y
+        bscoef  : (nx_basis * ny_basis,) flattened spline coefficients, scipy/FITPACK ordering
+
+    Returns
+    -------
+        result : (n,) evaluated spline values, differentiable w.r.t. x and y
+    '''
+    # Note: bispeu uses (ky_ord-1, kx_ord-1) and swapped knot order — match that here
+    Bx = de_boor_basis(x, xknot, kx_ord - 1)   # (n, nx_basis)
+    By = de_boor_basis(y, yknot, ky_ord - 1)   # (n, ny_basis)
+
+    nx_basis = Bx.shape[1]
+    ny_basis = By.shape[1]
+
+    # bscoef is flattened in FITPACK order: (ny_basis, nx_basis) -> reshape accordingly
+    C = bscoef.reshape(ny_basis, nx_basis)      # (ny_basis, nx_basis)
+
+    # For each query point: result[i] = By[i] @ C @ Bx[i]
+    # Vectorized: (n, ny) @ (ny, nx) -> (n, nx), then elementwise with (n, nx) -> sum -> (n,)
+    result = torch.sum((By @ C) * Bx, dim=1)   # (n,)
+
+    return result
+
+
+
+def torch_locate(table, value):
+    value = value.reshape(-1) if value.dim() > 0 else value.unsqueeze(0)
+    indices = torch.searchsorted(table.contiguous(), value.contiguous()) - 1
+    indices = indices.clamp(-1, len(table) - 1)
+    return indices

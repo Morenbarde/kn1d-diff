@@ -11,6 +11,9 @@ from kn1ddiff.kinetic_h2 import *
 from kn1ddiff.test.utils import *
 
 
+# File Output
+USE_LOG = False
+
 # Torch
 dtype = torch.float64
 USE_CPU = True
@@ -29,17 +32,17 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 0.9 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 1000
+NUM_ITERS = 100
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-3
+INITIAL_LR = 1e-2
 CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
@@ -67,7 +70,8 @@ out_file = "kh2_proc_out.json"
 if __name__ == "__main__":
 
     # Start logging to run file
-    setup_log(run_dir)
+    if USE_LOG:
+        setup_log(run_dir)
 
     print("Process PID: ", os.getpid())
 
@@ -189,14 +193,25 @@ if __name__ == "__main__":
     with open(local_dir+"h2_mesh_in.json", 'r') as f:
         mesh_input = json.load(f)
         for key, value in mesh_input.items():
-            mesh_input[key] = np.asarray(value)
+            # mesh_input[key] = np.asarray(value)
+            mesh_input[key] = torch.tensor(value, dtype=dtype, device=device)
 
     with open(local_dir+"kinetic_h2_in.json", 'r') as f:
         kh2_in = json.load(f)
         for key, value in kh2_in.items():
             kh2_in[key] = torch.tensor(value, dtype=dtype, device=device)
     
-    mesh = KineticMesh('h2', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"], device=device, dtype=dtype)
+    mesh = KineticMesh('h2', mesh_input["mu"], mesh_input["x"], mesh_input["Ti"], mesh_input["Te"], mesh_input["n"], mesh_input["PipeDia"], E0=mesh_input["E0"], fctr=mesh_input["fctr"].item(), device=device, dtype=dtype)
+    check_close("x", mesh.x, mesh_output["x"])
+    check_close("Ti", mesh.Ti, mesh_output["Ti"])
+    check_close("Te", mesh.Te, mesh_output["Te"])
+    check_close("ne", mesh.ne, mesh_output["ne"])
+    check_close("PipeDia", mesh.PipeDia, mesh_output["PipeDia"])
+    check_close("vx", mesh.vx, mesh_output["vx"])
+    check_close("vr", mesh.vr, mesh_output["vr"])
+    check_close("Tnorm", mesh.Tnorm, mesh_output["Tnorm"])
+    # input()
+
 
     kinetic_h2 = KineticH2(mesh, kh2_in["mu"], kh2_in["vxi"], kh2_in["fH2BC"], kh2_in["GammaxH2BC"], kh2_in["NuLoss"], kh2_in["SH2_initial"], 
                         compute_h_source=True, ni_correct=True, truncate=1.0e-3, max_gen=100, 
@@ -261,6 +276,7 @@ if __name__ == "__main__":
     ne_param = parameterize(initial_ne)
     initial_Tnorm = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
     Tnorm_param = parameterize(initial_Tnorm)
+    initial_vxi = init_optimization_tensor(truein_Tnorm, INIT_FACTOR, OFFSET_FACTOR)
 
     initial_vr = init_optimization_tensor(truein_vr, INIT_FACTOR, OFFSET_FACTOR)
     vr_param = parameterize(initial_vr)
