@@ -7,7 +7,7 @@ import os
 
 from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
-from .utils import sval, interp_1d, get_config
+from .utils import sval, interp_1d, get_config, make_json_compatible, sav_to_json
 from .torch_utils import torch_interp1d
 from .interp_fvrvxx import interp_fvrvxx
 from .johnson_hinnov import Johnson_Hinnov
@@ -53,10 +53,11 @@ class KN1DResults():
  
 
 def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
+         xH=None, xH2=None,
          truncate = 1.0e-3, max_gen = 50,
          compute_errors = 0, debrief = 0,
          Hdebug = 0, Hdebrief = 0,
-         H2debug = 0, H2debrief = 0, interp_debug = 0) -> dict:
+         H2debug = 0, H2debrief = 0, interp_debug = 0) -> KN1DResults:
     '''
     Computes the molecular and atomic neutral profiles for inputted profiles
     of Ti(x), Te(x), n(x), and molecular neutral pressure, GaugeH2, at the boundary using
@@ -150,8 +151,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     ion_rate_option = settings['kinetic_h']['ion_rate']
     if ion_rate_option not in valid_ion_rates:
         raise Exception(prompt+"Invalid Ionization Rate Option used: '"+ion_rate_option+"', check config.json")
-
-    
+   
     # --- Generate Meshes ---
 
     # Determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
@@ -161,8 +161,10 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     if GaugeH2 > 15.0:
         fctr = fctr*15 / GaugeH2
 
-    kh2_mesh = KineticMesh('h2', mu, x, Ti, Te, n, PipeDia, E0 = Eneut, fctr = fctr) 
+
+    kh2_mesh = KineticMesh('h2', mu, x, Ti, Te, n, PipeDia, E0=Eneut, fctr=fctr, xH=xH2) 
     
+
     # Determine optimized vr, vx grid for kinetic_h (atoms, A)
     fctr = 0.3
     if GaugeH2 > 30.0 :
@@ -171,7 +173,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # Generates Johnson_Hinnov class, Used in place of IDL version's JH_Coef Common block
     jh = Johnson_Hinnov(dtype=x.dtype, device=x.device)
 
-    kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh=jh, fctr=fctr)
+    kh_mesh = KineticMesh('h', mu, x, Ti, Te, n, PipeDia, jh=jh, fctr=fctr, xH=xH)
 
 
     # --- Initialize variables ---
@@ -302,7 +304,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         iter += 1
         if debrief:
             print(prompt+'fH/fH2 Iteration: '+sval(iter))
-        nH2_saved = nH2
+        nH2_saved = nH2.detach().clone()
 
         with torch.no_grad():
             # interpolate fH data onto H2 mesh: fH -> fHM
@@ -443,6 +445,36 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
              Lyman=Lyman,
              Balmer=Balmer,
              GammaHLim=GammaHLim)
+    
+    # file = 'kn1d_out.json'
+    # print("Saving to file: " + file)
+    # sav_data = {
+    #             "xH2" : kh2_mesh.x,
+    #             "nH2" : kh2_results.nH2,
+    #             "GammaxH2" : kh2_results.GammaxH2,
+    #             "TH2" : kh2_results.TH2,
+    #             "qxH2_total" : kh2_results.qxH2_total,
+    #             "nHP" : kh2_results.nHP,
+    #             "THP" : kh2_results.THP,
+    #             "SH" : kh2_results.SH,
+    #             "SP" : kh2_results.SP,
+
+    #             "xH" : kh_mesh.x,
+    #             "nH" : kh_results.nH,
+    #             "GammaxH" : kh_results.GammaxH,
+    #             "TH" : kh_results.TH,
+    #             "qxH_total" : kh_results.qxH_total,
+    #             "NetHSource" : kh_results.NetHSource,
+    #             "Sion" : kh_results.Sion,
+    #             "QH_total" : kh_results.QH_total,
+    #             "SideWallH" : kh_results.SideWallH,
+    #             "Lyman" : Lyman,
+    #             "Balmer" : Balmer,
+    #             "GammaHLim" : GammaHLim
+    # }
+    # sav_data = make_json_compatible(sav_data)
+    # sav_to_json("Results/Optimization/"+file, sav_data)
+    # input()
 
 
     # Format Results into Dataclass

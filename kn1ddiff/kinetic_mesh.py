@@ -56,11 +56,32 @@ class KineticMesh:
             jh          : Johnson_Hinnov = None,
             E0          : NDArray = None, 
             fctr        : float   = 1.0,
-            device      : str = 'cpu',
-            dtype       : torch.dtype = torch.float64):
+            xH          : NDArray = None):
 
-        print("generating kinetic_" + mesh_type + "_mesh")
 
+        if xH is None:
+            print("generating full kinetic_" + mesh_type + "_mesh")
+            self.init_full(mesh_type, mu, x, Ti, Te, n, PipeDia, jh, E0, fctr)
+        else:
+            print("generating lite kinetic_" + mesh_type + "_mesh")
+            self.init_lite(mesh_type, mu, x, xH, Ti, Te, n, PipeDia, jh, E0, fctr)
+
+        
+
+
+    def init_full(
+            self, 
+            mesh_type   : str, #'h' for kinetic_h_mesh, 'h2' for kinetic_h2_mesh
+            mu          : int, 
+            x           : NDArray,
+            Ti          : NDArray,
+            Te          : NDArray, 
+            n           : NDArray, 
+            PipeDia     : NDArray,
+            jh          : Johnson_Hinnov = None,
+            E0          : NDArray = None, 
+            fctr        : float   = 1.0,):
+        
         if E0 is None:
             E0 = torch.tensor([0.0], device=x.device, dtype=x.dtype)
 
@@ -227,6 +248,61 @@ class KineticMesh:
 
 
         self.Tnorm : torch.Tensor = Tnorm
+
+
+    
+    def init_lite(
+            self, 
+            mesh_type   : str, #'h' for kinetic_h_mesh, 'h2' for kinetic_h2_mesh
+            mu          : int, 
+            x           : NDArray,
+            xH          : NDArray,
+            Ti          : NDArray,
+            Te          : NDArray, 
+            n           : NDArray, 
+            PipeDia     : NDArray,
+            jh          : Johnson_Hinnov = None,
+            E0          : NDArray = None, 
+            fctr        : float   = 1.0,):
+
+        if E0 is None:
+            E0 = torch.tensor([0.0], device=x.device, dtype=x.dtype)
+
+        #Get mesh size from config file
+        nv = get_config()["kinetic_" + mesh_type]["mesh_size"]
+
+
+        TiH = torch_interp1d(xH, x, Ti)
+        TeH = torch_interp1d(xH, x, Te)
+        neH = torch_interp1d(xH, x, n)
+        PipeDiaH = torch_interp1d(xH, x, PipeDia)
+
+        vx, vr, Tnorm = self.create_vr_vx_mesh(nv, TiH, E0=E0)
+
+
+        self.mesh_type : str = mesh_type
+
+        # self.x : torch.Tensor = torch.from_numpy(xH).to(dtype=dtype, device=device)
+        # self.Ti : torch.Tensor = torch.from_numpy(TiH).to(dtype=dtype, device=device)
+        # self.Te : torch.Tensor = torch.from_numpy(TeH).to(dtype=dtype, device=device)
+        # self.ne : torch.Tensor = torch.from_numpy(neH).to(dtype=dtype, device=device)
+        # self.PipeDia : torch.Tensor = torch.from_numpy(PipeDiaH).to(dtype=dtype, device=device)
+        # self.vx : torch.Tensor = torch.from_numpy(vx).to(dtype=dtype, device=device)
+        # self.vr : torch.Tensor = torch.from_numpy(vr).to(dtype=dtype, device=device)
+
+        # self.Tnorm : float = torch.tensor(Tnorm, dtype=dtype, device=device)
+
+        self.x : torch.Tensor = xH
+        self.Ti : torch.Tensor = TiH
+        self.Te : torch.Tensor = TeH
+        self.ne : torch.Tensor = neH
+        self.PipeDia : torch.Tensor = PipeDiaH
+        self.vx : torch.Tensor = vx
+        self.vr : torch.Tensor = vr
+
+
+        self.Tnorm : torch.Tensor = Tnorm
+
 
 
     def create_vr_vx_mesh(self, nv: int, Ti: torch.tensor, E0: torch.tensor = None, Tmax: float = 0.0) -> tuple[NDArray, NDArray, float] :

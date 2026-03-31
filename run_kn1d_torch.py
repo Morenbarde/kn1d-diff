@@ -1,6 +1,6 @@
 from dataclasses import dataclass, asdict
 
-from kn1ddiff.kn1d import kn1d
+from kn1ddiff.kn1d import kn1d, KN1DResults
 from scipy.io import readsav
 import numpy as np
 import torch
@@ -39,9 +39,11 @@ for key, value in sav_data.items():
 print("Beginning KN1D")
 start = time.time()
 results = kn1d(sav_data['x'], sav_data['x_lim'], sav_data['x_sep'], sav_data['p_wall'], sav_data['mu'], sav_data['t_i'], 
-               sav_data['t_e'], sav_data['n_e'], sav_data['vx'], sav_data['lc'], sav_data['d_pipe'], 
+               sav_data['t_e'], sav_data['n_e'], sav_data['vx'], sav_data['lc'], sav_data['d_pipe'],
+               xH=None, xH2=None, 
                max_gen=100, Hdebug=0, H2debug=0, debrief = 1, Hdebrief = 1, H2debrief = 1, compute_errors = 1)
 end = time.time()
+
 
 print("Elapsed Time: ", end-start)
 print()

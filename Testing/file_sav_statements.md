@@ -1,6 +1,39 @@
 This file saves various statement used to caputur inputs/outputs/parameters from various kn1d functions
 
 
+### KN1D Outputs
+```
+file = 'kn1d_out.json'
+print("Saving to file: " + file)
+sav_data = {
+            "xH2" : kh2_mesh.x,
+            "nH2" : kh2_results.nH2,
+            "GammaxH2" : kh2_results.GammaxH2,
+            "TH2" : kh2_results.TH2,
+            "qxH2_total" : kh2_results.qxH2_total,
+            "nHP" : kh2_results.nHP,
+            "THP" : kh2_results.THP,
+            "SH" : kh2_results.SH,
+            "SP" : kh2_results.SP,
+
+            "xH" : kh_mesh.x,
+            "nH" : kh_results.nH,
+            "GammaxH" : kh_results.GammaxH,
+            "TH" : kh_results.TH,
+            "qxH_total" : kh_results.qxH_total,
+            "NetHSource" : kh_results.NetHSource,
+            "Sion" : kh_results.Sion,
+            "QH_total" : kh_results.QH_total,
+            "SideWallH" : kh_results.SideWallH,
+            "Lyman" : Lyman,
+            "Balmer" : Balmer,
+            "GammaHLim" : GammaHLim
+}
+sav_data = make_json_compatible(sav_data)
+sav_to_json("Results/Optimization/"+file, sav_data)
+input()
+```
+
 ### KineticMesh inputs
 ```
 file = mesh_type+'_mesh_in.json'

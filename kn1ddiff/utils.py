@@ -7,7 +7,7 @@ import os
 from numpy.typing import NDArray
 import numpy as np
 import torch
-from .torch_utils import numpy_to_torch
+from .torch_utils import numpy_to_torch, torch_to_numpy
 from scipy import interpolate
 from scipy.io import readsav
 import netCDF4 as nc
@@ -31,6 +31,20 @@ def get_config() -> dict[str, Any]:
     ''' Lazy function to load config file '''
 
     return get_json('./config.json')
+
+def make_json_compatible(data: dict):
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            data[key] = torch_to_numpy(value).tolist()
+        if isinstance(value, np.ndarray):
+            data[key] = value.tolist()
+        if isinstance(value, np.float32) or isinstance(value, np.float64):
+            data[key] = float(value)
+    return data
+
+def sav_to_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
 
 
 # --- Printing ---
