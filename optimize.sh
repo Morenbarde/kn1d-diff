@@ -4,4 +4,4 @@
 
 # python -m kn1ddiff.test.h2_proc.optimize
 
-python optimize_kn1d.py
+nohup python optimize_kn1d.py > /dev/null 2>&1 &

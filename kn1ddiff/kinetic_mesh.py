@@ -60,10 +60,10 @@ class KineticMesh:
 
 
         if xH is None:
-            print("generating full kinetic_" + mesh_type + "_mesh")
+            # print("generating full kinetic_" + mesh_type + "_mesh")
             self.init_full(mesh_type, mu, x, Ti, Te, n, PipeDia, jh, E0, fctr)
         else:
-            print("generating lite kinetic_" + mesh_type + "_mesh")
+            # print("generating lite kinetic_" + mesh_type + "_mesh")
             self.init_lite(mesh_type, mu, x, xH, Ti, Te, n, PipeDia, jh, E0, fctr)
 
         

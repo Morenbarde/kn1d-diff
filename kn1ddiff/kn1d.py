@@ -57,7 +57,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
          truncate = 1.0e-3, max_gen = 50,
          compute_errors = 0, debrief = 0,
          Hdebug = 0, Hdebrief = 0,
-         H2debug = 0, H2debrief = 0, interp_debug = 0) -> KN1DResults:
+         H2debug = 0, H2debrief = 0, interp_debug = 0,
+         save_results = True) -> KN1DResults:
     '''
     Computes the molecular and atomic neutral profiles for inputted profiles
     of Ti(x), Te(x), n(x), and molecular neutral pressure, GaugeH2, at the boundary using
@@ -205,9 +206,13 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     # Compute NuLoss (Cs/LC)
     Cs_LC = torch.zeros(LC.numel(), dtype=x.dtype, device=x.device)
-    for ii in range(LC.numel()):
-        if LC[ii] > 0:
-            Cs_LC[ii] = np.sqrt(CONST.Q*(Ti[ii] + Te[ii]) / (mu*CONST.H_MASS)) / LC[ii]
+    # for ii in range(LC.numel()):
+    #     if LC[ii] > 0:
+    #         Cs_LC[ii] = torch.sqrt(CONST.Q*(Ti[ii] + Te[ii]) / (mu*CONST.H_MASS)) / LC[ii]
+    LC_safe = torch.where(LC > 0, LC, torch.ones_like(LC))  # avoid div by zero in gradient
+    Cs_LC = torch.where(LC > 0, 
+                        torch.sqrt(CONST.Q*(Ti + Te) / (mu*CONST.H_MASS)) / LC_safe, 
+                        Cs_LC)
     NuLoss = torch_interp1d(kh2_mesh.x, x, Cs_LC)
     
 
@@ -227,7 +232,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     SpH2_hat = torch_interp1d(kh2_mesh.x, x, n*Cs_LC)
 
-    SpH2_hat /= torch.trapezoid(SpH2_hat, kh2_mesh.x)
+    SpH2_hat = SpH2_hat / torch.trapezoid(SpH2_hat, kh2_mesh.x)
     beta = (2/3)*GammaxH2BC
     SpH2 = beta*SpH2_hat
     SH2 = SpH2
@@ -291,7 +296,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     # --- Begin Iteration ---
 
-    print(prompt+"Satisfaction condition: ", truncate)
+    if debrief:
+        print(prompt+"Satisfaction condition: ", truncate)
 
 
     iter = 0
@@ -304,11 +310,12 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         iter += 1
         if debrief:
             print(prompt+'fH/fH2 Iteration: '+sval(iter))
-        nH2_saved = nH2.detach().clone()
+        # nH2_saved = nH2.detach().clone()
 
         with torch.no_grad():
             # interpolate fH data onto H2 mesh: fH -> fHM
-            do_warn = 5e-3
+            # do_warn = 5e-3
+            do_warn = None
             fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug)
         
         # --- Run kinetic_h2 ---
@@ -323,7 +330,8 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
         with torch.no_grad():
             # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
-            do_warn = 5.0E-3
+            # do_warn = 5.0E-3
+            do_warn = None
             fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug)
             fSHA = interp_fvrvxx(kh2_results.fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
 
@@ -363,9 +371,9 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         dEHdSI = -Epsilon - alphaplus1RH0Dis*(1 - 0.5*Epsilon)
 
         # Option: print normalized flux error
-        nEH = np.abs(EH) / np.max(np.abs(np.array([2*kh2_results.GammaxH2[0], GammaHWall_minus] )))
-        if debrief and compute_errors:
-            print(prompt, 'Normalized Hydrogen Flux Error: ', sval(nEH))
+        # nEH = np.abs(EH) / np.max(np.abs(np.array([2*kh2_results.GammaxH2[0], GammaHWall_minus] )))
+        # if debrief and compute_errors:
+        #     print(prompt, 'Normalized Hydrogen Flux Error: ', sval(nEH))
         
         # Compute Adjustment 
         Delta_SI = -EH/dEHdSI
@@ -387,10 +395,10 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         #         print(prompt, 'Normalized H2 <-> H Momentum Transfer Error: ', sval(nDRx))
                 
         
-        Delta_nH2 = torch.abs(kh2_results.nH2 - nH2_saved)
-        nDelta_nH2 = torch.max(Delta_nH2/torch.max(kh2_results.nH2))
-        if debrief: 
-            print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
+        # Delta_nH2 = torch.abs(kh2_results.nH2 - nH2_saved)
+        # nDelta_nH2 = torch.max(Delta_nH2/torch.max(kh2_results.nH2))
+        # if debrief: 
+        #     print(prompt, 'Maximum Normalized change in nH2: ', sval(nDelta_nH2))
 
         # if nDelta_nH2 <= truncate:
         #     # Stop Iteration
@@ -415,36 +423,37 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
 
     # --- Store Results ---
 
-    # Store Outputs
-    output_dir = 'Results/'
-    output_file = 'torch_output'
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    output_path = output_dir+output_file
-    print(prompt, "Saving files to", output_path+".npz")
-    np.savez(output_path,
-             xH2=kh2_mesh.x,
-             nH2=kh2_results.nH2,
-             GammaxH2=kh2_results.GammaxH2,
-             TH2=kh2_results.TH2,
-             qxH2_total=kh2_results.qxH2_total,
-             nHP=kh2_results.nHP,
-             THP=kh2_results.THP,
-             SH=kh2_results.SH,
-             SP=kh2_results.SP,
+    if save_results:
+        # Store Outputs
+        output_dir = 'Results/'
+        output_file = 'torch_output'
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        output_path = output_dir+output_file
+        print(prompt, "Saving files to", output_path+".npz")
+        np.savez(output_path,
+                xH2=kh2_mesh.x,
+                nH2=kh2_results.nH2,
+                GammaxH2=kh2_results.GammaxH2,
+                TH2=kh2_results.TH2,
+                qxH2_total=kh2_results.qxH2_total,
+                nHP=kh2_results.nHP,
+                THP=kh2_results.THP,
+                SH=kh2_results.SH,
+                SP=kh2_results.SP,
 
-             xH=kh_mesh.x,
-             nH=kh_results.nH,
-             GammaxH=kh_results.GammaxH,
-             TH=kh_results.TH,
-             qxH_total=kh_results.qxH_total,
-             NetHSource=kh_results.NetHSource,
-             Sion=kh_results.Sion,
-             QH_total=kh_results.QH_total,
-             SideWallH=kh_results.SideWallH,
-             Lyman=Lyman,
-             Balmer=Balmer,
-             GammaHLim=GammaHLim)
+                xH=kh_mesh.x,
+                nH=kh_results.nH,
+                GammaxH=kh_results.GammaxH,
+                TH=kh_results.TH,
+                qxH_total=kh_results.qxH_total,
+                NetHSource=kh_results.NetHSource,
+                Sion=kh_results.Sion,
+                QH_total=kh_results.QH_total,
+                SideWallH=kh_results.SideWallH,
+                Lyman=Lyman,
+                Balmer=Balmer,
+                GammaHLim=GammaHLim)
     
     # file = 'kn1d_out.json'
     # print("Saving to file: " + file)

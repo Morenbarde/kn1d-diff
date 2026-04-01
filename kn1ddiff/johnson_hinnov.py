@@ -118,7 +118,9 @@ class Johnson_Hinnov():
                     ok = np.append(ok, i)
 
         if ok.numel() > 0:
-            result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logr_bscoef.T[:,Ion,p-2]))
+            logr_bscoef_transpose = self.logr_bscoef.permute(*torch.arange(self.logr_bscoef.ndim - 1, -1, -1))
+            result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, logr_bscoef_transpose[:,Ion,p-2]))
+            # result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logr_bscoef.T[:,Ion,p-2]))
 
         return result 
     
@@ -194,7 +196,7 @@ class Johnson_Hinnov():
                     ok = np.append(ok, i)
 
         if ok.size > 0: 
-            result[ok] = np.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logalpha_bscoef))
+            result[ok] = torch.exp(bs2dr_diff(LDensity[ok], LTe[ok], self.order, self.order, self.dknot, self.tknot, self.logalpha_bscoef))
 
         return result
     
@@ -223,7 +225,7 @@ class Johnson_Hinnov():
         result = torch.full_like(Density, 1.0e32)
         ok = torch.where((0.0 < Density) & (Density < 1.0e32) & (0.0 < Te) & (Te < 1.0e32))[0]
 
-        result[ok] = 3.310E-28*((Density[ok]*p)**2)*np.exp(13.6057 / ((p**2)*Te[ok])) / (Te[ok]**1.5)
+        result[ok] = 3.310E-28*((Density[ok]*p)**2)*torch.exp(13.6057 / ((p**2)*Te[ok])) / (Te[ok]**1.5)
         return result
 
 
