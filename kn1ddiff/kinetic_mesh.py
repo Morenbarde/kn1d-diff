@@ -277,7 +277,8 @@ class KineticMesh:
         neH = torch_interp1d(xH, x, n)
         PipeDiaH = torch_interp1d(xH, x, PipeDia)
 
-        vx, vr, Tnorm = self.create_vr_vx_mesh(nv, TiH, E0=E0)
+        with torch.no_grad():
+            vx, vr, Tnorm = self.create_vr_vx_mesh(nv, TiH, E0=E0)
 
 
         self.mesh_type : str = mesh_type

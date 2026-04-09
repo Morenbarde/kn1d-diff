@@ -9,7 +9,7 @@ from .create_shifted_maxwellian import create_shifted_maxwellian
 from .make_dvr_dvx import VSpace_Differentials
 from .utils import sval, interp_1d, get_config, make_json_compatible, sav_to_json
 from .torch_utils import torch_interp1d
-from .interp_fvrvxx import interp_fvrvxx
+from .interp_fvrvxx import interp_fvrvxx, interp_fvrvxx_diff
 from .johnson_hinnov import Johnson_Hinnov
 from .kinetic_mesh import KineticMesh
 from .kinetic_h import KineticH
@@ -312,11 +312,13 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
             print(prompt+'fH/fH2 Iteration: '+sval(iter))
         # nH2_saved = nH2.detach().clone()
 
+        do_warn = None
         with torch.no_grad():
             # interpolate fH data onto H2 mesh: fH -> fHM
             # do_warn = 5e-3
             do_warn = None
             fHM = interp_fvrvxx(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug)
+        # fHM = interp_fvrvxx_diff(fH, kh_mesh, kh2_mesh, do_warn=do_warn, debug=interp_debug)
         
         # --- Run kinetic_h2 ---
 
@@ -327,13 +329,15 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
         THP = kh2_results.THP
         nH2 = kh2_results.nH2
 
-
+        do_warn = None
         with torch.no_grad():
             # Interpolate H2 data onto H mesh: fH2 -> fH2A, fSH -> fSHA, nHP -> nHPA, THP -> THPA
             # do_warn = 5.0E-3
             do_warn = None
             fH2A = interp_fvrvxx(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug)
             fSHA = interp_fvrvxx(kh2_results.fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug) #NOTE return value here not correct, see _Wxa calculation, set debug_flag
+        # fH2A = interp_fvrvxx_diff(fH2, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug)
+        # fSHA = interp_fvrvxx_diff(kh2_results.fSH, kh2_mesh, kh_mesh, do_warn=do_warn, debug=interp_debug)
 
         # nHPA = np.interp(kh_mesh.x, kh2_mesh.x, nHP, left=0, right=0)
         # THPA = np.interp(kh_mesh.x, kh2_mesh.x, THP, left=0, right=0)

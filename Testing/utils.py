@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import sys
+import json
 from PIL import Image
 
 
@@ -27,6 +28,20 @@ def rel_L2_loss(pred, act, eps=1e-12):
     den = torch.linalg.norm(pred)
 
     return (num / (den + eps))
+
+def make_json_compatible(data: dict):
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            data[key] = torch_to_numpy(value).tolist()
+        if isinstance(value, np.ndarray):
+            data[key] = value.tolist()
+        if isinstance(value, np.float32) or isinstance(value, np.float64):
+            data[key] = float(value)
+    return data
+
+def sav_to_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
 
 
 # Analysis
@@ -104,6 +119,25 @@ def generate_compare_plot(dir, title, x, y, true_x, true_y, init_x = None, init_
     plt.savefig(dir + title + '.png', dpi=300)
     plt.clf()
 
+def generate_grad_plot(dir, title, x, y, xlabel="", ylabel="", x_range = None, y_range = None):
+    check_and_generate_dir(dir)
+    
+    # Adjust types if necessary
+    torch_to_numpy(x)
+    torch_to_numpy(y)
+
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
+    ax = plt.gca()
+    if(x_range):
+        ax.set_xlim(x_range)
+    if(y_range):
+        ax.set_ylim(y_range)
+    plt.savefig(dir + title + '.png', dpi=300)
+    plt.clf()
+
 def generate_loss_plot(dir, title, loss, xlabel="", ylabel=""):
     check_and_generate_dir(dir)
     plt.plot(range(len(loss)), loss, color = 'purple')
@@ -128,19 +162,24 @@ def generate_lr_plot(dir, title, lr, xlabel="", ylabel=""):
 
 class GIF_Generator():
 
-    def __init__(self, num_epochs, target_dir, name, true_val: torch.Tensor, frequency=1, fps=24):
+    def __init__(self, num_epochs, target_dir, name, true_val: torch.Tensor = None, frequency=1, fps=24):
 
         self.frequency = frequency
         self.size = num_epochs // frequency
         self.current_epoch = 0
 
-        if true_val.ndim != 1:
-            print("WARNING: This class only supports 1D data, using first dimension of the array")
-            true_val = true_val[:1]
-        self.true_val = true_val.detach().cpu().numpy()
+        if true_val is not None:
+            if true_val.ndim != 1:
+                print("WARNING: This class only supports 1D data, using first dimension of the array")
+                true_val = true_val[:1]
+            self.true_val = true_val.detach().cpu().numpy()
+            self.data_size = self.true_val.size
+        else:
+            self.true_val = None
+            self.data_size = None
 
-        self.data_size = self.true_val.size
-        self.data = np.empty((self.size, self.data_size))
+        # self.data_size = self.true_val.size
+        self.data = []
 
         self.image_location = target_dir
         self.name = name
@@ -152,27 +191,35 @@ class GIF_Generator():
         if new_data.ndim != 1:
             print("WARNING: This class only supports 1D data, using first dimension of the array")
             new_data = new_data[:1]
-        self.data[epoch//self.frequency] = new_data.detach().cpu().numpy()
+        self.data.append(new_data.detach().cpu().numpy())
 
     def generate_gif(self):
         print("Generating "+self.name+" GIF")
+        self.data = np.array(self.data)
         self._generate_images()
         self._animate_images()
         self._remove_images()
 
 
     def _generate_images(self):
-        x = range(self.data_size)
+        x = range(len(self.data[0]))
         # ymin = min(np.min(self.data[-1]), np.min(self.true_val))
         # ymax = max(np.max(self.data[-1]), np.max(self.true_val))
-        ymin = np.min(self.true_val)
-        ymax = np.max(self.true_val)
-        data_range = ymax-ymin
-        ymin = ymin-0.05*data_range
-        ymax = ymax+0.05*data_range
+        if self.true_val is None:
+            ymin = -20
+            ymax = 20
+        else:
+            ymin = np.min(self.true_val)
+            ymax = np.max(self.true_val)
+            data_range = ymax-ymin
+            ymin = ymin-0.05*data_range
+            ymax = ymax+0.05*data_range
         for i in range(self.size):
-            num_name = self.name+"_gifgen"+str(i)
-            generate_compare_plot(self.image_location, num_name, x, self.data[i], x, self.true_val, y_range=[ymin, ymax])
+            num_name = self.name+"_epoch_"+str(np.floor(i*self.frequency))
+            if self.true_val is None:
+                generate_grad_plot(self.image_location, num_name, x, self.data[i])
+            else:
+                generate_compare_plot(self.image_location, num_name, x, self.data[i], x, self.true_val, y_range=[ymin, ymax])
             self.image_paths.append(self.image_location+num_name+".png")
         print("Images Generated")
 

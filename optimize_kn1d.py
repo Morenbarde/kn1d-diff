@@ -25,27 +25,28 @@ EPSILON = 10e-10
 OPTIMIZE_NE = True
 OPTIMIZE_TI = True
 OPTIMIZE_TE = True
-OPTIMIZE_GAUGEH2 = True
+OPTIMIZE_GAUGEH2 = False
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.01 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.05 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 5
+NUM_ITERS = 2
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
 INITIAL_LR = 1e-3
-CYCLE_LR = False
+CYCLE_LR = True
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
+GENERATE_GRADIENT_GIF = True
 GIF_FPS = 5
 GIF_FREQ = 1
 
@@ -265,6 +266,14 @@ if __name__ == "__main__":
         # if OPTIMIZE_GAUGEH2:
         #     GaugeH2_gifgen = GIF_Generator(NUM_ITERS, image_dir, "GaugeH2", truein_GaugeH2, fps=GIF_FPS, frequency=GIF_FREQ)
 
+    if GENERATE_GRADIENT_GIF:
+        if OPTIMIZE_NE:
+            ne_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "ne_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_TI:
+            Ti_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Ti_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+        if OPTIMIZE_TE:
+            Te_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Te_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+
 
     # Capture Best Epoch
     loss_list = []
@@ -281,10 +290,10 @@ if __name__ == "__main__":
         # --- Bound Inputs ---
 
 
-        ne_in = torch.exp(ne_param)
-        Ti_in = torch.exp(Ti_param)
-        Te_in = torch.exp(Te_param)
-        GaugeH2_in = torch.exp(GaugeH2_param)
+        ne_in = torch.exp(ne_param) if OPTIMIZE_NE else truein_ne
+        Ti_in = torch.exp(Ti_param) if OPTIMIZE_TI else truein_Ti
+        Te_in = torch.exp(Te_param) if OPTIMIZE_TE else truein_Te
+        GaugeH2_in = torch.exp(GaugeH2_param)  if OPTIMIZE_GAUGEH2 else truein_GaugeH2
 
         # --- Run Function ---
         kn1d_results = kn1d(in_data['x'], in_data['x_lim'], in_data['x_sep'], GaugeH2_in, in_data['mu'], Ti_in, 
@@ -349,7 +358,7 @@ if __name__ == "__main__":
         # print("Loss22", loss22.item())
         # print("Loss23", loss23.item())
         # print("Loss24", loss24.item())
-        print("Loss Total", loss.item())
+        # print("Loss Total", loss.item())
         # input()
 
         # Backprop
@@ -358,6 +367,15 @@ if __name__ == "__main__":
 
         # Clip Gradient
         torch.nn.utils.clip_grad_norm_(parameters, max_norm=CLIP_NORM)
+
+
+        if GENERATE_GRADIENT_GIF:
+            if OPTIMIZE_NE:
+                ne_grad_gifgen.update(ne_param.grad, epoch)
+            if OPTIMIZE_TI:
+                Ti_grad_gifgen.update(Ti_param.grad, epoch)
+            if OPTIMIZE_TE:
+                Te_grad_gifgen.update(Te_param.grad, epoch)
 
         #Optimize
         optimizer.step()
@@ -438,6 +456,42 @@ if __name__ == "__main__":
     opt_inputs = best_inputs
     opt_results = best_pred
 
+    file = 'best_opt_inputs.json'
+    print("Saving to file: " + file)
+    sav_data = {'ne' : opt_inputs["ne"],
+                'Ti' : opt_inputs["Ti"],
+                'Te'  : opt_inputs["Te"],
+                'GaugeH2' : opt_inputs["GaugeH2"]
+                }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(run_dir+file, sav_data)
+
+    file = 'best_opt_outputs.json'
+    print("Saving to file: " + file)
+    sav_data = {"nH2" : opt_results.nH2,
+                "GammaxH2" : opt_results.GammaxH2,
+                "TH2" : opt_results.TH2,
+                "qxH2_total" : opt_results.qxH2_total,
+                "nHP" : opt_results.nHP,
+                "THP" : opt_results.THP,
+                "SH" : opt_results.SH,
+                "SP" : opt_results.SP,
+
+                "nH" : opt_results.nH,
+                "GammaxH" : opt_results.GammaxH,
+                "TH" : opt_results.TH,
+                "qxH_total" : opt_results.qxH_total,
+                "NetHSource" : opt_results.NetHSource,
+                "Sion" : opt_results.Sion,
+                "QH_total" : opt_results.QH_total,
+                "SideWallH" : opt_results.SideWallH,
+                "Lyman" : opt_results.Lyman,
+                "Balmer" : opt_results.Balmer,
+                "GammaHLim" : opt_results.GammaHLim,
+                }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(run_dir+file, sav_data)
+
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
 
@@ -461,27 +515,6 @@ if __name__ == "__main__":
     # Outputs Analysis
 
     print("### Outputs Analysis ###")
-
-    kn1d_results.nH2,
-    kn1d_results.GammaxH2,
-    kn1d_results.TH2,
-    kn1d_results.qxH2_total,
-    kn1d_results.nHP,
-    kn1d_results.THP,
-    kn1d_results.SH,
-    kn1d_results.SP,
-
-    kn1d_results.nH,
-    kn1d_results.GammaxH,
-    kn1d_results.TH,
-    kn1d_results.qxH_total,
-    kn1d_results.NetHSource,
-    kn1d_results.Sion,
-    kn1d_results.QH_total,
-    kn1d_results.SideWallH,
-    kn1d_results.Lyman,
-    kn1d_results.Balmer,
-    kn1d_results.GammaHLim,
 
 
     analyze_difference("nH2", loss_fun, opt_results.nH2, trueout_results.nH2)
@@ -529,3 +562,11 @@ if __name__ == "__main__":
             Ti_gifgen.generate_gif()
         if OPTIMIZE_TE:
             Te_gifgen.generate_gif()
+
+    if GENERATE_GRADIENT_GIF:
+        if OPTIMIZE_NE:
+            ne_grad_gifgen.generate_gif()
+        if OPTIMIZE_TI:
+            Ti_grad_gifgen.generate_gif()
+        if OPTIMIZE_TE:
+            Te_grad_gifgen.generate_gif()

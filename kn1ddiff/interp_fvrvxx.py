@@ -274,3 +274,179 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
 
     return fb
 
+
+
+
+def interp_fvrvxx_diff(fa: torch.Tensor, mesh_a: KineticMesh, mesh_b: KineticMesh, do_warn=None, debug=False):
+    '''
+    Differentiable interpolation of distribution functions between kinetic meshes.
+    Replaces the original interp_fvrvxx with a torch-compatible implementation.
+
+    Mesh coordinates are detached for weight computation (treated as fixed constants),
+    while gradients flow through fa. This is a valid approximation given that:
+        1. The interpolation makes empirically small corrections
+        2. Gradients w.r.t. mesh coordinates are computed elsewhere in the program
+
+    Parameters
+    ----------
+        fa : torch.Tensor
+            Input distribution function, shape (vra, vxa, xa)
+        mesh_a : KineticMesh
+            Mesh information for input distribution
+        mesh_b : KineticMesh
+            Mesh information for desired output distribution
+        do_warn : float or None (optional)
+            If set, warns when fb is non-zero at interpolation boundaries,
+            indicating truncation outside the phase space of mesh_a
+        debug : bool
+            If True, print debug statements
+
+    Returns
+    -------
+        fb : torch.Tensor
+            Interpolated distribution function, shape (vrb, vxb, xb)
+            Gradients flow through fa only
+    '''
+
+    prompt = 'INTERP_FVRVXX => '
+
+    n_vra, n_vxa, n_xa = mesh_a.vr.shape[0], mesh_a.vx.shape[0], mesh_a.x.shape[0]
+    n_vrb, n_vxb, n_xb = mesh_b.vr.shape[0], mesh_b.vx.shape[0], mesh_b.x.shape[0]
+
+    if fa.shape != (n_vra, n_vxa, n_xa):
+        raise Exception(f'fa {fa.shape} does not have shape (vra, vxa, xa) = {(n_vra, n_vxa, n_xa)}')
+
+    # --- Freeze mesh coordinates for weight computation ---
+
+    with torch.no_grad():
+
+        v_scale = torch.sqrt(mesh_b.Tnorm / mesh_a.Tnorm).detach()
+
+        vr_a = mesh_a.vr.detach()
+        vx_a = mesh_a.vx.detach()
+        vr_b = mesh_b.vr.detach()
+        vx_b = mesh_b.vx.detach()
+
+        vdiff_a = VSpace_Differentials(vr_a, vx_a)
+        vdiff_b = VSpace_Differentials(vr_b, vx_b)
+
+        # --- Velocity space weight matrix ---
+        # Cell boundary computation (midpoints between grid points, extended at edges)
+        vr_bounds_a = torch.cat([
+            vr_a[:1] - (vr_a[1] - vr_a[0]) / 2,
+            (vr_a[:-1] + vr_a[1:]) / 2,
+            vr_a[-1:] + (vr_a[-1] - vr_a[-2]) / 2
+        ])
+        vx_bounds_a = torch.cat([
+            vx_a[:1] - (vx_a[1] - vx_a[0]) / 2,
+            (vx_a[:-1] + vx_a[1:]) / 2,
+            vx_a[-1:] + (vx_a[-1] - vx_a[-2]) / 2
+        ])
+        vr_bounds_b = torch.cat([
+            vr_b[:1] - (vr_b[1] - vr_b[0]) / 2,
+            (vr_b[:-1] + vr_b[1:]) / 2,
+            vr_b[-1:] + (vr_b[-1] - vr_b[-2]) / 2
+        ]) * v_scale
+        vx_bounds_b = torch.cat([
+            vx_b[:1] - (vx_b[1] - vx_b[0]) / 2,
+            (vx_b[:-1] + vx_b[1:]) / 2,
+            vx_b[-1:] + (vx_b[-1] - vx_b[-2]) / 2
+        ]) * v_scale
+
+        # Cell overlap weights: shape (vrb, vxb, vra, vxa)
+        vr_min = torch.maximum(vr_bounds_b[:-1][:, None], vr_bounds_a[:-1][None, :])       # (vrb, vra)
+        vr_max = torch.minimum(vr_bounds_b[1:][:, None],  vr_bounds_a[1:][None, :])        # (vrb, vra)
+        vx_min = torch.maximum(vx_bounds_b[:-1][:, None], vx_bounds_a[:-1][None, :])       # (vxb, vxa)
+        vx_max = torch.minimum(vx_bounds_b[1:][:, None],  vx_bounds_a[1:][None, :])        # (vxb, vxa)
+
+        vr_overlap = torch.clamp(vr_max - vr_min, min=0.0)
+        vx_overlap = torch.clamp(vx_max - vx_min, min=0.0)
+
+        has_overlap = (
+            (vr_overlap[:, None, :, None] > 0) & 
+            (vx_overlap[None, :, None, :] > 0)
+        )  # (vrb, vxb, vra, vxa)
+
+        weight_value = (
+            2 * torch.pi 
+            * (vr_max**2 - vr_min**2)[:, None, :, None] 
+            * (vx_max - vx_min)[None, :, None, :]
+            / (vdiff_b.dvr_vol[:, None, None, None] * vdiff_b.dvx[None, :, None, None])
+        )  # (vrb, vxb, vra, vxa)
+
+        weight = torch.where(
+            has_overlap,
+            weight_value,
+            torch.zeros(n_vrb, n_vxb, n_vra, n_vxa, dtype=fa.dtype, device=fa.device)
+        )
+
+        W = weight.reshape(n_vrb * n_vxb, n_vra * n_vxa)
+
+        # --- Spatial interpolation matrix ---
+        # Linear interp weights for each xb point onto xa grid, shape (xb, xa)
+        x_a = mesh_a.x.detach()
+        x_b = mesh_b.x.detach()
+
+        # Clamp to valid range (matches original fill_value="extrapolate" behavior approximately,
+        # but zeros outside range matches original fb=0 initialization)
+        x_b_clamped = torch.clamp(x_b, x_a.min(), x_a.max())
+        idx = torch.searchsorted(x_a.contiguous(), x_b_clamped.contiguous(), right=True) - 1
+        idx = torch.clamp(idx, 0, n_xa - 2)
+        idx_r = idx + 1
+
+        frac = (x_b_clamped - x_a[idx]) / (x_a[idx_r] - x_a[idx])                        # (xb,)
+        in_range = (x_b >= x_a.min()) & (x_b <= x_a.max())                                # zero outside range
+
+        # Build sparse-style interpolation matrix
+        X = torch.zeros(n_xb, n_xa, dtype=fa.dtype, device=fa.device)
+        for k in range(n_xb):
+            if in_range[k]:
+                X[k, idx[k]]   = 1.0 - frac[k]
+                X[k, idx_r[k]] = frac[k]
+
+    # --- Differentiable interpolation ---
+    # Gradients flow through fa only from here
+
+    if debug:
+        print(prompt + 'applying weight matrix')
+
+    # Remap velocity space: (vrb*vxb, vra*vxa) @ (vra*vxa, xa) -> (vrb*vxb, xa)
+    fa_2d = fa.reshape(n_vra * n_vxa, n_xa)
+    fb_vspace = W @ fa_2d                                                                   # (vrb*vxb, xa)
+
+    # Remap spatial dimension: (vrb*vxb, xa) @ (xa, xb) -> (vrb*vxb, xb)
+    fb_2d = fb_vspace @ X.T                                                                 # (vrb*vxb, xb)
+
+    fb = fb_2d.reshape(n_vrb, n_vxb, n_xb)
+
+    # --- Rescale to preserve density ---
+    # Differentiable: gradients flow through fb and tot_b
+
+    with torch.no_grad():
+        tot_a = torch.stack([
+            torch.sum(vdiff_a.dvr_vol * (fa[:, :, k].detach() @ vdiff_a.dvx))
+            for k in range(n_xa)
+        ])
+        tot_b_on_xa = tot_a                                                                 # same grid structure
+        tot_b = X @ tot_b_on_xa                                                             # (xb,) interpolated density targets
+
+    for k in range(n_xb):
+        tot = torch.sum(vdiff_b.dvr_vol * (fb[:, :, k] @ vdiff_b.dvx))
+        if tot > 0:
+            if debug:
+                print(prompt + f'Density renormalization factor = {(tot_b[k] / tot).item():.6f}')
+            fb = fb.clone()
+            fb[:, :, k] = fb[:, :, k] * tot_b[k] / tot
+
+    # --- Boundary warnings ---
+
+    if do_warn is not None:
+        with torch.no_grad():
+            vr_bound = _get_interpolation_bounds(vr_a, v_scale * vr_b, "Vra", "Vrb")
+            vx_bound = _get_interpolation_bounds(vx_a, v_scale * vx_b, "Vxa", "Vxb")
+            x_bound  = _get_interpolation_bounds(x_a,  x_b,            "Xa",  "Xb")
+            _test_bounds(fb.detach(), vr_bound, n_vrb, 0, vx_bound, x_bound, do_warn, var_name="Vra")
+            _test_bounds(fb.detach(), vx_bound, n_vxb, 1, vr_bound, x_bound, do_warn, var_name="Vxa")
+            _test_bounds(fb.detach(), x_bound,  n_xb,  2, vr_bound, vx_bound, do_warn, var_name="Xa")
+
+    return fb
