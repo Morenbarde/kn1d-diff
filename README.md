@@ -1,10 +1,10 @@
 # KN1D
 KN1D is a 1D-space, 2-D velocity neutral kinetic code developed by B. LaBombard (MIT).
-This repo contains the updated python version, KN1DPy, of the original KN1D code.
+This repo contains a modified version of the Python translation KN1DPy designed to be fully automatically differentiable with PyTorch.
 Contact: njbrown@wm.edu
 
 ## NOTE
-This translation is still in development and not fully tested. Certain functionality and accuracy may still be missing.
+This progam is still in development and not fully working.
 
 ## Requirements
 This translation was developed in python 3.12.3. 
@@ -14,13 +14,6 @@ All dependencies are located in requirements.txt. To install, run the following 
 pip install -r requirements.txt
 ```
 
-## Limitations
-Currently, anything using the Johnson-Hinov Tables are not working.
-This includes Lyman_Alpha and Balmer Alpha, which will return 0 for the moment.
-As such, the default choice for ionization coefficients has been set to Collrad Ionization.
-
-There are also various other features that are currently not implemented.
-These may be added later once the core program is completed.
 
 ## Configuration File
 The file config.json is used to handle several settings
