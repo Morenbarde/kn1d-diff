@@ -8,7 +8,7 @@ from dataclasses import asdict
 from scipy.io import readsav
 
 from kn1ddiff.kn1d import kn1d, KN1DResults
-from Testing.utils import *
+from Optimization.utils import *
 
 
 # File Output
@@ -25,30 +25,30 @@ EPSILON = 10e-10
 OPTIMIZE_NE = True
 OPTIMIZE_TI = True
 OPTIMIZE_TE = True
-OPTIMIZE_GAUGEH2 = False
+OPTIMIZE_GAUGEH2 = True
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.05 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 0.9 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 2
+NUM_ITERS = 1000
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-3
-CYCLE_LR = True
+INITIAL_LR = 1e-2
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6
 
 # Gif parameters
 GENERATE_GIF = True
-GENERATE_GRADIENT_GIF = True
+# GENERATE_GRADIENT_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 1
+GIF_FREQ = 50
 
 # Folder Settings
 now = datetime.now()
@@ -57,9 +57,10 @@ base = int(INITIAL_LR*(10**(-exp)))
 exp = int(exp)
 folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")+"_"+str(NUM_ITERS)+f'_{base}e{exp}'+"_Cycle-"+str(CYCLE_LR)
 
-result_dir = "./Results/Optimization/"
-run_dir = result_dir+"Runs/"+folder_name+"/"
+local_dir = "Optimization/kn1d/"
+run_dir = local_dir+"Runs/"+folder_name+"/"
 image_dir = run_dir+"Images/"
+data_dir = run_dir+"Data/"
 # in_file = "kn1d_in.json"
 out_file = "kn1d_out.json"
 
@@ -114,7 +115,7 @@ if __name__ == "__main__":
     for key, value in in_data.items():
         in_data[key] = torch.tensor(np.asarray(value).astype(np.float32), dtype=dtype, device=device)
 
-    with open(result_dir+out_file, 'r') as f:
+    with open(local_dir+out_file, 'r') as f:
         out_data = json.load(f)
         for key, value in out_data.items():
             out_data[key] = torch.tensor(value, dtype=dtype, device=device)
@@ -266,13 +267,13 @@ if __name__ == "__main__":
         # if OPTIMIZE_GAUGEH2:
         #     GaugeH2_gifgen = GIF_Generator(NUM_ITERS, image_dir, "GaugeH2", truein_GaugeH2, fps=GIF_FPS, frequency=GIF_FREQ)
 
-    if GENERATE_GRADIENT_GIF:
-        if OPTIMIZE_NE:
-            ne_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "ne_grad", fps=GIF_FPS, frequency=GIF_FREQ)
-        if OPTIMIZE_TI:
-            Ti_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Ti_grad", fps=GIF_FPS, frequency=GIF_FREQ)
-        if OPTIMIZE_TE:
-            Te_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Te_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+    # if GENERATE_GRADIENT_GIF:
+    #     if OPTIMIZE_NE:
+    #         ne_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "ne_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+    #     if OPTIMIZE_TI:
+    #         Ti_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Ti_grad", fps=GIF_FPS, frequency=GIF_FREQ)
+    #     if OPTIMIZE_TE:
+    #         Te_grad_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Te_grad", fps=GIF_FPS, frequency=GIF_FREQ)
 
 
     # Capture Best Epoch
@@ -369,13 +370,13 @@ if __name__ == "__main__":
         torch.nn.utils.clip_grad_norm_(parameters, max_norm=CLIP_NORM)
 
 
-        if GENERATE_GRADIENT_GIF:
-            if OPTIMIZE_NE:
-                ne_grad_gifgen.update(ne_param.grad, epoch)
-            if OPTIMIZE_TI:
-                Ti_grad_gifgen.update(Ti_param.grad, epoch)
-            if OPTIMIZE_TE:
-                Te_grad_gifgen.update(Te_param.grad, epoch)
+        # if GENERATE_GRADIENT_GIF:
+        #     if OPTIMIZE_NE:
+        #         ne_grad_gifgen.update(ne_param.grad, epoch)
+        #     if OPTIMIZE_TI:
+        #         Ti_grad_gifgen.update(Ti_param.grad, epoch)
+        #     if OPTIMIZE_TE:
+        #         Te_grad_gifgen.update(Te_param.grad, epoch)
 
         #Optimize
         optimizer.step()
@@ -388,7 +389,7 @@ if __name__ == "__main__":
 
         # Save Best Epoch
         loss_list.append(loss.item())
-        lr_list.append(scheduler.get_last_lr())
+        lr_list.append(scheduler.get_last_lr()[0])
         if loss.item() < best_loss:
             best_loss = loss.item()
             best_inputs = {
@@ -456,41 +457,140 @@ if __name__ == "__main__":
     opt_inputs = best_inputs
     opt_results = best_pred
 
-    file = 'best_opt_inputs.json'
-    print("Saving to file: " + file)
-    sav_data = {'ne' : opt_inputs["ne"],
-                'Ti' : opt_inputs["Ti"],
-                'Te'  : opt_inputs["Te"],
-                'GaugeH2' : opt_inputs["GaugeH2"]
-                }
-    sav_data = make_json_compatible(sav_data)
-    sav_to_json(run_dir+file, sav_data)
+    # --- Save Results ---
 
-    file = 'best_opt_outputs.json'
-    print("Saving to file: " + file)
-    sav_data = {"nH2" : opt_results.nH2,
-                "GammaxH2" : opt_results.GammaxH2,
-                "TH2" : opt_results.TH2,
-                "qxH2_total" : opt_results.qxH2_total,
-                "nHP" : opt_results.nHP,
-                "THP" : opt_results.THP,
-                "SH" : opt_results.SH,
-                "SP" : opt_results.SP,
+    check_and_generate_dir(data_dir)
 
-                "nH" : opt_results.nH,
-                "GammaxH" : opt_results.GammaxH,
-                "TH" : opt_results.TH,
-                "qxH_total" : opt_results.qxH_total,
-                "NetHSource" : opt_results.NetHSource,
-                "Sion" : opt_results.Sion,
-                "QH_total" : opt_results.QH_total,
-                "SideWallH" : opt_results.SideWallH,
-                "Lyman" : opt_results.Lyman,
-                "Balmer" : opt_results.Balmer,
-                "GammaHLim" : opt_results.GammaHLim,
-                }
+    file = 'opt_in.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "Ti" : opt_inputs["Ti"],
+        "Te" : opt_inputs["Te"],
+        "ne" : opt_inputs["ne"],
+        "GaugeH2" : opt_inputs["GaugeH2"]
+    }
     sav_data = make_json_compatible(sav_data)
-    sav_to_json(run_dir+file, sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    file = 'opt_out.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "nH2": opt_results.nH2,
+        "GammaxH2": opt_results.GammaxH2,
+        "TH2": opt_results.TH2,
+        "qxH2_total": opt_results.qxH2_total,
+        "nHP": opt_results.nHP,
+        "THP": opt_results.THP,
+        "SH": opt_results.SH,
+        "SP": opt_results.SP,
+
+        "nH": opt_results.nH,
+        "GammaxH": opt_results.GammaxH,
+        "TH": opt_results.TH,
+        "qxH_total": opt_results.qxH_total,
+        "NetHSource": opt_results.NetHSource,
+        "Sion": opt_results.Sion,
+        "QH_total": opt_results.QH_total,
+        "SideWallH": opt_results.SideWallH,
+        "Lyman": opt_results.Lyman,
+        "Balmer": opt_results.Balmer,
+        "GammaHLim": opt_results.GammaHLim,
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    # Save true values
+
+    file = 'true_in.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "Ti" : truein_Ti,
+        "Te" : truein_Te,
+        "ne" : truein_ne,
+        "GaugeH2" : truein_GaugeH2
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    file = 'true_out.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "nH2": trueout_results.nH2,
+        "GammaxH2": trueout_results.GammaxH2,
+        "TH2": trueout_results.TH2,
+        "qxH2_total": trueout_results.qxH2_total,
+        "nHP": trueout_results.nHP,
+        "THP": trueout_results.THP,
+        "SH": trueout_results.SH,
+        "SP": trueout_results.SP,
+
+        "nH": trueout_results.nH,
+        "GammaxH": trueout_results.GammaxH,
+        "TH": trueout_results.TH,
+        "qxH_total": trueout_results.qxH_total,
+        "NetHSource": trueout_results.NetHSource,
+        "Sion": trueout_results.Sion,
+        "QH_total": trueout_results.QH_total,
+        "SideWallH": trueout_results.SideWallH,
+        "Lyman": trueout_results.Lyman,
+        "Balmer": trueout_results.Balmer,
+        "GammaHLim": trueout_results.GammaHLim,
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+
+    # Save final output
+
+    file = 'final_in.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "Ti" : Ti_in.detach().cpu(),
+        "Te" : Te_in.detach().cpu(),
+        "ne" : ne_in.detach().cpu(),
+        "GaugeH2" : GaugeH2_in.detach().cpu()
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    file = 'final_out.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "nH2": kn1d_results.nH2,
+        "GammaxH2": kn1d_results.GammaxH2,
+        "TH2": kn1d_results.TH2,
+        "qxH2_total": kn1d_results.qxH2_total,
+        "nHP": kn1d_results.nHP,
+        "THP": kn1d_results.THP,
+        "SH": kn1d_results.SH,
+        "SP": kn1d_results.SP,
+
+        "nH": kn1d_results.nH,
+        "GammaxH": kn1d_results.GammaxH,
+        "TH": kn1d_results.TH,
+        "qxH_total": kn1d_results.qxH_total,
+        "NetHSource": kn1d_results.NetHSource,
+        "Sion": kn1d_results.Sion,
+        "QH_total": kn1d_results.QH_total,
+        "SideWallH": kn1d_results.SideWallH,
+        "Lyman": kn1d_results.Lyman,
+        "Balmer": kn1d_results.Balmer,
+        "GammaHLim": kn1d_results.GammaHLim,
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+
+    file = 'loss_lr.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "loss" : loss_list,
+        "lr" : lr_list
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+
 
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
@@ -563,10 +663,10 @@ if __name__ == "__main__":
         if OPTIMIZE_TE:
             Te_gifgen.generate_gif()
 
-    if GENERATE_GRADIENT_GIF:
-        if OPTIMIZE_NE:
-            ne_grad_gifgen.generate_gif()
-        if OPTIMIZE_TI:
-            Ti_grad_gifgen.generate_gif()
-        if OPTIMIZE_TE:
-            Te_grad_gifgen.generate_gif()
+    # if GENERATE_GRADIENT_GIF:
+    #     if OPTIMIZE_NE:
+    #         ne_grad_gifgen.generate_gif()
+    #     if OPTIMIZE_TI:
+    #         Ti_grad_gifgen.generate_gif()
+    #     if OPTIMIZE_TE:
+    #         Te_grad_gifgen.generate_gif()

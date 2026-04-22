@@ -8,7 +8,7 @@ from dataclasses import asdict
 
 from kn1ddiff.kinetic_mesh import *
 from kn1ddiff.kinetic_h import *
-from Testing.utils import *
+from Optimization.utils import *
 
 
 # Torch
@@ -29,18 +29,18 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 1.0 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
 # Iteration Parameters
-NUM_ITERS = 1
+NUM_ITERS = 2000
 NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-3
-CYCLE_LR = True
+INITIAL_LR = 5e-3
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6
@@ -48,7 +48,7 @@ MIN_LR = 1e-6
 # Gif parameters
 GENERATE_GIF = True
 GIF_FPS = 5
-GIF_FREQ = 1
+GIF_FREQ = 50
 
 
 # Folder Settings
@@ -58,9 +58,10 @@ base = int(INITIAL_LR*(10**(-exp)))
 exp = int(exp)
 folder_name = now.strftime("%Y-%m-%d_%H-%M-%S")+"_"+str(NUM_ITERS)+f'_{base}e{exp}'+"_Cycle-"+str(CYCLE_LR)
 
-local_dir = "Testing/h_proc/"
+local_dir = "Optimization/kinetic_h/"
 run_dir = local_dir+"Runs/"+folder_name+"/"
 image_dir = run_dir+"Images/"
+data_dir = run_dir+"Data/"
 in_file = "kh_proc_in.json"
 out_file = "kh_proc_out.json"
 
@@ -305,19 +306,19 @@ if __name__ == "__main__":
     # Init Gif Generator
     if GENERATE_GIF:
         if OPTIMIZE_FH2:
-            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH2/", "fH2", truein_fH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            fH2_gifgen = GIF_Generator(NUM_ITERS, image_dir, "fH2", truein_fH2[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_FSH:
-            fSH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fSH/", "fSH", truein_fSH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            fSH_gifgen = GIF_Generator(NUM_ITERS, image_dir, "fSH", truein_fSH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_FH:
-            fH_gifgen = GIF_Generator(NUM_ITERS, image_dir+"fH/", "fH", truein_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
+            fH_gifgen = GIF_Generator(NUM_ITERS, image_dir, "fH", truein_fH[0,10,:], fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_NHP:
-            nHP_gifgen = GIF_Generator(NUM_ITERS, image_dir+"nHP/", "nHP", truein_nHP, fps=GIF_FPS, frequency=GIF_FREQ)
+            nHP_gifgen = GIF_Generator(NUM_ITERS, image_dir, "nHP", truein_nHP, fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_THP:
-            THP_gifgen = GIF_Generator(NUM_ITERS, image_dir+"THP/", "THP", truein_THP, fps=GIF_FPS, frequency=GIF_FREQ)
+            THP_gifgen = GIF_Generator(NUM_ITERS, image_dir, "THP", truein_THP, fps=GIF_FPS, frequency=GIF_FREQ)
         if OPTIMIZE_MESH:
-            Ti_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Ti/", "Ti", truein_Ti, fps=GIF_FPS, frequency=GIF_FREQ)
-            Te_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Te/", "Te", truein_Te, fps=GIF_FPS, frequency=GIF_FREQ)
-            ne_gifgen = GIF_Generator(NUM_ITERS, image_dir+"ne/", "ne", truein_ne, fps=GIF_FPS, frequency=GIF_FREQ)
+            Ti_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Ti", truein_Ti, fps=GIF_FPS, frequency=GIF_FREQ)
+            Te_gifgen = GIF_Generator(NUM_ITERS, image_dir, "Te", truein_Te, fps=GIF_FPS, frequency=GIF_FREQ)
+            ne_gifgen = GIF_Generator(NUM_ITERS, image_dir, "ne", truein_ne, fps=GIF_FPS, frequency=GIF_FREQ)
             # Tnorm_gifgen = GIF_Generator(NUM_ITERS, image_dir+"Tnorm/", "Tnorm", truein_Tnorm, fps=GIF_FPS, frequency=GIF_FREQ)
 
 
@@ -405,7 +406,7 @@ if __name__ == "__main__":
 
         # Save Best Epoch
         loss_list.append(loss.item())
-        lr_list.append(scheduler.get_last_lr())
+        lr_list.append(scheduler.get_last_lr()[0])
         if loss.item() < best_loss:
             best_loss = loss.item()
             best_inputs = {
@@ -423,19 +424,19 @@ if __name__ == "__main__":
             
             best_pred = KHResults(
                                     kh_results.fH.detach().cpu(),
-                                    kh_results.nH.detach().cpu(), 
-                                    kh_results.GammaxH.detach().cpu(), 
-                                    kh_results.VxH.detach().cpu(), 
-                                    kh_results.pH.detach().cpu(), 
-                                    kh_results.TH.detach().cpu(), 
-                                    kh_results.qxH.detach().cpu(), 
-                                    kh_results.qxH_total.detach().cpu(), 
-                                    kh_results.NetHSource.detach().cpu(), 
-                                    kh_results.Sion.detach().cpu(), 
-                                    kh_results.QH.detach().cpu(), 
-                                    kh_results.RxH.detach().cpu(), 
-                                    kh_results.QH_total.detach().cpu(), 
-                                    kh_results.AlbedoH.detach().cpu(), 
+                                    kh_results.nH.detach().cpu(),
+                                    kh_results.GammaxH.detach().cpu(),
+                                    kh_results.VxH.detach().cpu(),
+                                    kh_results.pH.detach().cpu(),
+                                    kh_results.TH.detach().cpu(),
+                                    kh_results.qxH.detach().cpu(),
+                                    kh_results.qxH_total.detach().cpu(),
+                                    kh_results.NetHSource.detach().cpu(),
+                                    kh_results.Sion.detach().cpu(),
+                                    kh_results.QH.detach().cpu(),
+                                    kh_results.RxH.detach().cpu(),
+                                    kh_results.QH_total.detach().cpu(),
+                                    kh_results.AlbedoH.detach().cpu(),
                                     kh_results.SideWallH.detach().cpu()
                                 )
             best_epoch = epoch
@@ -473,13 +474,95 @@ if __name__ == "__main__":
 
 
 
-
-
-
     # --- Analysis ---
 
     opt_inputs = best_inputs
     opt_results = best_pred
+
+
+    # --- Save Results ---
+
+    check_and_generate_dir(data_dir)
+
+    file = 'opt_in.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "Ti" : opt_inputs["Ti"],
+        "Te" : opt_inputs["Te"],
+        "ne" : opt_inputs["ne"],
+        "Tnorm" : opt_inputs["Tnorm"]
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    file = 'opt_out.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "fH": opt_results.fH,
+        "nH": opt_results.nH,
+        "GammaxH": opt_results.GammaxH,
+        "VxH": opt_results.VxH,
+        "pH": opt_results.pH,
+        "TH": opt_results.TH,
+        "qxH": opt_results.qxH,
+        "qxH_total": opt_results.qxH_total,
+        "NetHSource": opt_results.NetHSource,
+        "Sion": opt_results.Sion,
+        "QH": opt_results.QH,
+        "RxH": opt_results.RxH,
+        "QH_total": opt_results.QH_total,
+        "AlbedoH": opt_results.AlbedoH,
+        "SideWallH": opt_results.SideWallH,
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    # Save true values
+
+    file = 'true_in.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "Ti" : truein_Ti,
+        "Te" : truein_Te,
+        "ne" : truein_ne,
+        "Tnorm" : truein_Tnorm
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+    file = 'true_out.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "fH": trueout_results.fH,
+        "nH": trueout_results.nH,
+        "GammaxH": trueout_results.GammaxH,
+        "VxH": trueout_results.VxH,
+        "pH": trueout_results.pH,
+        "TH": trueout_results.TH,
+        "qxH": trueout_results.qxH,
+        "qxH_total": trueout_results.qxH_total,
+        "NetHSource": trueout_results.NetHSource,
+        "Sion": trueout_results.Sion,
+        "QH": trueout_results.QH,
+        "RxH": trueout_results.RxH,
+        "QH_total": trueout_results.QH_total,
+        "AlbedoH": trueout_results.AlbedoH,
+        "SideWallH": trueout_results.SideWallH,
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+
+    file = 'loss_lr.json'
+    print("Saving to file: " + file)
+    sav_data = {
+        "loss" : loss_list,
+        "lr" : lr_list
+    }
+    sav_data = make_json_compatible(sav_data)
+    sav_to_json(data_dir+file, sav_data)
+
+
 
     # --- Analyze ---
     print("Best Epoch: ", best_epoch)
@@ -519,21 +602,21 @@ if __name__ == "__main__":
 
     print("### Outputs Analysis ###")
 
-    analyze_difference("fH", loss_fun, kh_results.fH, trueout_results.fH)
-    analyze_difference("nH", loss_fun, kh_results.nH, trueout_results.nH)
-    analyze_difference("GammaxH", loss_fun, kh_results.GammaxH, trueout_results.GammaxH)
-    analyze_difference("VxH", loss_fun, kh_results.VxH, trueout_results.VxH)
-    analyze_difference("pH", loss_fun, kh_results.pH, trueout_results.pH)
-    analyze_difference("TH", loss_fun, kh_results.TH, trueout_results.TH)
-    analyze_difference("qxH", loss_fun, kh_results.qxH, trueout_results.qxH)
-    analyze_difference("qxH_total", loss_fun, kh_results.qxH_total, trueout_results.qxH_total)
-    analyze_difference("NetHSource", loss_fun, kh_results.NetHSource, trueout_results.NetHSource)
-    analyze_difference("Sion", loss_fun, kh_results.Sion, trueout_results.Sion)
-    analyze_difference("QH", loss_fun, kh_results.QH, trueout_results.QH)
-    analyze_difference("RxH", loss_fun, kh_results.RxH, trueout_results.RxH)
-    analyze_difference("QH_total", loss_fun, kh_results.QH_total, trueout_results.QH_total)
-    analyze_difference("AlbedoH", loss_fun, kh_results.AlbedoH, trueout_results.AlbedoH)
-    analyze_difference("SideWallH", loss_fun, kh_results.SideWallH, trueout_results.SideWallH)
+    analyze_difference("fH", loss_fun, opt_results.fH, trueout_results.fH)
+    analyze_difference("nH", loss_fun, opt_results.nH, trueout_results.nH)
+    analyze_difference("GammaxH", loss_fun, opt_results.GammaxH, trueout_results.GammaxH)
+    analyze_difference("VxH", loss_fun, opt_results.VxH, trueout_results.VxH)
+    analyze_difference("pH", loss_fun, opt_results.pH, trueout_results.pH)
+    analyze_difference("TH", loss_fun, opt_results.TH, trueout_results.TH)
+    analyze_difference("qxH", loss_fun, opt_results.qxH, trueout_results.qxH)
+    analyze_difference("qxH_total", loss_fun, opt_results.qxH_total, trueout_results.qxH_total)
+    analyze_difference("NetHSource", loss_fun, opt_results.NetHSource, trueout_results.NetHSource)
+    analyze_difference("Sion", loss_fun, opt_results.Sion, trueout_results.Sion)
+    analyze_difference("QH", loss_fun, opt_results.QH, trueout_results.QH)
+    analyze_difference("RxH", loss_fun, opt_results.RxH, trueout_results.RxH)
+    analyze_difference("QH_total", loss_fun, opt_results.QH_total, trueout_results.QH_total)
+    analyze_difference("AlbedoH", loss_fun, opt_results.AlbedoH, trueout_results.AlbedoH)
+    analyze_difference("SideWallH", loss_fun, opt_results.SideWallH, trueout_results.SideWallH)
 
 
     # --- Plot Generation --- 
@@ -547,27 +630,27 @@ if __name__ == "__main__":
     if OPTIMIZE_FH2:
         x = range(opt_inputs["fH2"][0,10,:].numel())
         for i in range(len(opt_inputs["fH2"][0,:,0])):
-            generate_compare_plot(image_dir+"fH2/", "fH2-"+str(i), x, opt_inputs["fH2"][0,i,:], x, truein_fH2[0,i,:], init_x=x, init_y=initial_fH2[0,i,:])
+            generate_compare_plot(image_dir, "fH2-"+str(i), x, opt_inputs["fH2"][0,i,:], x, truein_fH2[0,i,:], init_x=x, init_y=initial_fH2[0,i,:])
     if OPTIMIZE_FSH:
         x = range(opt_inputs["fSH"][0,10,:].numel())
         for i in range(len(opt_inputs["fSH"][0,:,0])):
-            generate_compare_plot(image_dir+"fSH/", "fSH-"+str(i), x, opt_inputs["fSH"][0,i,:], x, truein_fSH[0,i,:], init_x=x, init_y=initial_fSH[0,i,:])
+            generate_compare_plot(image_dir, "fSH-"+str(i), x, opt_inputs["fSH"][0,i,:], x, truein_fSH[0,i,:], init_x=x, init_y=initial_fSH[0,i,:])
     if OPTIMIZE_FH:
         x = range(opt_inputs["fH"][0,10,:].numel())
         for i in range(len(opt_inputs["fH"][0,:,0])):
-            generate_compare_plot(image_dir+"fH/", "fH-"+str(i), x, opt_inputs["fH"][0,i,:], x, truein_fH[0,i,:], init_x=x, init_y=initial_fH[0,i,:])
+            generate_compare_plot(image_dir, "fH-"+str(i), x, opt_inputs["fH"][0,i,:], x, truein_fH[0,i,:], init_x=x, init_y=initial_fH[0,i,:])
     if OPTIMIZE_NHP:
         x = range(opt_inputs["nHP"].numel())
-        generate_compare_plot(image_dir+"nHP/", "nHP", x, opt_inputs["nHP"], x, truein_nHP, init_x=x, init_y=initial_nHP)
+        generate_compare_plot(image_dir, "nHP", x, opt_inputs["nHP"], x, truein_nHP, init_x=x, init_y=initial_nHP)
     if OPTIMIZE_THP:
         x = range(opt_inputs["THP"].numel())
-        generate_compare_plot(image_dir+"THP/", "THP", x, opt_inputs["THP"], x, truein_THP, init_x=x, init_y=initial_THP)
+        generate_compare_plot(image_dir, "THP", x, opt_inputs["THP"], x, truein_THP, init_x=x, init_y=initial_THP)
 
     if OPTIMIZE_MESH:
         x = mesh_output["x"]
-        generate_compare_plot(image_dir+"Ti/", "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
-        generate_compare_plot(image_dir+"Te/", "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
-        generate_compare_plot(image_dir+"ne/", "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
+        generate_compare_plot(image_dir, "Ti", x, opt_inputs["Ti"], x, truein_Ti, init_x=x, init_y=initial_Ti)
+        generate_compare_plot(image_dir, "Te", x, opt_inputs["Te"], x, truein_Te, init_x=x, init_y=initial_Te)
+        generate_compare_plot(image_dir, "ne", x, opt_inputs["ne"], x, truein_ne, init_x=x, init_y=initial_ne)
 
     # --- Gif Generation ---
     if GENERATE_GIF:
@@ -586,3 +669,7 @@ if __name__ == "__main__":
             Ti_gifgen.generate_gif()
             Te_gifgen.generate_gif()
             ne_gifgen.generate_gif()
+
+
+
+    rename_dir(run_dir, run_dir[:-1]+f"_Loss-{best_loss:.2e}")
