@@ -166,7 +166,7 @@ class KineticMesh:
             react_rate = nfine*(sigmav_ion_hh(Tefine) + sigmav_h1s_h1s_hh(Tefine) + sigmav_h1s_h2s_hh(Tefine) + 0.1*sigmav_cx_hh(Tifine,Tifine)) + gamma_wall
         
         # Compute local maximum grid spacing dx_max = 2
-        dx_max = torch.minimum(fctr*0.8*(2*vth*min(vr)/react_rate), torch.tensor(0.02*fctr, dtype=x.dtype, device=x.device))
+        dx_max = torch.minimum(fctr*0.8*(2*vth*min(vr)/react_rate), 0.02*fctr.detach().clone())
 
         # # Construct xH Axis 
         # xpt = xmax

@@ -80,7 +80,7 @@ class KHResults():
     AlbedoH: float
     SideWallH: NDArray
 
-
+# @torch.compile
 class KineticH():
     '''
     This class is part of the "KN1D" atomic and molecular neutral transport code.
@@ -523,7 +523,7 @@ class KineticH():
 
         return fH_total, Beta_CX_sum, m_sums
     
-
+    # @torch.compile
     def _compile_results(self, fH, nH, fSH, gamma_wall, alpha_c, Beta_CX_sum, collision_freqs, m_sums):
         '''
         Computes final results of kinetic_h2 procedure, compiles into KH2Results dataclass
@@ -726,7 +726,7 @@ class KineticH():
         
         return CollisionType(Omega_H_H, Omega_H_P, Omega_H_H2)
     
-
+    # @torch.compile
     def _compute_collision_frequency(self, collision_freqs: CollisionType, gamma_wall):
         '''
         Computes total elastic scattering frequency (Eq. 3.15)
@@ -750,7 +750,7 @@ class KineticH():
 
         return alpha_c
     
-
+    # @torch.compile
     def _compute_mesh_equation_coefficients(self, alpha_c):
         '''
         Define parameters Ak, Bk, Ck, Dk, Fk, Gk using Eqs. (3.22), (3.25), (3.30), (3.33)

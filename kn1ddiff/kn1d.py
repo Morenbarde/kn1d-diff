@@ -158,7 +158,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     # Determine optimized vr, vx, grid for kinetc_h2 (molecules, M)
     # Eneut = np.array([0.003,0.01,0.03,0.1,0.3,1.0,3.0])
     Eneut = torch.tensor([0.003,0.01,0.03,0.1,0.3,1.0,3.0], dtype=x.dtype, device=x.device)
-    fctr = 0.3
+    fctr = torch.tensor(0.3, dtype=x.dtype, device=x.device)
     if GaugeH2 > 15.0:
         fctr = fctr*15 / GaugeH2
 
@@ -167,7 +167,7 @@ def kn1d(x, xlimiter, xsep, GaugeH2, mu, Ti, Te, n, vxi, LC, PipeDia,
     
 
     # Determine optimized vr, vx grid for kinetic_h (atoms, A)
-    fctr = 0.3
+    fctr = torch.tensor(0.3, dtype=x.dtype, device=x.device)
     if GaugeH2 > 30.0 :
         fctr = fctr * 30 / GaugeH2
 
