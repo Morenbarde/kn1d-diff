@@ -272,26 +272,51 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
 
     maxwell = torch.zeros((nvr, nvx, nk), dtype=dtype, device=device)
 
-    for k in range(nk):
-        if Tmaxwell[k] <= 0:
-            continue
 
-        arg = -((vr[:, None]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
-        arg = dclamp(arg, min=-80.0, max=0.0)
-        f = torch.exp(arg)
+    valid_mask = Tmaxwell > 0
+    valid_idx = torch.where(valid_mask)[0]
 
-        f = f / torch.nansum(dvr_vol*(f @ dvx))
+    # arg shape: (n_valid, Nvr, Nvx)
+    vx_shifted = vx[None, :] - vx_shift[valid_mask, None] / vth          # (n_valid, Nvx)
+    arg = -((vr**2)[None, :, None] + vx_shifted[:, None, :]**2) * mol * Tnorm / Tmaxwell[valid_mask, None, None]
+    arg = dclamp(arg, min=-80.0, max=0.0)
 
-        # Target energy density
-        target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
+    f = torch.exp(arg)  # (n_valid, Nvr, Nvx)
 
-        # with torch.no_grad():
-        #     compensated_f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
+    norm = (dvr_vol[None, :] * (f * dvx[None, None, :]).sum(dim=2)).sum(dim=1)
+    f = f / norm[:, None, None]
 
-        # f = f + (compensated_f - f).detach()
+    target_energy = vx_shift[valid_mask]**2 + (3 * CONST.Q * Tmaxwell[valid_mask] / (mol * mu * CONST.H_MASS))
 
-        f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
+    # compensate_distribution must remain a loop
+    for i, k in enumerate(valid_idx):
+        f_k, _ = compensate_distribution(f[i], vdiff, vr, vx, vth, vx_shift[k], target_energy[i])
+        norm_k = torch.sum(dvr_vol * (f_k @ dvx))
+        maxwell[:, :, k] = f_k / norm_k
+    
+    
+    # for k in range(nk):
+    #     if Tmaxwell[k] <= 0:
+    #         continue
+    #     # print(arg[k])
+    #     arg = -((vr[:, None]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
+    #     arg = dclamp(arg, min=-80.0, max=0.0)
+    #     # print(arg)
+    #     # input()
+    #     f = torch.exp(arg)
 
-        maxwell[:,:,k] = f / torch.sum(dvr_vol*(f @ dvx))
+    #     f = f / torch.nansum(dvr_vol*(f @ dvx))
+
+    #     # Target energy density
+    #     target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
+
+    #     # with torch.no_grad():
+    #     #     compensated_f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
+
+    #     # f = f + (compensated_f - f).detach()
+
+    #     f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
+
+    #     maxwell[:,:,k] = f / torch.sum(dvr_vol*(f @ dvx))
 
     return maxwell
