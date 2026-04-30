@@ -350,6 +350,7 @@ class KineticH():
 
 
         # --- Compute Variables---
+        # print(fH.shape)
 
         self._compute_dynamic_internals(fH, fH2, nHP, THP, fSH)
 

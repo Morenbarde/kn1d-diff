@@ -219,7 +219,10 @@ def interp_fvrvxx(fa: np.ndarray, mesh_a : KineticMesh, mesh_b : KineticMesh, do
             target_energy[k] = energy_moment_on_xa[kl] + interp_fraction*(energy_moment_on_xa[kr] - energy_moment_on_xa[kl])
 
 
+
         #   Process each spatial location
+        # nb = torch.einsum('ijk,i,j->k', fb, vdiff_b.dvr_vol, vdiff_b.dvx)
+
         for k in range(nx_b):
             # if target_energy[k] is None:
             #     continue

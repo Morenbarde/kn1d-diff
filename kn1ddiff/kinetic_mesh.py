@@ -58,7 +58,8 @@ class KineticMesh:
             fctr        : float   = 1.0,
             xH          : NDArray = None):
 
-
+        if type(fctr) is float:
+            fctr = torch.tensor(fctr, device=x.device, dtype=x.dtype)
         if xH is None:
             # print("generating full kinetic_" + mesh_type + "_mesh")
             self.init_full(mesh_type, mu, x, Ti, Te, n, PipeDia, jh, E0, fctr)

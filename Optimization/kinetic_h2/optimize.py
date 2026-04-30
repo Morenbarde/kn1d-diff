@@ -32,7 +32,7 @@ OPTIMIZE_MESH = True
 OPTIMIZE_VMESH = False #May be necessary, but unsure
 
 # Factors for setting initial values for optimization. 
-INIT_FACTOR = 0.9 # initial variables are multiplied by this factor as a starting point
+INIT_FACTOR = 1.1 # initial variables are multiplied by this factor as a starting point
 OFFSET_FACTOR = 0.0 # initial variables are offset by themselves times this factor as a starting point
 LOSS_FUNC = "sym" # "log" or "sym"
 
@@ -42,8 +42,8 @@ NUM_THREADS = 2
 CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
-INITIAL_LR = 1e-3
-CYCLE_LR = False
+INITIAL_LR = 5e-3
+CYCLE_LR = True
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6

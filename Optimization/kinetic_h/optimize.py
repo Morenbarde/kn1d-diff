@@ -40,7 +40,7 @@ CLIP_NORM = 1e-0
 
 # Learning Rate Parameters
 INITIAL_LR = 1e-3
-CYCLE_LR = True
+CYCLE_LR = False
 LR_CYCLE_COUNT = 1
 LR_CYCLE = math.ceil(NUM_ITERS // LR_CYCLE_COUNT)
 MIN_LR = 1e-6

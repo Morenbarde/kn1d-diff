@@ -38,8 +38,7 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
         s : float
             Correction scalar (Used in interp_fvrvxx)
     '''
-    
-    #NOTE Get nb name checked
+
 
     # Infer input data parameters
     dtype = vth.dtype
@@ -200,6 +199,178 @@ def compensate_distribution(f_slice, vdiff, vr, vx, vth, target_vx, target_energ
     return f_slice, s
 
 
+def vectorized_compensate_distribution(f_slice_stack, vdiff, vr, vx, vth, target_vx_stack, target_energy_stack, nb = 1, assume_pos = True):
+    '''
+    Custom Compensation scheme to give a distribution desired moments. Performs on one slice of the distribution.
+
+    Parameters
+    ----------
+        f_slice : ndarray
+            Slice of distribution fucntion
+        vdiff : VSpace_Differentials
+            Velocity space differentials for distribution function
+        vr : ndarray
+            Radial Velocities
+        vx : ndarray
+            Axial Velocities
+        vth : ndarray
+            Thermal Velocities
+        target_vx : ndarray
+            Target vx moment for distribution slice
+        target_energy : ndarray
+            Target energy moment for distribution slice
+        nb : ndarray
+            Density factor (Used in interp_fvrvxx)
+        assume_pos : bool
+            Sets whether the function assumes the distribution is positive
+            Defaults to (True)
+
+    Returns
+    -------
+        f_slice : ndarray
+            Adjusted distribution function
+        s : float
+            Correction scalar (Used in interp_fvrvxx)
+    '''
+
+    # Infer input data parameters
+    dtype = vth.dtype
+    device = vth.device
+
+    nvr = vr.numel()
+    nvx = vx.numel()
+    nk = len(target_vx_stack)
+    
+    #Differential Values torch conversion, replace later with make_dvr_dvx conversion
+    dvr_vol = vdiff.dvr_vol
+    dvx = vdiff.dvx
+    vmag_squared = vdiff.vmag_squared
+    volume = vdiff.volume
+
+
+    # Compute present moments of Maxwell, WxMax, and EMax (x_moment, energy_moment)
+    vx_moments = vth*torch.einsum('i,ijk,j->k', dvr_vol, f_slice_stack, (vx*dvx)) / nb
+    energy_moments = (vth**2)*torch.einsum('i,ij,ijk,j->k', dvr_vol, vmag_squared, f_slice_stack, dvx) / nb
+
+    #Shorthand slices for center of padded distribution
+    vr_center = slice(1, nvr+1)
+    vx_center = slice(1, nvx+1)
+
+    # Compute weighted function from distribution, padded with zeros
+    weighted_dists = torch.zeros((nvr+2, nvx+2, nk), dtype=dtype, device=device)
+    weighted_dists[vr_center, vx_center, :] = torch.einsum('ijk,ij->ijk', f_slice_stack, volume) / nb
+
+    # Used for interp_fvrvxx
+    # Run additional correction if the distribution is not assumed to be positive
+    allow_neg = False
+
+    # if not assume_pos:
+    #     cutoff = 1.0e-6*torch.max(weighted_dist)
+    #     ii = torch.where((abs(weighted_dist) < cutoff) & (abs(weighted_dist) > 0))
+    #     if ii[0].numel() > 0:
+    #         weighted_dist[ii] = 0.0
+
+    #     if max(weighted_dist[2,:]) <= 0:
+    #         allow_neg = True
+
+    vx_dists = torch.einsum('ijk,ij->ijk', weighted_dists, vdiff.vx_dvx)
+    vr_dists = torch.einsum('ijk,ij->ijk', weighted_dists, vdiff.vr_dvr)
+    vth_dists = torch.einsum('ijk,ij->ijk', weighted_dists, vdiff.vth_dvx)
+
+    # Vth Diff Calculation
+    vth_diffs = torch.zeros((nvr, nvx, nk, 2), dtype=dtype, device=device)
+
+    diff_padded = torch.roll(vth_dists, shifts=1, dims=1) - vth_dists
+    vth_diffs[:,:,:,0]   = torch.clone(diff_padded[vr_center, vx_center])
+    
+    diff_padded = -torch.roll(vth_dists, shifts=-1, dims=1) + vth_dists
+    vth_diffs[:,:,:,1]   = torch.clone(diff_padded[vr_center, vx_center])
+
+    # Indices for pos/neg vx values
+    pos_start = vdiff.vx_pos_start  # First positive vx index
+    pos_end   = vdiff.vx_pos_end    # Last positive vx index
+    neg_start = vdiff.vx_neg_start  # First negative vx index
+    neg_end   = vdiff.vx_neg_end    # Last negative vx index
+
+
+    vrvx_diffs = torch.zeros((nvr, nvx, nk, 2), dtype=dtype, device=device)
+    vrvx_diffs[:, pos_start+1:pos_end+1, :, 0] =  vx_dists[vr_center, pos_start+1:pos_end+1, :]                - vx_dists[vr_center, pos_start+2:pos_end+2, :]
+    vrvx_diffs[:, pos_start, :, 0]             = -vx_dists[vr_center, pos_start+1, :]
+    vrvx_diffs[:, neg_end, :, 0]               =  vx_dists[vr_center, neg_end+1, :]
+    vrvx_diffs[:, neg_start:neg_end, :, 0]     = -vx_dists[vr_center, neg_start+2:neg_end+2, :]                + vx_dists[vr_center, neg_start+1:neg_end+1, :]
+    vrvx_diffs[:,:,:,0]                        =  vrvx_diffs[:,:,:,0] + vr_dists[0:nvr, vx_center, :]          - vr_dists[vr_center, vx_center, :]
+
+    vrvx_diffs[:, pos_start+1:pos_end+1, :, 1] = -vx_dists[vr_center, pos_start+3:pos_end+3, :]                + vx_dists[vr_center, pos_start+2:pos_end+2, :]
+    vrvx_diffs[:, pos_start, :, 1]             = -vx_dists[vr_center, pos_start+2, :]
+    vrvx_diffs[:, neg_end, :, 1]               =  vx_dists[vr_center, neg_end, :]
+    vrvx_diffs[:, neg_start:neg_end, :, 1]     =  vx_dists[vr_center, neg_start:neg_end, :]                    - vx_dists[vr_center, neg_start+1:neg_end+1, :]
+    vrvx_diffs[1:nvr, :, :, 1]                 =  vrvx_diffs[1:nvr, :, :, 1] + vr_dists[2:nvr+1, vx_center, :] - vr_dists[3:nvr+2, vx_center, :]
+    vrvx_diffs[0,:,:,1]                        =  vrvx_diffs[0,:,:,1] - vr_dists[2, vx_center, :]
+
+    #   If negative values for weighted distribution must be allowed, then add postive particles to i=0 and negative particles to i=1 (beta is negative here)
+    # if allow_neg:
+    #     vrvx_diffs[0,:,1] = vrvx_diffs[0,:,1] - vr_dist[1,vx_center]
+    #     vrvx_diffs[1,:,1] = vrvx_diffs[1,:,1] + vr_dist[1,vx_center]
+
+    TA1 = vth*torch.einsum('ijkl,j->kl', vth_diffs, vx)
+    TA2 = (vth**2)*torch.einsum('ij,ijkl->kl', vmag_squared, vth_diffs)
+    
+    TB1 = vth*torch.einsum('ijkl,j->kl', vrvx_diffs, vx)
+    TB2 = (vth**2)*torch.einsum('ij,ijkl->kl', vmag_squared, vrvx_diffs)
+
+    denom = TA2[:,:,None]*TB1[:,None,:] - TA1[:,:,None]*TB2[:,None,:]
+
+    signs = torch.tensor([1., -1.], dtype=dtype, device=device)
+    scalar_map = (denom != 0) & (TA1[:,:,None] != 0)
+
+    vx_diff = target_vx_stack-vx_moments
+    energy_diff = target_energy_stack - energy_moments
+    vrvx_scalars = torch.where(scalar_map, 
+                              (TA2[:,:,None]*vx_diff[:,None,None] - TA1[:,:,None]*energy_diff[:,None,None]) / denom,
+                              torch.zeros_like(denom))
+    vth_scalars = torch.where(scalar_map, 
+                              (vx_diff[:,None,None] - TB1[:,None,:]*vrvx_scalars) / TA1[:,:,None],
+                              torch.zeros_like(denom))
+
+    # # Additional stuff for interp_fvrvxx
+    s = 1
+    # # NOTE Not Autodifferentaible yet, revisit later
+    # if (not assume_pos) and (not allow_neg):
+    #     ii = torch.nonzero(weighted_dist, as_tuple=True)
+    #     if ii[0].numel() > 0:
+    #         s = min(1/torch.max(-correction[ii]/weighted_dist[ii]), 1)
+
+    do_break = (vth_scalars * signs[None, :, None] > 0) & (vrvx_scalars * signs[None, None, :] > 0)
+
+    # First valid (ia, ib) per batch element
+    # Default to (1,1) when no valid pair found, matching loop fallthrough
+    idx = torch.where(
+        do_break.any(dim=-1).any(dim=-1),
+        torch.argmax(do_break.float().view(nk, 4), dim=1),
+        torch.full((nk,), 3, device=device, dtype=torch.long)  # 3 → ia=1, ib=1
+    )
+    ia = idx // 2  # (nk,)
+    ib = idx %  2  # (nk,)
+    
+    nk_idx = torch.arange(nk, device=device)
+
+    # Gather winning scalars — (nk,)
+    vth_scalar_win  = vth_scalars[nk_idx, ia, ib]
+    vrvx_scalar_win = vrvx_scalars[nk_idx, ia, ib]
+
+    # Gather winning diffs — (nvr, nvx, nk)
+    chosen_vth_diffs  = vth_diffs[:, :, nk_idx, ia]
+    chosen_vrvx_diffs = vrvx_diffs[:, :, nk_idx, ib]
+
+    # corrections — (nvr, nvx, nk)
+    corrections = (chosen_vth_diffs  * vth_scalar_win[None, None, :]
+                + chosen_vrvx_diffs * vrvx_scalar_win[None, None, :])
+
+    f_slices = nb * (weighted_dists[vr_center, vx_center, :] + corrections) / volume[:, :, None]
+
+    return f_slices, s
+
+
 # NOTE Look at PlasmaPy, specifically plasmapy.formulary.distribution.Maxwellian_velocity_2D
 # NOTE Adjust Docstring for accuracy
 def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
@@ -270,29 +441,32 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
     nvx = vx.numel()
     nk = vx_shift.numel()
 
-    maxwell = torch.zeros((nvr, nvx, nk), dtype=dtype, device=device)
 
 
     valid_mask = Tmaxwell > 0
     valid_idx = torch.where(valid_mask)[0]
 
     # arg shape: (n_valid, Nvr, Nvx)
-    vx_shifted = vx[None, :] - vx_shift[valid_mask, None] / vth          # (n_valid, Nvx)
-    arg = -((vr**2)[None, :, None] + vx_shifted[:, None, :]**2) * mol * Tnorm / Tmaxwell[valid_mask, None, None]
+    vx_shifted = vx[:, None] - vx_shift[None, valid_mask] / vth          # (n_valid, Nvx)
+    vx_vr_shifted = (vr**2)[:, None, None] + vx_shifted[None, :, :]**2
+    arg = -(vx_vr_shifted) * mol * Tnorm / Tmaxwell[None, None, valid_mask]
     arg = dclamp(arg, min=-80.0, max=0.0)
 
     f = torch.exp(arg)  # (n_valid, Nvr, Nvx)
 
-    norm = (dvr_vol[None, :] * (f * dvx[None, None, :]).sum(dim=2)).sum(dim=1)
-    f = f / norm[:, None, None]
+    # norm = (dvr_vol[None, :] * (f * dvx[None, :, None]).sum(dim=2)).sum(dim=1)
+    # f = f / norm[:, None, None]
+    f = f / torch.einsum('i,ijk,j->k', dvr_vol, f, dvx)
 
     target_energy = vx_shift[valid_mask]**2 + (3 * CONST.Q * Tmaxwell[valid_mask] / (mol * mu * CONST.H_MASS))
+    # print(target_energy)
 
     # compensate_distribution must remain a loop
-    for i, k in enumerate(valid_idx):
-        f_k, _ = compensate_distribution(f[i], vdiff, vr, vx, vth, vx_shift[k], target_energy[i])
-        norm_k = torch.sum(dvr_vol * (f_k @ dvx))
-        maxwell[:, :, k] = f_k / norm_k
+    f_slices, _ = vectorized_compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[valid_mask], target_energy)
+    norm = torch.einsum('i,ijk,j->k', dvr_vol, f_slices, dvx)
+
+    maxwell = torch.zeros((nvr, nvx, nk), dtype=dtype, device=device)
+    maxwell[:, :, valid_mask] = f_slices / norm[None, None, :]
     
     
     # for k in range(nk):
@@ -301,14 +475,13 @@ def create_shifted_maxwellian(vr, vx, Tmaxwell, vx_shift, mu, mol, Tnorm):
     #     # print(arg[k])
     #     arg = -((vr[:, None]**2 + (vx - (vx_shift[k] / vth))**2)*mol*Tnorm) / Tmaxwell[k]
     #     arg = dclamp(arg, min=-80.0, max=0.0)
-    #     # print(arg)
-    #     # input()
     #     f = torch.exp(arg)
 
     #     f = f / torch.nansum(dvr_vol*(f @ dvx))
 
     #     # Target energy density
     #     target_energy = (vx_shift[k]**2) + (3*CONST.Q*Tmaxwell[k] / (mol*mu*CONST.H_MASS))
+    #     print(target_energy)
 
     #     # with torch.no_grad():
     #     #     compensated_f, _ = compensate_distribution(f, vdiff, vr, vx, vth, vx_shift[k], target_energy)
